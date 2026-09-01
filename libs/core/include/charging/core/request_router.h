@@ -18,6 +18,7 @@ private:
 
     QSqlDatabase database_;
     std::optional<qint64> authenticatedUserId_;
+    std::optional<qint64> authenticatedAdminId_;
 };
 
 } // namespace charging::core

@@ -32,6 +32,16 @@ export CHARGING_SERVER_PORT=45454
 
 用户相关接口绑定当前 TCP 连接的登录身份，不接受客户端提交任意用户 ID。连接重建后必须重新登录。
 
+## 管理接口
+
+- `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
+- `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势。
+- `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
+- `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
+- `admin.user.list` / `admin.user.status`：手机号模糊搜索及用户冻结、解冻。
+
+管理员身份同样绑定当前 TCP 连接，与车主登录会话相互独立。
+
 ## 错误码
 
 - `INVALID_MESSAGE`：不是有效的一行 JSON，或缺少 `id/type`。
@@ -42,6 +52,10 @@ export CHARGING_SERVER_PORT=45454
 - `ORDER_ACTIVE_EXISTS`：用户已有未完成订单。
 - `ORDER_NOT_FOUND`：订单不存在或不属于当前用户。
 - `ORDER_START_FAILED` / `ORDER_STOP_FAILED` / `ORDER_SETTLE_FAILED`：订单状态或余额不满足操作条件。
+- `ADMIN_AUTH_REQUIRED` / `ADMIN_LOGIN_FAILED`：管理员未登录或凭据错误。
+- `STATION_CREATE_FAILED`：新增电站或初始化电桩失败。
+- `PILE_RESTART_FAILED`：电桩不存在或处于充电状态。
+- `USER_STATUS_FAILED`：冻结、解冻用户失败。
 - `STATION_NOT_FOUND`：电站不存在。
 - `DATABASE_ERROR`：数据库操作失败。
 - `UNKNOWN_REQUEST`：不支持的请求类型。

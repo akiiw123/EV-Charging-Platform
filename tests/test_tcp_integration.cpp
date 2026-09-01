@@ -121,6 +121,40 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    void administratorOperations()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("no-auth"), QStringLiteral("admin.dashboard"), {}}).type,
+                 QStringLiteral("admin.dashboard.error"));
+        QCOMPARE(exchange(socket, {QStringLiteral("bad-login"), QStringLiteral("admin.login"),
+                                   {{QStringLiteral("username"), QStringLiteral("admin")},
+                                    {QStringLiteral("password"), QStringLiteral("wrong")}}}).type,
+                 QStringLiteral("admin.login.error"));
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                   {{QStringLiteral("username"), QStringLiteral("admin")},
+                                    {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+        QCOMPARE(exchange(socket, {QStringLiteral("dashboard"), QStringLiteral("admin.dashboard"), {}}).type,
+                 QStringLiteral("admin.dashboard.ok"));
+        const auto created = exchange(socket, {QStringLiteral("station-create"), QStringLiteral("admin.station.create"),
+            {{QStringLiteral("name"), QStringLiteral("测试新站")}, {QStringLiteral("address"), QStringLiteral("测试路1号")},
+             {QStringLiteral("latitude"), 41.8}, {QStringLiteral("longitude"), 123.4},
+             {QStringLiteral("price_per_kwh"), 1.5}, {QStringLiteral("pile_count"), 2}}});
+        QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
+        const auto piles = exchange(socket, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
+        QCOMPARE(piles.type, QStringLiteral("admin.pile.list.ok"));
+        QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), 4);
+        QCOMPARE(exchange(socket, {QStringLiteral("users"), QStringLiteral("admin.user.list"),
+                                   {{QStringLiteral("phone"), QString()}}}).type,
+                 QStringLiteral("admin.user.list.ok"));
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
 private:
     class Fixture {
     public:

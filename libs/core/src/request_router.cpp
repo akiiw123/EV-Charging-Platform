@@ -95,6 +95,145 @@ Message RequestRouter::route(const Message& request)
         return success(request, {{QStringLiteral("user"), userJson(*user)}});
     }
 
+    if (request.type == QStringLiteral("admin.login")) {
+        AdministratorRepository administrators(database_);
+        const QString username = request.payload.value(QStringLiteral("username")).toString();
+        const QString password = request.payload.value(QStringLiteral("password")).toString();
+        const auto administrator = administrators.findByUsername(username, &repositoryError);
+        if (!administrator || administrator->passwordHash != QStringLiteral("DEV_ONLY:") + password) {
+            return error(request, QStringLiteral("ADMIN_LOGIN_FAILED"), QStringLiteral("管理员账号或密码错误"));
+        }
+        authenticatedAdminId_ = administrator->id;
+        return success(request, {{QStringLiteral("administrator"),
+                                  QJsonObject {{QStringLiteral("id"), administrator->id},
+                                               {QStringLiteral("username"), administrator->username},
+                                               {QStringLiteral("must_change_password"), administrator->mustChangePassword}}}});
+    }
+
+    if (request.type.startsWith(QStringLiteral("admin.")) && !authenticatedAdminId_) {
+        return error(request, QStringLiteral("ADMIN_AUTH_REQUIRED"), QStringLiteral("请先登录管理后台"));
+    }
+
+    if (request.type == QStringLiteral("admin.dashboard")) {
+        QJsonObject metrics;
+        QSqlQuery revenue(database_);
+        if (!revenue.exec(QStringLiteral(
+                "SELECT COALESCE(SUM(CASE WHEN date(created_at)=date('now','localtime') THEN amount END),0),"
+                "COALESCE(SUM(CASE WHEN strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime') THEN amount END),0),"
+                "COALESCE(SUM(amount),0) FROM charging_orders WHERE status='completed'"))
+            || !revenue.next()) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), revenue.lastError().text());
+        }
+        metrics.insert(QStringLiteral("today_revenue"), revenue.value(0).toDouble());
+        metrics.insert(QStringLiteral("month_revenue"), revenue.value(1).toDouble());
+        metrics.insert(QStringLiteral("total_revenue"), revenue.value(2).toDouble());
+        QSqlQuery pileCounts(database_);
+        if (!pileCounts.exec(QStringLiteral("SELECT status,COUNT(*) FROM charging_piles GROUP BY status"))) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), pileCounts.lastError().text());
+        }
+        QJsonObject statuses {{QStringLiteral("idle"), 0}, {QStringLiteral("charging"), 0},
+                              {QStringLiteral("fault"), 0}, {QStringLiteral("offline"), 0}};
+        while (pileCounts.next()) statuses.insert(pileCounts.value(0).toString(), pileCounts.value(1).toInt());
+        QJsonArray trend;
+        QSqlQuery trendQuery(database_);
+        trendQuery.exec(QStringLiteral(
+            "SELECT date(created_at),SUM(amount) FROM charging_orders WHERE status='completed' "
+            "AND date(created_at)>=date('now','-29 days') GROUP BY date(created_at) ORDER BY date(created_at)"));
+        while (trendQuery.next()) {
+            trend.append(QJsonObject {{QStringLiteral("date"), trendQuery.value(0).toString()},
+                                      {QStringLiteral("amount"), trendQuery.value(1).toDouble()}});
+        }
+        return success(request, {{QStringLiteral("metrics"), metrics},
+                                 {QStringLiteral("pile_status"), statuses},
+                                 {QStringLiteral("revenue_trend"), trend}});
+    }
+
+    if (request.type == QStringLiteral("admin.station.list")) {
+        StationRepository stations(database_); PileRepository piles(database_); QJsonArray array;
+        for (const auto& station : stations.list(&repositoryError))
+            array.append(stationJson(station, piles.listByStation(station.id, &repositoryError)));
+        return repositoryError.isEmpty() ? success(request, {{QStringLiteral("stations"), array}})
+                                         : error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+    }
+
+    if (request.type == QStringLiteral("admin.station.create")) {
+        ChargingStation value;
+        value.name = request.payload.value(QStringLiteral("name")).toString();
+        value.address = request.payload.value(QStringLiteral("address")).toString();
+        value.latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
+        value.longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
+        value.pricePerKwh = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
+        const int pileCount = request.payload.value(QStringLiteral("pile_count")).toInt(0);
+        if (value.latitude < -90 || value.latitude > 90 || value.longitude < -180 || value.longitude > 180
+            || pileCount < 1 || pileCount > 100) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("经纬度或电桩数量无效"));
+        }
+        if (!database_.transaction()) return error(request, QStringLiteral("DATABASE_ERROR"), database_.lastError().text());
+        StationRepository stations(database_); PileRepository piles(database_);
+        const auto station = stations.create(value, &repositoryError);
+        if (!station) { database_.rollback(); return error(request, QStringLiteral("STATION_CREATE_FAILED"), repositoryError); }
+        for (int index = 1; index <= pileCount; ++index) {
+            ChargingPile pile; pile.stationId = station->id;
+            pile.code = QStringLiteral("ST%1-P%2").arg(station->id).arg(index, 3, 10, QLatin1Char('0'));
+            pile.type = QStringLiteral("fast"); pile.powerKw = 60; pile.status = QStringLiteral("idle");
+            if (!piles.create(pile, &repositoryError)) {
+                database_.rollback(); return error(request, QStringLiteral("STATION_CREATE_FAILED"), repositoryError);
+            }
+        }
+        if (!database_.commit()) return error(request, QStringLiteral("DATABASE_ERROR"), database_.lastError().text());
+        return success(request, {{QStringLiteral("station"), stationJson(*station, piles.listByStation(station->id))}});
+    }
+
+    if (request.type == QStringLiteral("admin.pile.list")) {
+        QSqlQuery query(database_);
+        query.prepare(QStringLiteral(
+            "SELECT p.id,p.station_id,p.code,p.type,p.power_kw,p.status,p.charge_count,p.total_charge_minutes,s.name "
+            "FROM charging_piles p JOIN charging_stations s ON s.id=p.station_id ORDER BY p.id"));
+        if (!query.exec()) return error(request, QStringLiteral("DATABASE_ERROR"), query.lastError().text());
+        QJsonArray array;
+        while (query.next()) {
+            array.append(QJsonObject {{QStringLiteral("id"), query.value(0).toLongLong()},
+                {QStringLiteral("station_id"), query.value(1).toLongLong()}, {QStringLiteral("code"), query.value(2).toString()},
+                {QStringLiteral("type"), query.value(3).toString()}, {QStringLiteral("power_kw"), query.value(4).toDouble()},
+                {QStringLiteral("status"), query.value(5).toString()}, {QStringLiteral("charge_count"), query.value(6).toInt()},
+                {QStringLiteral("total_charge_minutes"), query.value(7).toInt()}, {QStringLiteral("station_name"), query.value(8).toString()}});
+        }
+        return success(request, {{QStringLiteral("piles"), array}});
+    }
+
+    if (request.type == QStringLiteral("admin.pile.restart")) {
+        const auto pileId = positiveId(request.payload, QStringLiteral("pile_id"));
+        if (!pileId) return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("pile_id 无效"));
+        PileRepository piles(database_); const auto pile = piles.findById(*pileId, &repositoryError);
+        if (!pile || pile->status == QStringLiteral("charging"))
+            return error(request, QStringLiteral("PILE_RESTART_FAILED"), QStringLiteral("充电中的电桩不能重启"));
+        if (!piles.updateStatus(*pileId, QStringLiteral("idle"), &repositoryError))
+            return error(request, QStringLiteral("PILE_RESTART_FAILED"), repositoryError);
+        return success(request, {{QStringLiteral("pile"), pileJson(*piles.findById(*pileId))}});
+    }
+
+    if (request.type == QStringLiteral("admin.user.list")) {
+        QSqlQuery query(database_);
+        query.prepare(QStringLiteral("SELECT * FROM users WHERE phone LIKE :phone ORDER BY id DESC LIMIT 200"));
+        query.bindValue(QStringLiteral(":phone"), QStringLiteral("%") + request.payload.value(QStringLiteral("phone")).toString() + QStringLiteral("%"));
+        if (!query.exec()) return error(request, QStringLiteral("DATABASE_ERROR"), query.lastError().text());
+        QJsonArray array;
+        while (query.next()) array.append(QJsonObject {{QStringLiteral("id"), query.value("id").toLongLong()},
+            {QStringLiteral("phone"), query.value("phone").toString()}, {QStringLiteral("nickname"), query.value("nickname").toString()},
+            {QStringLiteral("wallet_balance"), query.value("wallet_balance").toDouble()}, {QStringLiteral("status"), query.value("status").toString()},
+            {QStringLiteral("created_at"), query.value("created_at").toString()}});
+        return success(request, {{QStringLiteral("users"), array}});
+    }
+
+    if (request.type == QStringLiteral("admin.user.status")) {
+        const auto userId = positiveId(request.payload, QStringLiteral("user_id"));
+        const QString status = request.payload.value(QStringLiteral("status")).toString();
+        UserRepository users(database_);
+        if (!userId || !users.setStatus(*userId, status, &repositoryError))
+            return error(request, QStringLiteral("USER_STATUS_FAILED"), repositoryError.isEmpty() ? QStringLiteral("用户或状态无效") : repositoryError);
+        return success(request, {{QStringLiteral("user"), userJson(*users.findById(*userId))}});
+    }
+
     const bool requiresAuthentication = request.type.startsWith(QStringLiteral("user."))
         || request.type.startsWith(QStringLiteral("wallet."))
         || request.type.startsWith(QStringLiteral("order."));
