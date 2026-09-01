@@ -16,6 +16,8 @@ CMakeLists.txt.user*
 *.sqlite
 *.sqlite3
 logs/
+__pycache__/
+*.py[cod]
 
 # OS files
 .DS_Store
