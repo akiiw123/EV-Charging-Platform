@@ -23,6 +23,14 @@ export CHARGING_SERVER_PORT=45454
 - `station.list`：返回所有电站、总桩数和空闲桩数。
 - `station.detail`：`payload.station_id` 为电站 ID；返回电站及电桩明细。
 - `pile.list`：`payload.station_id` 为电站 ID；返回该站电桩列表。
+- `user.profile` / `user.profile.update`：查询或修改当前连接已登录用户资料。
+- `wallet.recharge`：为当前用户模拟充值，金额范围为 0 到 100000 元。
+- `order.active` / `order.history`：查询当前未完成订单或最近 50 条订单。
+- `order.reserve`：预约空闲电桩；当前用户或电桩已有活动订单时拒绝。
+- `order.start` / `order.stop`：开始或停止充电，停止时由服务端计算电量和费用。
+- `order.settle` / `order.cancel`：钱包结算待付款订单或取消预约。
+
+用户相关接口绑定当前 TCP 连接的登录身份，不接受客户端提交任意用户 ID。连接重建后必须重新登录。
 
 ## 错误码
 
@@ -30,6 +38,10 @@ export CHARGING_SERVER_PORT=45454
 - `INVALID_ARGUMENT`：请求参数不存在或类型错误。
 - `AUTH_INVALID_PHONE`：手机号格式错误或注册失败。
 - `AUTH_USER_FROZEN`：用户被冻结。
+- `AUTH_REQUIRED`：连接尚未完成登录。
+- `ORDER_ACTIVE_EXISTS`：用户已有未完成订单。
+- `ORDER_NOT_FOUND`：订单不存在或不属于当前用户。
+- `ORDER_START_FAILED` / `ORDER_STOP_FAILED` / `ORDER_SETTLE_FAILED`：订单状态或余额不满足操作条件。
 - `STATION_NOT_FOUND`：电站不存在。
 - `DATABASE_ERROR`：数据库操作失败。
 - `UNKNOWN_REQUEST`：不支持的请求类型。

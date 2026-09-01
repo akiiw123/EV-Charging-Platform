@@ -53,6 +53,55 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    void authenticatedChargingLifecycle()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+
+        QCOMPARE(exchange(socket, {QStringLiteral("unauthorized"), QStringLiteral("wallet.recharge"),
+                                   {{QStringLiteral("amount"), 100}}}).type,
+                 QStringLiteral("wallet.recharge.error"));
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13500135000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        const auto recharge = exchange(socket, {QStringLiteral("recharge"), QStringLiteral("wallet.recharge"),
+                                                 {{QStringLiteral("amount"), 100}}});
+        QCOMPARE(recharge.type, QStringLiteral("wallet.recharge.ok"));
+        QCOMPARE(recharge.payload.value(QStringLiteral("user")).toObject()
+                     .value(QStringLiteral("wallet_balance")).toDouble(), 100.0);
+        QCOMPARE(exchange(socket, {QStringLiteral("profile"), QStringLiteral("user.profile.update"),
+                                   {{QStringLiteral("nickname"), QStringLiteral("测试车主")}}}).type,
+                 QStringLiteral("user.profile.update.ok"));
+
+        const auto reservation = exchange(socket, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                                     {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reservation.type, QStringLiteral("order.reserve.ok"));
+        const qint64 orderId = reservation.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(socket, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                   {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QTest::qWait(20);
+        const auto stopped = exchange(socket, {QStringLiteral("stop"), QStringLiteral("order.stop"),
+                                                {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(stopped.type, QStringLiteral("order.stop.ok"));
+        QCOMPARE(stopped.payload.value(QStringLiteral("order")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("awaiting_payment"));
+        const auto settled = exchange(socket, {QStringLiteral("settle"), QStringLiteral("order.settle"),
+                                                {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(settled.type, QStringLiteral("order.settle.ok"));
+        QCOMPARE(settled.payload.value(QStringLiteral("order")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("completed"));
+        const auto history = exchange(socket, {QStringLiteral("history"), QStringLiteral("order.history"), {}});
+        QCOMPARE(history.type, QStringLiteral("order.history.ok"));
+        QCOMPARE(history.payload.value(QStringLiteral("orders")).toArray().size(), 1);
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
     void invalidJsonDoesNotBreakConnection()
     {
         Fixture fixture;

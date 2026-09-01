@@ -17,6 +17,8 @@ public:
     std::optional<User> findById(qint64 id, QString* errorMessage = nullptr) const;
     std::optional<User> loginOrCreate(const QString& phone, QString* errorMessage = nullptr) const;
     bool updateNickname(qint64 userId, const QString& nickname, QString* errorMessage = nullptr) const;
+    bool updateAvatarPath(qint64 userId, const QString& avatarPath,
+                          QString* errorMessage = nullptr) const;
     bool recharge(qint64 userId, double amount, QString* errorMessage = nullptr) const;
     bool setStatus(qint64 userId, const QString& status, QString* errorMessage = nullptr) const;
 
@@ -67,6 +69,8 @@ public:
     std::optional<ChargingOrder> findById(qint64 id, QString* errorMessage = nullptr) const;
     std::optional<ChargingOrder> findActiveByUser(qint64 userId,
                                                   QString* errorMessage = nullptr) const;
+    QList<ChargingOrder> listByUser(qint64 userId, int limit = 50,
+                                    QString* errorMessage = nullptr) const;
     std::optional<ChargingOrder> createReservation(qint64 userId, qint64 pileId,
                                                    QString* errorMessage = nullptr) const;
     bool startCharging(qint64 orderId, QString* errorMessage = nullptr) const;

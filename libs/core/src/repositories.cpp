@@ -162,6 +162,24 @@ bool UserRepository::updateNickname(qint64 userId, const QString& nickname,
     return query.numRowsAffected() == 1;
 }
 
+bool UserRepository::updateAvatarPath(qint64 userId, const QString& avatarPath,
+                                      QString* errorMessage) const
+{
+    if (avatarPath.size() > 500) {
+        setError(errorMessage, QStringLiteral("头像路径过长"));
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("UPDATE users SET avatar_path = :path WHERE id = :id"));
+    query.bindValue(QStringLiteral(":path"), avatarPath.trimmed());
+    query.bindValue(QStringLiteral(":id"), userId);
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return false;
+    }
+    return query.numRowsAffected() == 1;
+}
+
 bool UserRepository::recharge(qint64 userId, double amount, QString* errorMessage) const
 {
     if (amount <= 0.0) {
@@ -370,6 +388,26 @@ std::optional<ChargingOrder> OrderRepository::findActiveByUser(qint64 userId,
         return std::nullopt;
     }
     return query.next() ? std::optional<ChargingOrder>(readOrder(query)) : std::nullopt;
+}
+
+QList<ChargingOrder> OrderRepository::listByUser(qint64 userId, int limit,
+                                                  QString* errorMessage) const
+{
+    QList<ChargingOrder> orders;
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "SELECT * FROM charging_orders WHERE user_id = :user "
+        "ORDER BY created_at DESC, id DESC LIMIT :limit"));
+    query.bindValue(QStringLiteral(":user"), userId);
+    query.bindValue(QStringLiteral(":limit"), qBound(1, limit, 200));
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return orders;
+    }
+    while (query.next()) {
+        orders.append(readOrder(query));
+    }
+    return orders;
 }
 
 std::optional<ChargingOrder> OrderRepository::createReservation(qint64 userId, qint64 pileId,
