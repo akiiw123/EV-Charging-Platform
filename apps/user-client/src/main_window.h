@@ -29,6 +29,7 @@ private:
     QTimer timer_;
     QJsonObject user_;
     QJsonObject order_;
+    qint64 selectedStationId_ = 0;
     qint64 selectedPileId_ = 0;
     double selectedPower_ = 0;
     double selectedPrice_ = 0;

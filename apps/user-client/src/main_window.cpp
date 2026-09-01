@@ -92,8 +92,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(loginButton_, &QPushButton::clicked, this, &MainWindow::login);
     connect(phone_, &QLineEdit::returnPressed, this, &MainWindow::login);
     connect(stations_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
+        selectedStationId_ = item->data(Qt::UserRole).toLongLong();
         selectedPrice_ = item->data(Qt::UserRole + 1).toDouble();
-        loadPiles(item->data(Qt::UserRole).toLongLong());
+        loadPiles(selectedStationId_);
     });
     connect(piles_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
         selectedPileId_ = item->data(Qt::UserRole).toLongLong();
@@ -247,7 +248,9 @@ void MainWindow::handleResponse(const charging::core::Message& message)
         const auto updated = message.payload.value(QStringLiteral("order")).toObject();
         const QString state = updated.value(QStringLiteral("status")).toString();
         updateOrder(state == QStringLiteral("completed") || state == QStringLiteral("cancelled") ? QJsonValue(QJsonValue::Null) : QJsonValue(updated));
-        api_.send(QStringLiteral("order.history")); loadStations();
+        api_.send(QStringLiteral("order.history"));
+        loadStations();
+        if (selectedStationId_ > 0) loadPiles(selectedStationId_);
     }
 }
 

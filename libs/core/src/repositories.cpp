@@ -24,7 +24,19 @@ void setQueryError(QString* target, const QSqlQuery& query)
 
 QDateTime dateTime(const QVariant& value)
 {
-    return value.isNull() ? QDateTime {} : QDateTime::fromString(value.toString(), Qt::ISODate);
+    if (value.isNull()) {
+        return {};
+    }
+    QDateTime parsed = QDateTime::fromString(value.toString(), Qt::ISODate);
+    if (!parsed.isValid()) {
+        parsed = QDateTime::fromString(value.toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    }
+    if (parsed.isValid()) {
+        // SQLite CURRENT_TIMESTAMP is UTC but has no timezone suffix.
+        parsed.setTimeSpec(Qt::UTC);
+        return parsed.toLocalTime();
+    }
+    return {};
 }
 
 User readUser(const QSqlQuery& query)

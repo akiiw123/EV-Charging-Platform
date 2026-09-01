@@ -2,6 +2,7 @@
 #include "charging/core/message_protocol.h"
 #include "charging/core/tcp_server.h"
 
+#include <QDateTime>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QTcpSocket>
@@ -81,15 +82,28 @@ private slots:
         QCOMPARE(reservation.type, QStringLiteral("order.reserve.ok"));
         const qint64 orderId = reservation.payload.value(QStringLiteral("order")).toObject()
                                    .value(QStringLiteral("id")).toInteger();
-        QCOMPARE(exchange(socket, {QStringLiteral("start"), QStringLiteral("order.start"),
-                                   {{QStringLiteral("order_id"), orderId}}}).type,
-                 QStringLiteral("order.start.ok"));
+        const auto started = exchange(socket, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                                {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(started.type, QStringLiteral("order.start.ok"));
+        const QDateTime startedAt = QDateTime::fromString(
+            started.payload.value(QStringLiteral("order")).toObject()
+                .value(QStringLiteral("started_at")).toString(), Qt::ISODate);
+        QVERIFY(startedAt.isValid());
+        QVERIFY(qAbs(startedAt.secsTo(QDateTime::currentDateTime())) < 5);
+        const auto chargingPiles = exchange(socket, {QStringLiteral("charging-piles"),
+            QStringLiteral("pile.list"), {{QStringLiteral("station_id"), 1}}});
+        QCOMPARE(chargingPiles.payload.value(QStringLiteral("piles")).toArray().first().toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("charging"));
         QTest::qWait(20);
         const auto stopped = exchange(socket, {QStringLiteral("stop"), QStringLiteral("order.stop"),
                                                 {{QStringLiteral("order_id"), orderId}}});
         QCOMPARE(stopped.type, QStringLiteral("order.stop.ok"));
         QCOMPARE(stopped.payload.value(QStringLiteral("order")).toObject()
                      .value(QStringLiteral("status")).toString(), QStringLiteral("awaiting_payment"));
+        const auto idlePiles = exchange(socket, {QStringLiteral("idle-piles"), QStringLiteral("pile.list"),
+                                                  {{QStringLiteral("station_id"), 1}}});
+        QCOMPARE(idlePiles.payload.value(QStringLiteral("piles")).toArray().first().toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("idle"));
         const auto settled = exchange(socket, {QStringLiteral("settle"), QStringLiteral("order.settle"),
                                                 {{QStringLiteral("order_id"), orderId}}});
         QCOMPARE(settled.type, QStringLiteral("order.settle.ok"));
