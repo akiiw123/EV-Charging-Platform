@@ -1,0 +1,25 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+
+# Qt Creator / IDE
+CMakeLists.txt.user*
+*.autosave
+.idea/
+.vscode/
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Codex temporary files
+.codex-tmp/

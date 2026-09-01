@@ -1,0 +1,15 @@
+:root { color-scheme: dark; font-family: system-ui, "Microsoft YaHei", sans-serif; background: #071426; color: #e8f2ff; }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(circle at top, #12345c, #071426 48%); min-height: 100vh; }
+main { padding: 24px; max-width: 1600px; margin: auto; }
+header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #3277ad; }
+h1 { font-size: 28px; letter-spacing: .1em; }
+.metrics, .grid { display: grid; gap: 18px; margin-top: 20px; }
+.metrics { grid-template-columns: repeat(3, 1fr); }
+.grid { grid-template-columns: 2fr 1fr; }
+article { background: rgba(9, 34, 63, .85); border: 1px solid #235b88; border-radius: 10px; padding: 18px; }
+small { display: block; color: #8fb6d9; }
+strong { display: block; margin-top: 10px; color: #55d6be; font-size: 30px; }
+h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.chart { height: 380px; }
+@media (max-width: 800px) { .metrics, .grid { grid-template-columns: 1fr; } }
