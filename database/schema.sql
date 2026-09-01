@@ -58,4 +58,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_active_order
 ON charging_orders(user_id)
 WHERE status IN ('reserved', 'charging', 'awaiting_payment');
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pile_active_order
+ON charging_orders(pile_id)
+WHERE status IN ('reserved', 'charging', 'awaiting_payment');
+
 INSERT OR IGNORE INTO schema_versions(version) VALUES (1);
+INSERT OR IGNORE INTO schema_versions(version) VALUES (2);

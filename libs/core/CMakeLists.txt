@@ -1,6 +1,7 @@
 add_library(charging-core STATIC
     src/database_manager.cpp
     src/message_protocol.cpp
+    src/repositories.cpp
 )
 
 target_include_directories(charging-core PUBLIC include)
