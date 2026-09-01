@@ -251,6 +251,22 @@ std::optional<Administrator> AdministratorRepository::findByUsername(
     return query.next() ? std::optional<Administrator>(readAdministrator(query)) : std::nullopt;
 }
 
+bool AdministratorRepository::updatePasswordHash(qint64 administratorId,
+                                                  const QString& passwordHash,
+                                                  QString* errorMessage) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE administrators SET password_hash = :password_hash WHERE id = :id"));
+    query.bindValue(QStringLiteral(":password_hash"), passwordHash);
+    query.bindValue(QStringLiteral(":id"), administratorId);
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return false;
+    }
+    return query.numRowsAffected() == 1;
+}
+
 StationRepository::StationRepository(QSqlDatabase database) : database_(std::move(database)) {}
 
 QList<ChargingStation> StationRepository::list(QString* errorMessage) const

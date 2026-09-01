@@ -1,6 +1,7 @@
 #include "charging/core/request_router.h"
 
 #include "charging/core/repositories.h"
+#include "charging/core/password_security.h"
 
 #include <QJsonArray>
 #include <QSqlError>
@@ -100,8 +101,13 @@ Message RequestRouter::route(const Message& request)
         const QString username = request.payload.value(QStringLiteral("username")).toString();
         const QString password = request.payload.value(QStringLiteral("password")).toString();
         const auto administrator = administrators.findByUsername(username, &repositoryError);
-        if (!administrator || administrator->passwordHash != QStringLiteral("DEV_ONLY:") + password) {
+        if (!administrator || !password::verify(password, administrator->passwordHash)) {
             return error(request, QStringLiteral("ADMIN_LOGIN_FAILED"), QStringLiteral("管理员账号或密码错误"));
+        }
+        if (password::needsUpgrade(administrator->passwordHash)
+            && !administrators.updatePasswordHash(administrator->id, password::hash(password),
+                                                  &repositoryError)) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
         }
         authenticatedAdminId_ = administrator->id;
         return success(request, {{QStringLiteral("administrator"),

@@ -1,4 +1,5 @@
 #include "charging/core/message_protocol.h"
+#include "charging/core/password_security.h"
 
 #include <QJsonObject>
 #include <QtTest>
@@ -22,6 +23,20 @@ private slots:
         QCOMPARE(output.id, input.id);
         QCOMPARE(output.type, input.type);
         QCOMPARE(output.payload, input.payload);
+    }
+
+    void passwordHashing()
+    {
+        const QString encoded = charging::core::password::hash(QStringLiteral("123456"));
+        QVERIFY(encoded.startsWith(QStringLiteral("PBKDF2-SHA256$")));
+        QVERIFY(charging::core::password::verify(QStringLiteral("123456"), encoded));
+        QVERIFY(!charging::core::password::verify(QStringLiteral("wrong"), encoded));
+        QVERIFY(!charging::core::password::verify(QStringLiteral("123456"),
+                                                   QStringLiteral("PBKDF2-SHA256$broken")));
+        QVERIFY(charging::core::password::verify(QStringLiteral("legacy"),
+                                                  QStringLiteral("DEV_ONLY:legacy")));
+        QVERIFY(charging::core::password::needsUpgrade(QStringLiteral("DEV_ONLY:legacy")));
+        QVERIFY(!charging::core::password::needsUpgrade(encoded));
     }
 };
 

@@ -31,6 +31,8 @@ public:
     explicit AdministratorRepository(QSqlDatabase database);
     std::optional<Administrator> findByUsername(const QString& username,
                                                 QString* errorMessage = nullptr) const;
+    bool updatePasswordHash(qint64 administratorId, const QString& passwordHash,
+                            QString* errorMessage = nullptr) const;
 
 private:
     mutable QSqlDatabase database_;

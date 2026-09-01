@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QJsonArray>
+#include <QSqlQuery>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -152,6 +153,7 @@ private slots:
                                    {{QStringLiteral("username"), QStringLiteral("admin")},
                                     {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
                  QStringLiteral("admin.login.ok"));
+        QVERIFY(fixture.administratorPasswordHash().startsWith(QStringLiteral("PBKDF2-SHA256$")));
         QCOMPARE(exchange(socket, {QStringLiteral("dashboard"), QStringLiteral("admin.dashboard"), {}}).type,
                  QStringLiteral("admin.dashboard.ok"));
         const auto created = exchange(socket, {QStringLiteral("station-create"), QStringLiteral("admin.station.create"),
@@ -185,6 +187,15 @@ private:
 
         quint16 port() const { return server_.serverPort(); }
         bool acceptConnection() { return server_.waitForNewConnection(1000); }
+        QString administratorPasswordHash() const
+        {
+            QSqlQuery query(manager_.database());
+            if (!query.exec(QStringLiteral(
+                    "SELECT password_hash FROM administrators WHERE username='admin'"))
+                || !query.next())
+                return {};
+            return query.value(0).toString();
+        }
 
     private:
         QTemporaryDir directory_;

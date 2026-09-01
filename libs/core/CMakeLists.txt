@@ -1,9 +1,11 @@
 add_library(charging-core STATIC
     include/charging/core/api_client.h
+    include/charging/core/password_security.h
     include/charging/core/tcp_server.h
     src/api_client.cpp
     src/database_manager.cpp
     src/message_protocol.cpp
+    src/password_security.cpp
     src/repositories.cpp
     src/request_router.cpp
     src/tcp_server.cpp
