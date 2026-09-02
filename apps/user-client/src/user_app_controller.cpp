@@ -1,0 +1,424 @@
+#include "user_app_controller.h"
+
+#include <QDateTime>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QRegularExpression>
+#include <QSettings>
+#include <QUrlQuery>
+#include <QtMath>
+#include <algorithm>
+
+namespace charging::user {
+
+UserAppController::UserAppController(QObject* parent) : QObject(parent)
+{
+    chargingTimer_.setInterval(1000);
+    connect(&chargingTimer_, &QTimer::timeout, this, [this] {
+        ++chargingSeconds_;
+        updateChargingEstimate();
+    });
+    noticeTimer_.setSingleShot(true);
+    noticeTimer_.setInterval(4500);
+    connect(&noticeTimer_, &QTimer::timeout, this, &UserAppController::clearNotice);
+    connect(&api_, &charging::core::ApiClient::connected, this, [this] {
+        connected_ = true;
+        emit connectedChanged();
+        showNotice(QStringLiteral("已连接充电服务"), QStringLiteral("success"));
+    });
+    connect(&api_, &charging::core::ApiClient::disconnected, this, [this] {
+        connected_ = false;
+        emit connectedChanged();
+        showNotice(QStringLiteral("连接已断开，正在自动重连"), QStringLiteral("warning"));
+    });
+    connect(&api_, &charging::core::ApiClient::clientError, this,
+            [this](const QString& error) { showNotice(error, QStringLiteral("error")); });
+    connect(&api_, &charging::core::ApiClient::responseReceived,
+            this, &UserAppController::handleResponse);
+
+    const QString host = qEnvironmentVariable(
+        "CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1"));
+    bool portOk = false;
+    const int configuredPort =
+        qEnvironmentVariableIntValue("CHARGING_SERVER_PORT", &portOk);
+    api_.connectToServer(
+        host, portOk && configuredPort > 0 ? quint16(configuredPort) : quint16(45454));
+    updateChargingEstimate();
+}
+
+bool UserAppController::connected() const { return connected_; }
+bool UserAppController::loggedIn() const { return loggedIn_; }
+bool UserAppController::busy() const { return busy_; }
+QString UserAppController::notice() const { return notice_; }
+QString UserAppController::noticeKind() const { return noticeKind_; }
+QString UserAppController::lastPhone() const
+{
+    QSettings settings;
+    return settings.value(QStringLiteral("user/lastPhone")).toString();
+}
+QVariantMap UserAppController::user() const { return user_; }
+QVariantMap UserAppController::activeOrder() const { return activeOrder_; }
+QVariantMap UserAppController::selectedStation() const { return selectedStation_; }
+QVariantList UserAppController::stations() const { return stations_; }
+QVariantList UserAppController::piles() const { return piles_; }
+QVariantList UserAppController::history() const { return history_; }
+QString UserAppController::locationName() const { return locationName_; }
+double UserAppController::latitude() const { return latitude_; }
+double UserAppController::longitude() const { return longitude_; }
+QString UserAppController::searchQuery() const { return searchQuery_; }
+QString UserAppController::chargingEstimate() const { return chargingEstimate_; }
+QUrl UserAppController::mapUrl() const { return mapUrl_; }
+QString UserAppController::mapTitle() const { return mapTitle_; }
+
+void UserAppController::setSearchQuery(const QString& value)
+{
+    if (searchQuery_ == value) return;
+    searchQuery_ = value.trimmed();
+    emit searchQueryChanged();
+    rebuildStations();
+}
+
+void UserAppController::setBusy(bool value)
+{
+    if (busy_ == value) return;
+    busy_ = value;
+    emit busyChanged();
+}
+
+void UserAppController::showNotice(const QString& text, const QString& kind)
+{
+    notice_ = text;
+    noticeKind_ = kind;
+    emit noticeChanged();
+    noticeTimer_.start();
+}
+
+void UserAppController::clearNotice()
+{
+    if (notice_.isEmpty()) return;
+    notice_.clear();
+    emit noticeChanged();
+}
+
+void UserAppController::login(const QString& phone)
+{
+    static const QRegularExpression pattern(QStringLiteral("^1[3-9]\\d{9}$"));
+    if (!pattern.match(phone.trimmed()).hasMatch()) {
+        showNotice(QStringLiteral("请输入正确的 11 位手机号"), QStringLiteral("error"));
+        emit authenticationRejected();
+        return;
+    }
+    if (!connected_) {
+        showNotice(QStringLiteral("服务尚未连接，请稍后重试"), QStringLiteral("warning"));
+        return;
+    }
+    setBusy(true);
+    api_.send(QStringLiteral("auth.phone_login"),
+              {{QStringLiteral("phone"), phone.trimmed()}});
+}
+
+void UserAppController::logout()
+{
+    loggedIn_ = false;
+    user_.clear();
+    activeOrder_.clear();
+    piles_.clear();
+    history_.clear();
+    chargingTimer_.stop();
+    emit loggedInChanged();
+    emit userChanged();
+    emit activeOrderChanged();
+    emit pilesChanged();
+    emit historyChanged();
+    showNotice(QStringLiteral("已安全退出"), QStringLiteral("success"));
+}
+
+void UserAppController::refreshStations()
+{
+    if (loggedIn_) api_.send(QStringLiteral("station.list"));
+}
+
+void UserAppController::locate(const QString& address)
+{
+    const QString text = address.trimmed();
+    if (text.contains(QStringLiteral("北京"))) {
+        locationName_ = QStringLiteral("北京市");
+        latitude_ = 39.9042;
+        longitude_ = 116.4074;
+    } else if (text.contains(QStringLiteral("沈阳"))) {
+        locationName_ = QStringLiteral("沈阳市");
+        latitude_ = 41.8057;
+        longitude_ = 123.4315;
+    } else {
+        locationName_ = QStringLiteral("深圳市");
+        latitude_ = 22.543096;
+        longitude_ = 114.057865;
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("location/name"), locationName_);
+    settings.setValue(QStringLiteral("location/latitude"), latitude_);
+    settings.setValue(QStringLiteral("location/longitude"), longitude_);
+    emit locationChanged();
+    rebuildStations();
+    showNotice(QStringLiteral("已定位到 %1").arg(locationName_), QStringLiteral("success"));
+}
+
+void UserAppController::selectStation(const QVariantMap& station)
+{
+    selectedStation_ = station;
+    selectedPrice_ = station.value(QStringLiteral("price_per_kwh")).toDouble();
+    piles_.clear();
+    emit selectedStationChanged();
+    emit pilesChanged();
+    loadPiles(station.value(QStringLiteral("id")).toLongLong());
+}
+
+void UserAppController::loadPiles(qint64 stationId)
+{
+    if (stationId > 0)
+        api_.send(QStringLiteral("pile.list"),
+                  {{QStringLiteral("station_id"), stationId}});
+}
+
+void UserAppController::reserve(qint64 pileId, double powerKw)
+{
+    if (!activeOrder_.isEmpty()) {
+        showNotice(QStringLiteral("请先处理当前订单"), QStringLiteral("warning"));
+        return;
+    }
+    selectedPowerKw_ = powerKw;
+    setBusy(true);
+    api_.send(QStringLiteral("order.reserve"),
+              {{QStringLiteral("pile_id"), pileId}});
+}
+
+void UserAppController::orderAction(const QString& action)
+{
+    const qint64 orderId = activeOrder_.value(QStringLiteral("id")).toLongLong();
+    if (orderId <= 0) return;
+    setBusy(true);
+    api_.send(action, {{QStringLiteral("order_id"), orderId}});
+}
+
+void UserAppController::refreshProfile()
+{
+    if (!loggedIn_) return;
+    api_.send(QStringLiteral("user.profile"));
+    api_.send(QStringLiteral("order.active"));
+    api_.send(QStringLiteral("order.history"));
+}
+
+void UserAppController::updateNickname(const QString& nickname)
+{
+    if (nickname.trimmed().isEmpty()) {
+        showNotice(QStringLiteral("昵称不能为空"), QStringLiteral("error"));
+        return;
+    }
+    api_.send(QStringLiteral("user.profile.update"),
+              {{QStringLiteral("nickname"), nickname.trimmed()}});
+}
+
+void UserAppController::recharge(double amount)
+{
+    if (amount <= 0.0) {
+        showNotice(QStringLiteral("充值金额必须大于 0"), QStringLiteral("error"));
+        return;
+    }
+    setBusy(true);
+    api_.send(QStringLiteral("wallet.recharge"),
+              {{QStringLiteral("amount"), amount}});
+}
+
+void UserAppController::openNavigation(const QString& mode)
+{
+    if (selectedStation_.isEmpty()) return;
+    QUrl url(QStringLiteral("https://apis.map.qq.com/uri/v1/routeplan"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("type"), mode);
+    query.addQueryItem(QStringLiteral("from"), locationName_);
+    query.addQueryItem(QStringLiteral("fromcoord"),
+                       QStringLiteral("%1,%2").arg(latitude_, 0, 'f', 6)
+                           .arg(longitude_, 0, 'f', 6));
+    query.addQueryItem(
+        QStringLiteral("to"),
+        selectedStation_.value(QStringLiteral("name")).toString());
+    query.addQueryItem(
+        QStringLiteral("tocoord"),
+        QStringLiteral("%1,%2")
+            .arg(selectedStation_.value(QStringLiteral("latitude")).toDouble(), 0, 'f', 6)
+            .arg(selectedStation_.value(QStringLiteral("longitude")).toDouble(), 0, 'f', 6));
+    query.addQueryItem(QStringLiteral("referer"), QStringLiteral("charging-platform"));
+    const QString key = qEnvironmentVariable("TENCENT_MAP_KEY");
+    if (!key.isEmpty()) query.addQueryItem(QStringLiteral("key"), key);
+    url.setQuery(query);
+    mapUrl_ = url;
+    mapTitle_ = (mode == QStringLiteral("walk") ? QStringLiteral("步行导航 · ")
+                                                 : QStringLiteral("驾车导航 · "))
+        + selectedStation_.value(QStringLiteral("name")).toString();
+    emit mapChanged();
+}
+
+double UserAppController::distanceKm(
+    double lat1, double lon1, double lat2, double lon2)
+{
+    constexpr double radius = 6371.0;
+    const double latDelta = qDegreesToRadians(lat2 - lat1);
+    const double lonDelta = qDegreesToRadians(lon2 - lon1);
+    const double value = qSin(latDelta / 2) * qSin(latDelta / 2)
+        + qCos(qDegreesToRadians(lat1)) * qCos(qDegreesToRadians(lat2))
+            * qSin(lonDelta / 2) * qSin(lonDelta / 2);
+    return radius * 2 * qAtan2(qSqrt(value), qSqrt(1 - value));
+}
+
+void UserAppController::rebuildStations()
+{
+    QVariantList filtered;
+    for (const QVariant& value : rawStations_) {
+        QVariantMap station = value.toMap();
+        if (!searchQuery_.isEmpty()
+            && !station.value(QStringLiteral("name")).toString().contains(
+                searchQuery_, Qt::CaseInsensitive)
+            && !station.value(QStringLiteral("address")).toString().contains(
+                searchQuery_, Qt::CaseInsensitive)) {
+            continue;
+        }
+        station.insert(
+            QStringLiteral("distance_km"),
+            distanceKm(
+                latitude_, longitude_,
+                station.value(QStringLiteral("latitude")).toDouble(),
+                station.value(QStringLiteral("longitude")).toDouble()));
+        filtered.append(station);
+    }
+    std::sort(filtered.begin(), filtered.end(), [](const QVariant& left, const QVariant& right) {
+        return left.toMap().value(QStringLiteral("distance_km")).toDouble()
+            < right.toMap().value(QStringLiteral("distance_km")).toDouble();
+    });
+    stations_ = filtered;
+    emit stationsChanged();
+}
+
+void UserAppController::updateUser(const QVariantMap& value)
+{
+    user_ = value;
+    emit userChanged();
+}
+
+void UserAppController::updateOrder(const QVariant& value)
+{
+    activeOrder_ = value.toMap();
+    const QString status = activeOrder_.value(QStringLiteral("status")).toString();
+    if (status == QStringLiteral("charging")) {
+        const QDateTime started = QDateTime::fromString(
+            activeOrder_.value(QStringLiteral("started_at")).toString(), Qt::ISODate);
+        chargingSeconds_ = started.isValid()
+            ? qMax<qint64>(0, started.secsTo(QDateTime::currentDateTime()))
+            : 0;
+        chargingTimer_.start();
+    } else {
+        chargingTimer_.stop();
+        chargingSeconds_ = 0;
+    }
+    updateChargingEstimate();
+    emit activeOrderChanged();
+}
+
+void UserAppController::updateChargingEstimate()
+{
+    const double energy = selectedPowerKw_ * chargingSeconds_ / 3600.0;
+    chargingEstimate_ = QStringLiteral("%1:%2:%3 · %4 kWh · ￥%5")
+        .arg(chargingSeconds_ / 3600, 2, 10, QLatin1Char('0'))
+        .arg((chargingSeconds_ % 3600) / 60, 2, 10, QLatin1Char('0'))
+        .arg(chargingSeconds_ % 60, 2, 10, QLatin1Char('0'))
+        .arg(energy, 0, 'f', 3)
+        .arg(energy * selectedPrice_, 0, 'f', 2);
+    emit chargingEstimateChanged();
+}
+
+void UserAppController::handleResponse(const charging::core::Message& message)
+{
+    setBusy(false);
+    if (message.type.endsWith(QStringLiteral(".error"))) {
+        const QString text =
+            message.payload.value(QStringLiteral("message")).toString();
+        showNotice(text, QStringLiteral("error"));
+        if (message.type == QStringLiteral("auth.phone_login.error"))
+            emit authenticationRejected();
+        if (message.payload.value(QStringLiteral("code")).toString()
+            == QStringLiteral("ORDER_ACTIVE_EXISTS")) {
+            api_.send(QStringLiteral("order.active"));
+        }
+        return;
+    }
+
+    const QVariantMap payload = message.payload.toVariantMap();
+    if (message.type == QStringLiteral("auth.phone_login.ok")) {
+        updateUser(payload.value(QStringLiteral("user")).toMap());
+        loggedIn_ = true;
+        QSettings settings;
+        settings.setValue(
+            QStringLiteral("user/lastPhone"),
+            user_.value(QStringLiteral("phone")).toString());
+        emit loggedInChanged();
+        emit loginSucceeded();
+        refreshStations();
+        refreshProfile();
+        return;
+    }
+    if (message.type == QStringLiteral("station.list.ok")) {
+        rawStations_ = payload.value(QStringLiteral("stations")).toList();
+        rebuildStations();
+        return;
+    }
+    if (message.type == QStringLiteral("pile.list.ok")) {
+        piles_ = payload.value(QStringLiteral("piles")).toList();
+        int offline = 0;
+        for (const QVariant& pile : piles_)
+            if (pile.toMap().value(QStringLiteral("status")).toString()
+                == QStringLiteral("offline")) ++offline;
+        selectedStation_.insert(QStringLiteral("offline_count"), offline);
+        emit pilesChanged();
+        emit selectedStationChanged();
+        return;
+    }
+    if (message.type == QStringLiteral("user.profile.ok")
+        || message.type == QStringLiteral("user.profile.update.ok")
+        || message.type == QStringLiteral("wallet.recharge.ok")) {
+        updateUser(payload.value(QStringLiteral("user")).toMap());
+        showNotice(
+            message.type == QStringLiteral("wallet.recharge.ok")
+                ? QStringLiteral("充值成功")
+                : QStringLiteral("资料已更新"),
+            QStringLiteral("success"));
+        return;
+    }
+    if (message.type == QStringLiteral("order.active.ok")) {
+        updateOrder(payload.value(QStringLiteral("order")));
+        return;
+    }
+    if (message.type == QStringLiteral("order.history.ok")) {
+        history_ = payload.value(QStringLiteral("orders")).toList();
+        emit historyChanged();
+        return;
+    }
+    if (message.type.startsWith(QStringLiteral("order."))) {
+        if (payload.contains(QStringLiteral("user")))
+            updateUser(payload.value(QStringLiteral("user")).toMap());
+        const QVariantMap order = payload.value(QStringLiteral("order")).toMap();
+        const QString status = order.value(QStringLiteral("status")).toString();
+        updateOrder(
+            status == QStringLiteral("completed")
+                    || status == QStringLiteral("cancelled")
+                ? QVariant()
+                : QVariant(order));
+        if (message.type == QStringLiteral("order.reserve.ok"))
+            emit reservationSucceeded();
+        showNotice(QStringLiteral("订单状态已更新"), QStringLiteral("success"));
+        api_.send(QStringLiteral("order.history"));
+        refreshStations();
+        if (!selectedStation_.isEmpty())
+            loadPiles(selectedStation_.value(QStringLiteral("id")).toLongLong());
+    }
+}
+
+} // namespace charging::user
