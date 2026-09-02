@@ -9,6 +9,9 @@
     weather_central.csv  时间 x 气象列(T,P0,P,U,nRAIN,Td)
     inf.csv          站点信息（station_id, TAZID, charge_count, ...）
 
+自有平台数据可经 export.py 导出为同布局目录后直接复用本模块
+（站点 ID 即 charging_stations.id），训练与推理代码无需改动。
+
 样本定义: 给定站点过去 seq_len 小时特征，预测未来 horizon 小时的
 负荷（充电量 kWh）与忙桩比例；忙桩比例 x 总桩数 = 被占用桩数。
 """

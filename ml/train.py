@@ -188,7 +188,8 @@ def main() -> None:
         print(f"{name} 样本数: {len(loader.dataset)}")
         if len(loader.dataset) == 0:
             raise SystemExit(
-                f"{name} 集为空: 该时间段不足 seq_len+horizon={args.seq_len + args.horizon} 小时"
+                f"{name} 集为空: 该时间段不足 seq_len+horizon={args.seq_len + args.horizon} 小时; "
+                "可减小 --seq-len/--horizon 或继续积累数据"
             )
 
     model = LoadForecaster(
