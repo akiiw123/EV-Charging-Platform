@@ -25,3 +25,7 @@ Thumbs.db
 
 # Codex temporary files
 .codex-tmp/
+
+# ML training artifacts and external UrbanEV dataset
+ml/artifacts/
+ml/data/
