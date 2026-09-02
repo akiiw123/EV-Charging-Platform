@@ -1,257 +1,103 @@
 #include "main_window.h"
-
+#include "views/charging_view.h"
+#include "views/home_view.h"
+#include "views/login_view.h"
+#include "views/map_navigation_view.h"
+#include "views/profile_view.h"
+#include "views/station_detail_view.h"
 #include <QDateTime>
-#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QLabel>
-#include <QLineEdit>
-#include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
-#include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
-#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
 namespace charging::user {
-namespace {
-QString statusText(const QString& value)
+MainWindow::MainWindow(QWidget* parent):QMainWindow(parent)
 {
-    if (value == QStringLiteral("reserved")) return QStringLiteral("已预约");
-    if (value == QStringLiteral("charging")) return QStringLiteral("充电中");
-    if (value == QStringLiteral("awaiting_payment")) return QStringLiteral("待结算");
-    if (value == QStringLiteral("completed")) return QStringLiteral("已完成");
-    if (value == QStringLiteral("cancelled")) return QStringLiteral("已取消");
-    return value;
+    setWindowTitle(QStringLiteral("充电客户端"));resize(1080,800);setMinimumSize(900,680);buildUi();applyStyle();
+    timer_.setInterval(1000);connect(&timer_,&QTimer::timeout,this,[this]{++chargingSeconds_;updateEstimate();});
+    connect(&api_,&charging::core::ApiClient::connected,this,[this]{login_->setConnected(true);statusBar()->showMessage(QStringLiteral("已连接充电服务"),3000);});
+    connect(&api_,&charging::core::ApiClient::disconnected,this,[this]{login_->setConnected(false);statusBar()->showMessage(QStringLiteral("服务连接断开，正在重连…"));});
+    connect(&api_,&charging::core::ApiClient::clientError,this,[this](const QString& e){statusBar()->showMessage(e,6000);});
+    connect(&api_,&charging::core::ApiClient::responseReceived,this,&MainWindow::handleResponse);
+    const QString host=qEnvironmentVariable("CHARGING_SERVER_HOST",QStringLiteral("127.0.0.1"));bool ok=false;const int port=qEnvironmentVariableIntValue("CHARGING_SERVER_PORT",&ok);api_.connectToServer(host,ok&&port>0?quint16(port):quint16(45454));
 }
-}
-
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
+void MainWindow::buildUi()
 {
-    setWindowTitle(QStringLiteral("充电桩应用管理平台 - 用户端"));
-    resize(1180, 780);
-    auto* root = new QWidget(this);
-    auto* rootLayout = new QVBoxLayout(root);
-    auto* loginLayout = new QHBoxLayout;
-    phone_ = new QLineEdit(root);
-    phone_->setPlaceholderText(QStringLiteral("输入 11 位手机号"));
-    phone_->setMaxLength(11);
-    loginButton_ = new QPushButton(QStringLiteral("登录/注册"), root);
-    userLabel_ = new QLabel(QStringLiteral("尚未登录"), root);
-    loginLayout->addWidget(phone_); loginLayout->addWidget(loginButton_); loginLayout->addWidget(userLabel_, 1);
-    rootLayout->addLayout(loginLayout);
-
-    auto* tabs = new QTabWidget(root);
-    auto* chargingPage = new QWidget(tabs);
-    auto* chargingLayout = new QVBoxLayout(chargingPage);
-    auto* splitter = new QSplitter(chargingPage);
-    stations_ = new QListWidget(splitter);
-    piles_ = new QListWidget(splitter);
-    stations_->setMinimumWidth(430);
-    chargingLayout->addWidget(new QLabel(QStringLiteral("选择充电站和空闲电桩"), chargingPage));
-    chargingLayout->addWidget(splitter, 1);
-    orderLabel_ = new QLabel(QStringLiteral("当前没有充电订单"), chargingPage);
-    chargingLabel_ = new QLabel(chargingPage);
-    auto* actions = new QHBoxLayout;
-    reserve_ = new QPushButton(QStringLiteral("预约电桩"), chargingPage);
-    start_ = new QPushButton(QStringLiteral("开始充电"), chargingPage);
-    stop_ = new QPushButton(QStringLiteral("停止充电"), chargingPage);
-    settle_ = new QPushButton(QStringLiteral("钱包结算"), chargingPage);
-    cancel_ = new QPushButton(QStringLiteral("取消预约"), chargingPage);
-    for (auto* button : {reserve_, start_, stop_, settle_, cancel_}) actions->addWidget(button);
-    actions->addStretch();
-    chargingLayout->addWidget(orderLabel_); chargingLayout->addWidget(chargingLabel_); chargingLayout->addLayout(actions);
-
-    auto* accountPage = new QWidget(tabs);
-    auto* accountLayout = new QVBoxLayout(accountPage);
-    accountLabel_ = new QLabel(QStringLiteral("请先登录"), accountPage);
-    nickname_ = new QLineEdit(accountPage);
-    avatar_ = new QLineEdit(accountPage);
-    avatar_->setPlaceholderText(QStringLiteral("头像本地路径（可选）"));
-    recharge_ = new QLineEdit(accountPage);
-    recharge_->setPlaceholderText(QStringLiteral("充值金额"));
-    auto* save = new QPushButton(QStringLiteral("保存资料"), accountPage);
-    auto* rechargeButton = new QPushButton(QStringLiteral("模拟充值"), accountPage);
-    auto* form = new QFormLayout;
-    form->addRow(QStringLiteral("昵称"), nickname_);
-    form->addRow(QStringLiteral("头像路径"), avatar_);
-    form->addRow(save);
-    form->addRow(QStringLiteral("充值金额"), recharge_);
-    form->addRow(rechargeButton);
-    history_ = new QListWidget(accountPage);
-    accountLayout->addWidget(accountLabel_); accountLayout->addLayout(form);
-    accountLayout->addWidget(new QLabel(QStringLiteral("最近订单"), accountPage)); accountLayout->addWidget(history_, 1);
-    tabs->addTab(chargingPage, QStringLiteral("充电服务"));
-    tabs->addTab(accountPage, QStringLiteral("我的账户"));
-    rootLayout->addWidget(tabs, 1);
-    setCentralWidget(root);
-
-    timer_.setInterval(1000);
-    connect(&timer_, &QTimer::timeout, this, [this] { ++chargingSeconds_; updateClock(); });
-    connect(loginButton_, &QPushButton::clicked, this, &MainWindow::login);
-    connect(phone_, &QLineEdit::returnPressed, this, &MainWindow::login);
-    connect(stations_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
-        selectedStationId_ = item->data(Qt::UserRole).toLongLong();
-        selectedPrice_ = item->data(Qt::UserRole + 1).toDouble();
-        loadPiles(selectedStationId_);
-    });
-    connect(piles_, &QListWidget::itemClicked, this, [this](QListWidgetItem* item) {
-        selectedPileId_ = item->data(Qt::UserRole).toLongLong();
-        selectedPower_ = item->data(Qt::UserRole + 1).toDouble();
-        updateControls();
-    });
-    connect(reserve_, &QPushButton::clicked, this, [this] {
-        api_.send(QStringLiteral("order.reserve"), {{QStringLiteral("pile_id"), selectedPileId_}});
-    });
-    const auto sendOrder = [this](const QString& type) {
-        api_.send(type, {{QStringLiteral("order_id"), order_.value(QStringLiteral("id"))}});
-    };
-    connect(start_, &QPushButton::clicked, this, [sendOrder] { sendOrder(QStringLiteral("order.start")); });
-    connect(stop_, &QPushButton::clicked, this, [sendOrder] { sendOrder(QStringLiteral("order.stop")); });
-    connect(settle_, &QPushButton::clicked, this, [sendOrder] { sendOrder(QStringLiteral("order.settle")); });
-    connect(cancel_, &QPushButton::clicked, this, [sendOrder] { sendOrder(QStringLiteral("order.cancel")); });
-    connect(save, &QPushButton::clicked, this, [this] {
-        api_.send(QStringLiteral("user.profile.update"),
-                  {{QStringLiteral("nickname"), nickname_->text().trimmed()},
-                   {QStringLiteral("avatar_path"), avatar_->text().trimmed()}});
-    });
-    connect(rechargeButton, &QPushButton::clicked, this, [this] {
-        bool ok = false; const double amount = recharge_->text().toDouble(&ok);
-        if (!ok) { statusBar()->showMessage(QStringLiteral("请输入有效充值金额"), 5000); return; }
-        api_.send(QStringLiteral("wallet.recharge"), {{QStringLiteral("amount"), amount}});
-    });
-    connect(&api_, &charging::core::ApiClient::connected, this, [this] {
-        statusBar()->showMessage(QStringLiteral("已连接管理端")); loginButton_->setEnabled(true); loadStations();
-        if (!phone_->text().isEmpty()) login();
-    });
-    connect(&api_, &charging::core::ApiClient::disconnected, this, [this] {
-        statusBar()->showMessage(QStringLiteral("连接已断开，正在重连…")); loginButton_->setEnabled(false);
-    });
-    connect(&api_, &charging::core::ApiClient::clientError, this,
-            [this](const QString& text) { statusBar()->showMessage(text, 5000); });
-    connect(&api_, &charging::core::ApiClient::responseReceived, this, &MainWindow::handleResponse);
-    const QString host = qEnvironmentVariable("CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1"));
-    bool portOk = false; const int configuredPort = qEnvironmentVariableIntValue("CHARGING_SERVER_PORT", &portOk);
-    api_.connectToServer(host, portOk && configuredPort > 0 ? quint16(configuredPort) : quint16(45454));
-    loginButton_->setEnabled(false); updateClock(); updateControls();
+    root_=new QStackedWidget(this);login_=new LoginView(root_);
+    auto* shell=new QWidget(root_);auto* shellLayout=new QVBoxLayout(shell);shellLayout->setContentsMargins(0,0,0,0);shellLayout->setSpacing(0);
+    auto* top=new QWidget(shell);top->setObjectName(QStringLiteral("topBar"));top->setFixedHeight(64);auto* topRow=new QHBoxLayout(top);topRow->setContentsMargins(26,0,26,0);
+    auto* brand=new QLabel(QStringLiteral("⚡ 充电客户端"),top);
+    brand->setStyleSheet(QStringLiteral(
+        "font-size:21px;font-weight:700;color:white;background:transparent;"));
+    topUser_=new QLabel(top);
+    topUser_->setStyleSheet(QStringLiteral("color:white;background:transparent;"));
+    topRow->addWidget(brand);topRow->addStretch();topRow->addWidget(topUser_);
+    content_=new QStackedWidget(shell);home_=new HomeView(content_);detail_=new StationDetailView(content_);map_=new MapNavigationView(content_);charging_=new ChargingView(content_);profile_=new ProfileView(content_);
+    content_->addWidget(home_);content_->addWidget(detail_);content_->addWidget(map_);content_->addWidget(charging_);content_->addWidget(profile_);
+    auto* nav=new QWidget(shell);nav->setObjectName(QStringLiteral("bottomNav"));nav->setFixedHeight(72);auto* navRow=new QHBoxLayout(nav);navRow->setContentsMargins(80,8,80,8);navRow->setSpacing(70);
+    homeTab_=new QPushButton(QStringLiteral("⌂\n首页"),nav);chargingTab_=new QPushButton(QStringLiteral("⚡\n充电"),nav);profileTab_=new QPushButton(QStringLiteral("●\n我的"),nav);
+    for(auto* b:{homeTab_,chargingTab_,profileTab_}){b->setObjectName(QStringLiteral("navButton"));b->setCheckable(true);navRow->addWidget(b,1);}shellLayout->addWidget(top);shellLayout->addWidget(content_,1);shellLayout->addWidget(nav);
+    root_->addWidget(login_);root_->addWidget(shell);setCentralWidget(root_);
+    connect(login_,&LoginView::loginRequested,this,&MainWindow::login);
+    connect(homeTab_,&QPushButton::clicked,this,[this]{showSection(0);});connect(chargingTab_,&QPushButton::clicked,this,[this]{showSection(3);});connect(profileTab_,&QPushButton::clicked,this,[this]{showSection(4);});
+    connect(home_,&HomeView::stationSelected,this,[this](const QJsonObject&s){selectedStation_=s;selectedPrice_=s.value(QStringLiteral("price_per_kwh")).toDouble();detail_->setStation(s);content_->setCurrentIndex(1);loadPiles(s.value(QStringLiteral("id")).toInteger());});
+    connect(detail_,&StationDetailView::backRequested,this,[this]{showSection(0);});
+    connect(detail_,&StationDetailView::reservationRequested,this,[this](qint64 id,double power){selectedPower_=power;api_.send(QStringLiteral("order.reserve"),{{QStringLiteral("pile_id"),id}});});
+    connect(detail_,&StationDetailView::navigationRequested,this,[this](const QString& mode,const QJsonObject&s){map_->navigate(mode,home_->latitude(),home_->longitude(),home_->locationName(),s);content_->setCurrentIndex(2);});
+    connect(map_,&MapNavigationView::backRequested,this,[this]{content_->setCurrentIndex(1);});
+    connect(charging_,&ChargingView::actionRequested,this,[this](const QString& action){if(!order_.isEmpty())api_.send(action,{{QStringLiteral("order_id"),order_.value(QStringLiteral("id"))}});});
+    connect(profile_,&ProfileView::nicknameSaveRequested,this,[this](const QString& n){api_.send(QStringLiteral("user.profile.update"),{{QStringLiteral("nickname"),n}});});
+    connect(profile_,&ProfileView::rechargeRequested,this,[this](double amount){api_.send(QStringLiteral("wallet.recharge"),{{QStringLiteral("amount"),amount}});});
+    connect(profile_,&ProfileView::logoutRequested,this,&MainWindow::logout);
 }
-
-void MainWindow::login() { api_.send(QStringLiteral("auth.phone_login"), {{QStringLiteral("phone"), phone_->text().trimmed()}}); }
-void MainWindow::loadStations() { stations_->clear(); stations_->addItem(QStringLiteral("正在加载…")); api_.send(QStringLiteral("station.list")); }
-void MainWindow::loadPiles(qint64 id) { piles_->clear(); piles_->addItem(QStringLiteral("正在加载…")); api_.send(QStringLiteral("pile.list"), {{QStringLiteral("station_id"), id}}); }
-void MainWindow::refreshAccount() { api_.send(QStringLiteral("user.profile")); api_.send(QStringLiteral("order.active")); api_.send(QStringLiteral("order.history")); }
-
-void MainWindow::updateUser(const QJsonObject& value)
+void MainWindow::applyStyle()
 {
-    user_ = value;
-    const QString balance = QString::number(value.value(QStringLiteral("wallet_balance")).toDouble(), 'f', 2);
-    userLabel_->setText(value.value(QStringLiteral("nickname")).toString() + QStringLiteral("  |  余额 ¥") + balance);
-    accountLabel_->setText(QStringLiteral("手机号：%1    钱包余额：¥%2").arg(value.value(QStringLiteral("phone")).toString(), balance));
-    nickname_->setText(value.value(QStringLiteral("nickname")).toString());
-    avatar_->setText(value.value(QStringLiteral("avatar_path")).toString());
-    updateControls();
+    setStyleSheet(QStringLiteral(
+        "QMainWindow,QWidget{background:#f8fafc;font-family:'Noto Sans CJK SC','Microsoft YaHei';font-size:14px;color:#26374a;}"
+        "QLineEdit{background:white;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;}QLineEdit:focus{border:2px solid #14b8a6;}"
+        "QPushButton{background:white;border:1px solid #cbd5e1;border-radius:8px;padding:8px 16px;}QPushButton:hover{border-color:#14b8a6;background:#f0fdfa;}QPushButton:disabled{color:#94a3b8;background:#e2e8f0;}"
+        "#primaryButton{background:#0f9f8f;color:white;border:0;font-weight:600;}#secondaryButton{border:1px solid #0f9f8f;color:#0f766e;font-weight:600;}"
+        "#dangerButton{background:white;color:#dc2626;border:2px solid #ef4444;font-weight:700;}#textButton{border:0;color:#0f766e;background:transparent;}"
+        "#topBar{background:#0f766e;}#bottomNav{background:white;border-top:1px solid #e2e8f0;}#navButton{border:0;background:transparent;color:#64748b;font-weight:600;}#navButton:checked{color:#0f9f8f;background:#ecfdf5;}"
+        "#stationCard{text-align:left;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:15px;font-size:15px;}#stationCard:hover{border:2px solid #2dd4bf;}"
+        "#summaryCard,#walletCard,#pileCard,#orderCard{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:15px;}QLabel[state='idle']{color:#059669;}QLabel[state='charging']{color:#ea580c;}QLabel[state='fault']{color:#dc2626;}"
+    ));
 }
-
+void MainWindow::login(const QString& phone)
+{
+    if(phone.size()!=11){login_->setMessage(QStringLiteral("请输入正确的 11 位手机号"),true);return;}login_->setMessage(QStringLiteral("正在登录…"));api_.send(QStringLiteral("auth.phone_login"),{{QStringLiteral("phone"),phone}});
+}
+void MainWindow::showSection(int index)
+{
+    content_->setCurrentIndex(index);homeTab_->setChecked(index==0);chargingTab_->setChecked(index==3);profileTab_->setChecked(index==4);
+    if(index==4)refreshAccount();if(index==0)loadStations();
+}
+void MainWindow::loadStations(){api_.send(QStringLiteral("station.list"));}
+void MainWindow::loadPiles(qint64 stationId){api_.send(QStringLiteral("pile.list"),{{QStringLiteral("station_id"),stationId}});}
+void MainWindow::refreshAccount(){api_.send(QStringLiteral("user.profile"));api_.send(QStringLiteral("order.active"));api_.send(QStringLiteral("order.history"));}
+void MainWindow::updateUser(const QJsonObject& value){user_=value;profile_->setUser(value);topUser_->setText(QStringLiteral("%1  ·  ￥%2").arg(value.value(QStringLiteral("nickname")).toString()).arg(value.value(QStringLiteral("wallet_balance")).toDouble(),0,'f',2));}
 void MainWindow::updateOrder(const QJsonValue& value)
 {
-    if (!value.isObject()) {
-        order_ = {}; timer_.stop(); chargingSeconds_ = 0;
-        orderLabel_->setText(QStringLiteral("当前没有充电订单")); updateClock(); updateControls(); return;
-    }
-    order_ = value.toObject();
-    const QString status = order_.value(QStringLiteral("status")).toString();
-    orderLabel_->setText(QStringLiteral("订单 #%1  |  %2  |  电量 %3 kWh  |  金额 ¥%4")
-        .arg(order_.value(QStringLiteral("id")).toInteger()).arg(statusText(status))
-        .arg(order_.value(QStringLiteral("energy_kwh")).toDouble(), 0, 'f', 3)
-        .arg(order_.value(QStringLiteral("amount")).toDouble(), 0, 'f', 2));
-    if (status == QStringLiteral("charging")) {
-        const QDateTime started = QDateTime::fromString(order_.value(QStringLiteral("started_at")).toString(), Qt::ISODate);
-        chargingSeconds_ = started.isValid() ? qMax<qint64>(0, started.secsTo(QDateTime::currentDateTime())) : 0;
-        timer_.start();
-    } else timer_.stop();
-    updateClock(); updateControls();
+    order_=value.toObject();charging_->setOrder(value);const QString state=order_.value(QStringLiteral("status")).toString();
+    if(state==QStringLiteral("charging")){const auto started=QDateTime::fromString(order_.value(QStringLiteral("started_at")).toString(),Qt::ISODate);chargingSeconds_=started.isValid()?qMax<qint64>(0,started.secsTo(QDateTime::currentDateTime())):0;timer_.start();}else{timer_.stop();chargingSeconds_=0;}updateEstimate();
 }
-
-void MainWindow::updateControls()
+void MainWindow::updateEstimate(){charging_->setEstimate(chargingSeconds_,selectedPower_,selectedPrice_);}
+void MainWindow::logout(){timer_.stop();user_={};order_={};topUser_->clear();root_->setCurrentIndex(0);login_->setMessage(QStringLiteral("已安全退出"));}
+void MainWindow::handleResponse(const charging::core::Message& m)
 {
-    const QString status = order_.value(QStringLiteral("status")).toString();
-    reserve_->setEnabled(!user_.isEmpty() && order_.isEmpty() && selectedPileId_ > 0);
-    start_->setEnabled(status == QStringLiteral("reserved"));
-    stop_->setEnabled(status == QStringLiteral("charging"));
-    settle_->setEnabled(status == QStringLiteral("awaiting_payment"));
-    cancel_->setEnabled(status == QStringLiteral("reserved"));
+    if(m.type.endsWith(QStringLiteral(".error"))){const QString msg=m.payload.value(QStringLiteral("message")).toString();statusBar()->showMessage(msg,7000);if(m.type==QStringLiteral("auth.phone_login.error"))login_->setMessage(msg,true);if(m.payload.value(QStringLiteral("code")).toString()==QStringLiteral("ORDER_ACTIVE_EXISTS")){api_.send(QStringLiteral("order.active"));showSection(3);}return;}
+    if(m.type==QStringLiteral("auth.phone_login.ok")){updateUser(m.payload.value(QStringLiteral("user")).toObject());root_->setCurrentIndex(1);showSection(0);refreshAccount();return;}
+    if(m.type==QStringLiteral("station.list.ok")){stations_=m.payload.value(QStringLiteral("stations")).toArray();home_->setStations(stations_);return;}
+    if(m.type==QStringLiteral("pile.list.ok")){piles_=m.payload.value(QStringLiteral("piles")).toArray();detail_->setPiles(piles_,order_.isEmpty());return;}
+    if(m.type==QStringLiteral("user.profile.ok")||m.type==QStringLiteral("user.profile.update.ok")||m.type==QStringLiteral("wallet.recharge.ok")){updateUser(m.payload.value(QStringLiteral("user")).toObject());return;}
+    if(m.type==QStringLiteral("order.active.ok")){updateOrder(m.payload.value(QStringLiteral("order")));return;}
+    if(m.type==QStringLiteral("order.history.ok")){profile_->setHistory(m.payload.value(QStringLiteral("orders")).toArray());return;}
+    if(m.type.startsWith(QStringLiteral("order."))){if(m.payload.contains(QStringLiteral("user")))updateUser(m.payload.value(QStringLiteral("user")).toObject());const auto updated=m.payload.value(QStringLiteral("order")).toObject();const QString s=updated.value(QStringLiteral("status")).toString();updateOrder(s==QStringLiteral("completed")||s==QStringLiteral("cancelled")?QJsonValue():QJsonValue(updated));api_.send(QStringLiteral("order.history"));loadStations();if(!selectedStation_.isEmpty())loadPiles(selectedStation_.value(QStringLiteral("id")).toInteger());showSection(3);}
 }
-
-void MainWindow::updateClock()
-{
-    const double energy = selectedPower_ * chargingSeconds_ / 3600.0;
-    chargingLabel_->setText(QStringLiteral("计时 %1:%2:%3  |  预计电量 %4 kWh  |  预计费用 ¥%5")
-        .arg(chargingSeconds_ / 3600, 2, 10, QLatin1Char('0'))
-        .arg((chargingSeconds_ % 3600) / 60, 2, 10, QLatin1Char('0'))
-        .arg(chargingSeconds_ % 60, 2, 10, QLatin1Char('0'))
-        .arg(energy, 0, 'f', 3).arg(energy * selectedPrice_, 0, 'f', 2));
 }
-
-void MainWindow::handleResponse(const charging::core::Message& message)
-{
-    if (message.type.endsWith(QStringLiteral(".error"))) {
-        statusBar()->showMessage(message.payload.value(QStringLiteral("message")).toString(), 7000);
-        if (message.payload.value(QStringLiteral("code")) == QStringLiteral("ORDER_ACTIVE_EXISTS")) api_.send(QStringLiteral("order.active"));
-        return;
-    }
-    if (message.type == QStringLiteral("auth.phone_login.ok")) { updateUser(message.payload.value(QStringLiteral("user")).toObject()); refreshAccount(); return; }
-    if (message.type == QStringLiteral("user.profile.ok") || message.type == QStringLiteral("user.profile.update.ok") || message.type == QStringLiteral("wallet.recharge.ok")) {
-        updateUser(message.payload.value(QStringLiteral("user")).toObject()); recharge_->clear(); return;
-    }
-    if (message.type == QStringLiteral("station.list.ok")) {
-        stations_->clear();
-        for (const auto& value : message.payload.value(QStringLiteral("stations")).toArray()) {
-            const auto station = value.toObject();
-            auto* item = new QListWidgetItem(QStringLiteral("%1  |  ¥%2/度  |  空闲 %3/%4\n%5")
-                .arg(station.value(QStringLiteral("name")).toString())
-                .arg(station.value(QStringLiteral("price_per_kwh")).toDouble(), 0, 'f', 2)
-                .arg(station.value(QStringLiteral("idle_pile_count")).toInt()).arg(station.value(QStringLiteral("pile_count")).toInt())
-                .arg(station.value(QStringLiteral("address")).toString()), stations_);
-            item->setData(Qt::UserRole, station.value(QStringLiteral("id")).toInteger());
-            item->setData(Qt::UserRole + 1, station.value(QStringLiteral("price_per_kwh")).toDouble());
-        }
-        return;
-    }
-    if (message.type == QStringLiteral("pile.list.ok")) {
-        piles_->clear();
-        for (const auto& value : message.payload.value(QStringLiteral("piles")).toArray()) {
-            const auto pile = value.toObject(); const QString state = pile.value(QStringLiteral("status")).toString();
-            auto* item = new QListWidgetItem(QStringLiteral("%1 | %2 | %3 kW | %4")
-                .arg(pile.value(QStringLiteral("code")).toString(), pile.value(QStringLiteral("type")).toString())
-                .arg(pile.value(QStringLiteral("power_kw")).toDouble()).arg(state), piles_);
-            item->setData(Qt::UserRole, pile.value(QStringLiteral("id")).toInteger());
-            item->setData(Qt::UserRole + 1, pile.value(QStringLiteral("power_kw")).toDouble());
-            if (state != QStringLiteral("idle")) item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
-        }
-        return;
-    }
-    if (message.type == QStringLiteral("order.active.ok")) { updateOrder(message.payload.value(QStringLiteral("order"))); return; }
-    if (message.type == QStringLiteral("order.history.ok")) {
-        history_->clear();
-        for (const auto& value : message.payload.value(QStringLiteral("orders")).toArray()) {
-            const auto item = value.toObject();
-            history_->addItem(QStringLiteral("#%1  %2  %3 kWh  ¥%4  %5")
-                .arg(item.value(QStringLiteral("id")).toInteger()).arg(statusText(item.value(QStringLiteral("status")).toString()))
-                .arg(item.value(QStringLiteral("energy_kwh")).toDouble(), 0, 'f', 3)
-                .arg(item.value(QStringLiteral("amount")).toDouble(), 0, 'f', 2).arg(item.value(QStringLiteral("created_at")).toString()));
-        }
-        return;
-    }
-    if (message.type.startsWith(QStringLiteral("order."))) {
-        if (message.payload.contains(QStringLiteral("user"))) updateUser(message.payload.value(QStringLiteral("user")).toObject());
-        const auto updated = message.payload.value(QStringLiteral("order")).toObject();
-        const QString state = updated.value(QStringLiteral("status")).toString();
-        updateOrder(state == QStringLiteral("completed") || state == QStringLiteral("cancelled") ? QJsonValue(QJsonValue::Null) : QJsonValue(updated));
-        api_.send(QStringLiteral("order.history"));
-        loadStations();
-        if (selectedStationId_ > 0) loadPiles(selectedStationId_);
-    }
-}
-
-} // namespace charging::user

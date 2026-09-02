@@ -156,6 +156,9 @@ private slots:
         QVERIFY(fixture.administratorPasswordHash().startsWith(QStringLiteral("PBKDF2-SHA256$")));
         QCOMPARE(exchange(socket, {QStringLiteral("dashboard"), QStringLiteral("admin.dashboard"), {}}).type,
                  QStringLiteral("admin.dashboard.ok"));
+        const int initialPileCount = exchange(
+            socket, {QStringLiteral("initial-piles"), QStringLiteral("admin.pile.list"), {}})
+                                         .payload.value(QStringLiteral("piles")).toArray().size();
         const auto created = exchange(socket, {QStringLiteral("station-create"), QStringLiteral("admin.station.create"),
             {{QStringLiteral("name"), QStringLiteral("测试新站")}, {QStringLiteral("address"), QStringLiteral("测试路1号")},
              {QStringLiteral("latitude"), 41.8}, {QStringLiteral("longitude"), 123.4},
@@ -163,7 +166,7 @@ private slots:
         QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
         const auto piles = exchange(socket, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
         QCOMPARE(piles.type, QStringLiteral("admin.pile.list.ok"));
-        QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), 4);
+        QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), initialPileCount + 2);
         QCOMPARE(exchange(socket, {QStringLiteral("users"), QStringLiteral("admin.user.list"),
                                    {{QStringLiteral("phone"), QString()}}}).type,
                  QStringLiteral("admin.user.list.ok"));

@@ -304,7 +304,17 @@ Message RequestRouter::route(const Message& request)
         OrderRepository orders(database_);
         QJsonArray array;
         for (const auto& order : orders.listByUser(*authenticatedUserId_, 50, &repositoryError)) {
-            array.append(orderJson(order));
+            QJsonObject item = orderJson(order);
+            QSqlQuery names(database_);
+            names.prepare(QStringLiteral(
+                "SELECT p.code,s.name FROM charging_piles p "
+                "JOIN charging_stations s ON s.id=p.station_id WHERE p.id=:pile"));
+            names.bindValue(QStringLiteral(":pile"), order.pileId);
+            if (names.exec() && names.next()) {
+                item.insert(QStringLiteral("pile_code"), names.value(0).toString());
+                item.insert(QStringLiteral("station_name"), names.value(1).toString());
+            }
+            array.append(item);
         }
         if (!repositoryError.isEmpty()) {
             return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);

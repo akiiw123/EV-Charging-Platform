@@ -11,7 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 option(CHARGING_BUILD_TESTS "Build automated tests" ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets Sql Network Charts)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets Sql Network Charts WebEngineWidgets)
 
 add_subdirectory(libs/core)
 add_subdirectory(apps/user-client)
