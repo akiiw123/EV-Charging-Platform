@@ -31,6 +31,11 @@ public:
     explicit AdministratorRepository(QSqlDatabase database);
     std::optional<Administrator> findByUsername(const QString& username,
                                                 QString* errorMessage = nullptr) const;
+    std::optional<Administrator> findById(qint64 administratorId,
+                                          QString* errorMessage = nullptr) const;
+    // 更新密码哈希并清除 must_change_password 标志(首登强制改密流程的收尾)
+    bool changePassword(qint64 administratorId, const QString& passwordHash,
+                        QString* errorMessage = nullptr) const;
     bool updatePasswordHash(qint64 administratorId, const QString& passwordHash,
                             QString* errorMessage = nullptr) const;
 

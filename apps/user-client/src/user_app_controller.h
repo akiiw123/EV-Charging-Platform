@@ -65,6 +65,8 @@ public:
     Q_INVOKABLE void orderAction(const QString& action);
     Q_INVOKABLE void refreshProfile();
     Q_INVOKABLE void updateNickname(const QString& nickname);
+    // 头像:打开系统文件选择器,校验后裁成圆形 PNG 存到应用数据目录并上传路径
+    Q_INVOKABLE void pickAvatar();
     Q_INVOKABLE void recharge(double amount);
     Q_INVOKABLE void openNavigation(const QString& mode);
     Q_INVOKABLE void clearNotice();

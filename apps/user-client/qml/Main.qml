@@ -18,6 +18,15 @@ ApplicationWindow {
     property string currentPage: "home"
     property int currentTab: currentPage === "home" ? 0
                              : currentPage === "charging" ? 1 : 2
+    // 未完成订单引导弹窗:每次登录只弹一次,登出后重置
+    property bool orderPromptShown: false
+
+    // 活动订单状态的中文描述,供引导弹窗展示
+    function orderStatusText(status) {
+        if (status === "charging") return "充电中"
+        if (status === "awaiting_payment") return "待结算"
+        return "预约待开始"
+    }
 
     function showHome() { currentPage = "home" }
     function showCharging() { currentPage = "charging" }
@@ -173,6 +182,60 @@ ApplicationWindow {
         BusyIndicator {
             anchors.centerIn: parent
             running: parent.visible
+        }
+    }
+
+    // 登录后检测到活动订单时弹窗提醒,并引导用户进入订单页处理
+    // (考察点:QML 属性变化信号 onActiveOrderChanged 驱动界面状态)
+    Connections {
+        target: appController
+        function onActiveOrderChanged() {
+            if (!appController.loggedIn) return
+            if (Object.keys(appController.activeOrder).length === 0) return
+            if (app.orderPromptShown) return
+            app.orderPromptShown = true
+            activeOrderDialog.open()
+        }
+        function onLoggedInChanged() {
+            if (!appController.loggedIn) app.orderPromptShown = false
+        }
+    }
+
+    Dialog {
+        id: activeOrderDialog
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        anchors.centerIn: parent
+        width: 320
+        padding: 20
+        background: Rectangle { radius: 16; color: Theme.surface }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                text: "未完成订单提醒"
+                font.pixelSize: 18
+                font.bold: true
+                color: Theme.text
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 14
+                color: Theme.textMuted
+                text: appController.activeOrder.id
+                      ? "检测到您有一笔" + app.orderStatusText(appController.activeOrder.status)
+                        + "的订单(单号 " + appController.activeOrder.id + "),请先处理后再发起新的预约。"
+                      : "检测到您有未完成的充电订单,请先处理后再发起新的预约。"
+            }
+            AppButton {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                text: "去处理"
+                onClicked: {
+                    activeOrderDialog.close()
+                    app.showCharging()
+                }
+            }
         }
     }
 }

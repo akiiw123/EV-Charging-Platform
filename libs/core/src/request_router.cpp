@@ -82,8 +82,24 @@ std::optional<qint64> positiveId(const QJsonObject& payload, const QString& name
 
 RequestRouter::RequestRouter(QSqlDatabase database) : database_(std::move(database)) {}
 
+// 预约超 15 分钟仍未开始充电则自动取消,释放用户与电桩的活动订单占用,
+// 避免长期未开始的预约一直占住"每用户/每电桩仅一个活动订单"的唯一配额。
+// 在每次请求入口调用,无需额外定时器,且与本连接的数据库会话同线程。
+// 注意:created_at 与 datetime('now') 均为 UTC,两侧不可再叠加 localtime。
+void RequestRouter::expireStaleReservations()
+{
+    QSqlQuery query(database_);
+    query.exec(QStringLiteral(
+        "UPDATE charging_orders SET status='cancelled' "
+        "WHERE status='reserved' "
+        "AND created_at < datetime('now','-15 minutes')"));
+}
+
 Message RequestRouter::route(const Message& request)
 {
+    // 每次请求前先清理超时预约,保证后续查询/预约看到的是最新状态
+    expireStaleReservations();
+
     QString repositoryError;
     if (request.type == QStringLiteral("auth.phone_login")) {
         const QString phone = request.payload.value(QStringLiteral("phone")).toString();
@@ -124,7 +140,41 @@ Message RequestRouter::route(const Message& request)
         return error(request, QStringLiteral("ADMIN_AUTH_REQUIRED"), QStringLiteral("请先登录管理后台"));
     }
 
+    // 管理员修改密码:校验旧密码 → 强度检查 → PBKDF2 哈希落库并清除首登改密标志
+    if (request.type == QStringLiteral("admin.password.change")) {
+        const QString oldPassword =
+            request.payload.value(QStringLiteral("old_password")).toString();
+        const QString newPassword =
+            request.payload.value(QStringLiteral("new_password")).toString();
+        if (newPassword.size() < 8) {
+            return error(request, QStringLiteral("PASSWORD_WEAK"),
+                         QStringLiteral("新密码至少需要 8 位"));
+        }
+        AdministratorRepository administrators(database_);
+        const auto administrator = administrators.findById(*authenticatedAdminId_, &repositoryError);
+        if (!administrator) {
+            return error(request, QStringLiteral("DATABASE_ERROR"),
+                         repositoryError.isEmpty() ? QStringLiteral("管理员不存在") : repositoryError);
+        }
+        if (!password::verify(oldPassword, administrator->passwordHash)) {
+            return error(request, QStringLiteral("PASSWORD_OLD_MISMATCH"),
+                         QStringLiteral("当前密码不正确"));
+        }
+        if (password::verify(newPassword, administrator->passwordHash)) {
+            return error(request, QStringLiteral("PASSWORD_WEAK"),
+                         QStringLiteral("新密码不能与当前密码相同"));
+        }
+        if (!administrators.changePassword(administrator->id, password::hash(newPassword),
+                                           &repositoryError)) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+        }
+        return success(request, {{QStringLiteral("must_change_password"), false}});
+    }
+
     if (request.type == QStringLiteral("admin.dashboard")) {
+        // 趋势区间天数:客户端可传 7 或 30,默认 30
+        int trendDays = request.payload.value(QStringLiteral("days")).toInt(30);
+        trendDays = qBound(7, trendDays, 30);
         QJsonObject metrics;
         QSqlQuery revenue(database_);
         if (!revenue.exec(QStringLiteral(
@@ -159,9 +209,14 @@ Message RequestRouter::route(const Message& request)
         while (pileCounts.next()) statuses.insert(pileCounts.value(0).toString(), pileCounts.value(1).toInt());
         QJsonArray trend;
         QSqlQuery trendQuery(database_);
-        trendQuery.exec(QStringLiteral(
-            "SELECT date(created_at),SUM(amount) FROM charging_orders WHERE status='completed' "
-            "AND date(created_at)>=date('now','-29 days') GROUP BY date(created_at) ORDER BY date(created_at)"));
+        // 统计区间支持 7/30 日切换;日期统一按本地时区截断,避免 UTC 边界把
+        // 凌晨订单归到前一天
+        trendQuery.prepare(QStringLiteral(
+            "SELECT date(created_at,'localtime'),SUM(amount) FROM charging_orders WHERE status='completed' "
+            "AND date(created_at,'localtime')>=date('now','localtime',:offset || ' days') "
+            "GROUP BY date(created_at,'localtime') ORDER BY date(created_at,'localtime')"));
+        trendQuery.bindValue(QStringLiteral(":offset"), -(trendDays - 1));
+        trendQuery.exec();
         while (trendQuery.next()) {
             trend.append(QJsonObject {{QStringLiteral("date"), trendQuery.value(0).toString()},
                                       {QStringLiteral("amount"), trendQuery.value(1).toDouble()}});
@@ -182,6 +237,7 @@ Message RequestRouter::route(const Message& request)
         return success(request, {{QStringLiteral("metrics"), metrics},
                                  {QStringLiteral("pile_status"), statuses},
                                  {QStringLiteral("revenue_trend"), trend},
+                                 {QStringLiteral("trend_days"), trendDays},
                                  {QStringLiteral("station_energy"), stationEnergy}});
     }
 

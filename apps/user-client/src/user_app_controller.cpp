@@ -1,10 +1,16 @@
 #include "user_app_controller.h"
 
 #include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPainter>
+#include <QPainterPath>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QUrlQuery>
 #include <QtMath>
 #include <algorithm>
@@ -216,6 +222,70 @@ void UserAppController::updateNickname(const QString& nickname)
     }
     api_.send(QStringLiteral("user.profile.update"),
               {{QStringLiteral("nickname"), nickname.trimmed()}});
+}
+
+// 头像更换:系统文件选择器 → 校验 → 居中裁方缩放 256×256 → 圆形透明 PNG
+// 存入应用数据目录(避免原文件被移动/删除后头像失效)→ 上传路径给服务端。
+// 服务端仅保存路径字符串;本客户端读取本地文件渲染,预览即时生效。
+void UserAppController::pickAvatar()
+{
+    const QString source = QFileDialog::getOpenFileName(
+        nullptr, QStringLiteral("选择头像图片"), QString(),
+        QStringLiteral("图片文件 (*.png *.jpg *.jpeg *.bmp)"));
+    if (source.isEmpty())
+        return;   // 用户取消选择
+    const QFileInfo info(source);
+    if (!info.isFile() || !info.isReadable()) {
+        showNotice(QStringLiteral("图片文件不可读"), QStringLiteral("error"));
+        return;
+    }
+    constexpr qint64 kMaxBytes = 5 * 1024 * 1024;   // 5 MB
+    if (info.size() > kMaxBytes) {
+        showNotice(QStringLiteral("图片不能超过 5 MB"), QStringLiteral("error"));
+        return;
+    }
+
+    QImage image(source);
+    if (image.isNull()) {
+        showNotice(QStringLiteral("无法解析图片文件"), QStringLiteral("error"));
+        return;
+    }
+    // 居中裁正方形后缩放,再按圆形裁剪输出带透明背景的 PNG,
+    // 这样 QML 端直接 Image 显示即为圆形,无需特效模块
+    const int side = qMin(image.width(), image.height());
+    const QRect cropped((image.width() - side) / 2, (image.height() - side) / 2, side, side);
+    QImage scaled = image.copy(cropped).scaled(
+        256, 256, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    QImage rounded(256, 256, QImage::Format_RGBA8888);
+    rounded.fill(Qt::transparent);
+    QPainter painter(&rounded);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPainterPath circle;
+    circle.addEllipse(0, 0, 256, 256);
+    painter.setClipPath(circle);
+    painter.drawImage(0, 0, scaled);
+    painter.end();
+
+    const QString avatarDir = QStandardPaths::writableLocation(
+                                  QStandardPaths::AppLocalDataLocation)
+        + QStringLiteral("/avatars");
+    if (!QDir().mkpath(avatarDir)) {
+        showNotice(QStringLiteral("头像目录创建失败"), QStringLiteral("error"));
+        return;
+    }
+    // 按手机号命名,切换账号不串头像;QImage 只保存不移动原文件
+    const QString avatarPath = avatarDir + QStringLiteral("/profile-%1.png")
+        .arg(user_.value(QStringLiteral("phone")).toString());
+    if (!rounded.save(avatarPath, "PNG")) {
+        showNotice(QStringLiteral("头像保存失败"), QStringLiteral("error"));
+        return;
+    }
+
+    // 乐观更新界面(立即预览);user.profile.update.ok 返回后 user 会再次刷新
+    user_.insert(QStringLiteral("avatar_path"), avatarPath);
+    emit userChanged();
+    api_.send(QStringLiteral("user.profile.update"),
+              {{QStringLiteral("avatar_path"), avatarPath}});
 }
 
 void UserAppController::recharge(double amount)

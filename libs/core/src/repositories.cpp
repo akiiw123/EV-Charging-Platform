@@ -251,6 +251,36 @@ std::optional<Administrator> AdministratorRepository::findByUsername(
     return query.next() ? std::optional<Administrator>(readAdministrator(query)) : std::nullopt;
 }
 
+std::optional<Administrator> AdministratorRepository::findById(
+    qint64 administratorId, QString* errorMessage) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("SELECT * FROM administrators WHERE id = :id"));
+    query.bindValue(QStringLiteral(":id"), administratorId);
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return std::nullopt;
+    }
+    return query.next() ? std::optional<Administrator>(readAdministrator(query)) : std::nullopt;
+}
+
+bool AdministratorRepository::changePassword(qint64 administratorId,
+                                             const QString& passwordHash,
+                                             QString* errorMessage) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE administrators SET password_hash = :password_hash, must_change_password = 0 "
+        "WHERE id = :id"));
+    query.bindValue(QStringLiteral(":password_hash"), passwordHash);
+    query.bindValue(QStringLiteral(":id"), administratorId);
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return false;
+    }
+    return query.numRowsAffected() == 1;
+}
+
 bool AdministratorRepository::updatePasswordHash(qint64 administratorId,
                                                   const QString& passwordHash,
                                                   QString* errorMessage) const

@@ -33,4 +33,5 @@ target_link_libraries(charging-user PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::WebEngineQuick
+    Qt6::Widgets
 )
