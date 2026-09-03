@@ -62,7 +62,7 @@
 | 步骤 | 内容 | 对应缺口 | 状态 |
 |------|------|----------|------|
 | 1 | **管理端真正接入 ml `/predict`**:逐站点请求预测,表格与指标卡显示真实数值 | A | ✅ 本次完成 |
-| 2 | 强制改密页 + 首登改密流程 | C1 | 待做 |
+| 2 | 强制改密页 + 首登改密流程 | C1 | ✅ 本次完成 |
 | 3 | 头像选择、预览与展示 | B2 | 待做 |
 | 4 | Web 大屏 ECharts 本地化 | E1 | 待做 |
 | 5 | 状态文档重写 + 新接口测试补充 | F | 待做 |
@@ -129,3 +129,7 @@ refreshPredictions()
   单站失败行内标"—",服务整体不可达仍降级演示数据。
   联调辅助:虚拟机 `/tmp/mock_ml.py` 为无 torch 依赖的契约模拟服务(`python3 /tmp/mock_ml.py`,
   默认 127.0.0.1:8090),可先用于界面联调;正式演示请运行 `ml/service.py` + `train.py` 产物。
+- 2026-09-03 步骤 2 完成:新增 `admin.password.change` 接口(校验旧密码 → 强度检查 →
+  PBKDF2 落库并清除首登标志,仓储层 `AdministratorRepository::changePassword`),
+  管理端登录后若 `must_change_password` 为真则弹出不可关闭的强制改密弹窗,
+  成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。

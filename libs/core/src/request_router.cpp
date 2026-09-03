@@ -140,6 +140,37 @@ Message RequestRouter::route(const Message& request)
         return error(request, QStringLiteral("ADMIN_AUTH_REQUIRED"), QStringLiteral("请先登录管理后台"));
     }
 
+    // 管理员修改密码:校验旧密码 → 强度检查 → PBKDF2 哈希落库并清除首登改密标志
+    if (request.type == QStringLiteral("admin.password.change")) {
+        const QString oldPassword =
+            request.payload.value(QStringLiteral("old_password")).toString();
+        const QString newPassword =
+            request.payload.value(QStringLiteral("new_password")).toString();
+        if (newPassword.size() < 8) {
+            return error(request, QStringLiteral("PASSWORD_WEAK"),
+                         QStringLiteral("新密码至少需要 8 位"));
+        }
+        AdministratorRepository administrators(database_);
+        const auto administrator = administrators.findById(*authenticatedAdminId_, &repositoryError);
+        if (!administrator) {
+            return error(request, QStringLiteral("DATABASE_ERROR"),
+                         repositoryError.isEmpty() ? QStringLiteral("管理员不存在") : repositoryError);
+        }
+        if (!password::verify(oldPassword, administrator->passwordHash)) {
+            return error(request, QStringLiteral("PASSWORD_OLD_MISMATCH"),
+                         QStringLiteral("当前密码不正确"));
+        }
+        if (password::verify(newPassword, administrator->passwordHash)) {
+            return error(request, QStringLiteral("PASSWORD_WEAK"),
+                         QStringLiteral("新密码不能与当前密码相同"));
+        }
+        if (!administrators.changePassword(administrator->id, password::hash(newPassword),
+                                           &repositoryError)) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+        }
+        return success(request, {{QStringLiteral("must_change_password"), false}});
+    }
+
     if (request.type == QStringLiteral("admin.dashboard")) {
         // 趋势区间天数:客户端可传 7 或 30,默认 30
         int trendDays = request.payload.value(QStringLiteral("days")).toInt(30);

@@ -44,7 +44,13 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
 
 void AdminAppController::request(const QString& type, const QJsonObject& payload) { if (!api_.isConnected()) { showNotice(QStringLiteral("服务未连接，请稍后重试"), QStringLiteral("error")); return; } ++busyCount_; emit busyChanged(); api_.send(type,payload); }
 void AdminAppController::login(const QString& username,const QString& password,bool remember) { errorMessage_.clear(); if(username.trimmed().isEmpty()||password.isEmpty()){errorMessage_=QStringLiteral("请输入管理员账号和密码");emit noticeChanged();return;} settings_.setValue(QStringLiteral("login/username"),remember?username:QString()); request(QStringLiteral("admin.login"),{{"username",username},{"password",password}}); }
-void AdminAppController::logout(){ loggedIn_=false; administrator_.clear(); emit loggedInChanged(); }
+void AdminAppController::logout(){ loggedIn_=false; administrator_.clear(); if(mustChangePassword_){mustChangePassword_=false;emit mustChangePasswordChanged();} emit loggedInChanged(); }
+void AdminAppController::changePassword(const QString& oldPassword,const QString& newPassword)
+{
+    // 前端先行做强度/一致性检查,服务端仍会二次校验(PBKDF2 验证旧密码)
+    if (newPassword.size() < 8) { showNotice(QStringLiteral("新密码至少需要 8 位"), QStringLiteral("error")); emit passwordChangeResult(false); return; }
+    request(QStringLiteral("admin.password.change"),{{QStringLiteral("old_password"),oldPassword},{QStringLiteral("new_password"),newPassword}});
+}
 void AdminAppController::refreshAll(){ refreshDashboard(); request(QStringLiteral("admin.station.list")); request(QStringLiteral("admin.pile.list")); request(QStringLiteral("admin.order.list")); request(QStringLiteral("admin.user.list"),{{"phone",QString()}}); }
 void AdminAppController::refreshDashboard(int days)
 {
@@ -69,8 +75,9 @@ void AdminAppController::setFontScale(double v){v=qBound(.85,v,1.3);if(qFuzzyCom
 void AdminAppController::setPageSize(int v){v=qBound(10,v,100);if(pageSize_==v)return;pageSize_=v;settings_.setValue("table/pageSize",v);emit settingsChanged();}
 void AdminAppController::showNotice(const QString&t,const QString&k){notice_=t;noticeKind_=k;if(k=="error")errorMessage_=t;emit noticeChanged();}
 
-void AdminAppController::handleResponse(const charging::core::Message& m){ if(busyCount_>0)--busyCount_;emit busyChanged(); if(m.type.endsWith(".error")){showNotice(m.payload.value("message").toString(),"error");return;}
-    if(m.type=="admin.login.ok"){loggedIn_=true;administrator_=m.payload.value("administrator").toObject().value("username").toString();errorMessage_.clear();emit loggedInChanged();emit noticeChanged();refreshAll();return;}
+void AdminAppController::handleResponse(const charging::core::Message& m){ if(busyCount_>0)--busyCount_;emit busyChanged(); if(m.type.endsWith(".error")){showNotice(m.payload.value("message").toString(),"error");if(m.type==QStringLiteral("admin.password.change.error"))emit passwordChangeResult(false);return;}
+    if(m.type=="admin.login.ok"){loggedIn_=true;administrator_=m.payload.value("administrator").toObject().value("username").toString();const bool mustChange=m.payload.value("administrator").toObject().value("must_change_password").toBool();if(mustChange!=mustChangePassword_){mustChangePassword_=mustChange;emit mustChangePasswordChanged();}errorMessage_.clear();emit loggedInChanged();emit noticeChanged();refreshAll();return;}
+    if(m.type=="admin.password.change.ok"){mustChangePassword_=false;emit mustChangePasswordChanged();showNotice(QStringLiteral("密码已更新，请牢记新密码"));emit passwordChangeResult(true);return;}
     if(m.type=="admin.dashboard.ok"){dashboard_=m.payload.value("metrics").toObject().toVariantMap();pileStatus_=m.payload.value("pile_status").toObject().toVariantMap();revenueTrend_=m.payload.value("revenue_trend").toArray().toVariantList();stationEnergy_=m.payload.value("station_energy").toArray().toVariantList();emit dashboardChanged();return;}
     if(m.type=="admin.station.list.ok")rawStations_=m.payload.value("stations").toArray();
     else if(m.type=="admin.pile.list.ok")rawPiles_=m.payload.value("piles").toArray();

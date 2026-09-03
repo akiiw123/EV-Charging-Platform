@@ -223,6 +223,61 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    // 默认账号 admin/123456 带首登改密标志:校验改密接口全链路
+    void forcedPasswordChangeFlow()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+
+        // 首登:返回 must_change_password=true
+        const auto login = exchange(socket, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                             {{QStringLiteral("username"), QStringLiteral("admin")},
+                                              {QStringLiteral("password"), QStringLiteral("123456")}}});
+        QCOMPARE(login.type, QStringLiteral("admin.login.ok"));
+        QVERIFY(login.payload.value(QStringLiteral("administrator")).toObject()
+                    .value(QStringLiteral("must_change_password")).toBool());
+
+        // 当前密码错误 → 拒绝
+        QCOMPARE(exchange(socket, {QStringLiteral("chg-bad-old"), QStringLiteral("admin.password.change"),
+                                   {{QStringLiteral("old_password"), QStringLiteral("000000")},
+                                    {QStringLiteral("new_password"), QStringLiteral("strong-pass-1")}}}).type,
+                 QStringLiteral("admin.password.change.error"));
+        // 新密码过短 → 拒绝
+        QCOMPARE(exchange(socket, {QStringLiteral("chg-short"), QStringLiteral("admin.password.change"),
+                                   {{QStringLiteral("old_password"), QStringLiteral("123456")},
+                                    {QStringLiteral("new_password"), QStringLiteral("short")}}}).type,
+                 QStringLiteral("admin.password.change.error"));
+        // 新密码与旧密码相同 → 拒绝
+        QCOMPARE(exchange(socket, {QStringLiteral("chg-same"), QStringLiteral("admin.password.change"),
+                                   {{QStringLiteral("old_password"), QStringLiteral("123456")},
+                                    {QStringLiteral("new_password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.password.change.error"));
+        // 正确改密 → 成功
+        QCOMPARE(exchange(socket, {QStringLiteral("chg-ok"), QStringLiteral("admin.password.change"),
+                                   {{QStringLiteral("old_password"), QStringLiteral("123456")},
+                                    {QStringLiteral("new_password"), QStringLiteral("strong-pass-1")}}}).type,
+                 QStringLiteral("admin.password.change.ok"));
+        QVERIFY(fixture.administratorPasswordHash().startsWith(QStringLiteral("PBKDF2-SHA256$")));
+
+        // 旧密码不能再登录
+        QCOMPARE(exchange(socket, {QStringLiteral("relogin-old"), QStringLiteral("admin.login"),
+                                   {{QStringLiteral("username"), QStringLiteral("admin")},
+                                    {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.error"));
+        // 新密码登录成功,且不再要求改密
+        const auto relogin = exchange(socket, {QStringLiteral("relogin-new"), QStringLiteral("admin.login"),
+                                               {{QStringLiteral("username"), QStringLiteral("admin")},
+                                                {QStringLiteral("password"), QStringLiteral("strong-pass-1")}}});
+        QCOMPARE(relogin.type, QStringLiteral("admin.login.ok"));
+        QVERIFY(!relogin.payload.value(QStringLiteral("administrator")).toObject()
+                    .value(QStringLiteral("must_change_password")).toBool());
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
 private:
     class Fixture {
     public:

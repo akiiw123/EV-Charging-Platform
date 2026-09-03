@@ -39,6 +39,7 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionSource READ predictionSource NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionStatus READ predictionStatus NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionUpdatedAt READ predictionUpdatedAt NOTIFY predictionChanged)
+    Q_PROPERTY(bool mustChangePassword READ mustChangePassword NOTIFY mustChangePasswordChanged)
     // 真实预测聚合值(全部站点合计);演示模式为 "—"
     Q_PROPERTY(QString predictionLoad1 READ predictionLoad1 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad6 READ predictionLoad6 NOTIFY predictionChanged)
@@ -77,6 +78,7 @@ public:
     QString predictionLoad6() const { return predictionLoad6_; }
     QString predictionLoad24() const { return predictionLoad24_; }
     QString predictionConfidence() const { return predictionConfidence_; }
+    bool mustChangePassword() const { return mustChangePassword_; }
 
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
@@ -93,6 +95,8 @@ public:
     Q_INVOKABLE void restartPile(qint64 id);
     Q_INVOKABLE void setUserStatus(qint64 id, const QString& status);
     Q_INVOKABLE void refreshPredictions();
+    // 强制改密流程:校验当前密码并设置新密码(服务端 PBKDF2 落库,清除首登标志)
+    Q_INVOKABLE void changePassword(const QString& oldPassword, const QString& newPassword);
     Q_INVOKABLE void clearNotice();
     Q_INVOKABLE QString savedUsername() const;
     Q_INVOKABLE QVariantMap stationAt(int row) const { return stations_.get(row); }
@@ -116,6 +120,8 @@ signals:
     void settingsChanged();
     void dashboardChanged();
     void predictionChanged();
+    void mustChangePasswordChanged();
+    void passwordChangeResult(bool success);
 
 private:
     void request(const QString& type, const QJsonObject& payload = {});
@@ -154,6 +160,7 @@ private:
     double forecastConfidence_ = 0.0;               // 由 quantiles 推出,如 90
     QString predictionLoad1_ = QStringLiteral("—"), predictionLoad6_ = QStringLiteral("—"),
             predictionLoad24_ = QStringLiteral("—"), predictionConfidence_ = QStringLiteral("—");
+    bool mustChangePassword_ = false;
 };
 
 } // namespace charging::admin

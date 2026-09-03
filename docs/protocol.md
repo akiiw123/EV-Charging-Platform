@@ -35,10 +35,13 @@ export CHARGING_SERVER_PORT=45454
 ## 管理接口
 
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
-- `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势。
+- `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势；`payload.days` 可选 7/30 指定趋势区间。
 - `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
 - `admin.user.list` / `admin.user.status`：手机号模糊搜索及用户冻结、解冻。
+- `admin.password.change`：`payload.old_password` / `new_password`；校验当前密码后将新密码以
+  PBKDF2-SHA256 落库并清除首登改密标志。新密码至少 8 位且不得与当前密码相同，
+  错误码 `PASSWORD_WEAK` / `PASSWORD_OLD_MISMATCH`。
 
 管理员身份同样绑定当前 TCP 连接，与车主登录会话相互独立。
 
