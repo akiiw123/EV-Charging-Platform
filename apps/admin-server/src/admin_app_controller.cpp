@@ -89,7 +89,124 @@ void AdminAppController::applyClientFilters(){QJsonArray out;
     for(const auto&v:rawUsers_){auto o=v.toObject();if(!userState_.isEmpty()&&o.value("status").toString()!=userState_)continue;out.append(o);}users_.setJson(out);
 }
 
-void AdminAppController::refreshPredictions(){ predictionStatus_=QStringLiteral("正在连接预测服务…");emit predictionChanged(); QNetworkRequest req(QUrl(qEnvironmentVariable("CHARGING_ML_URL",QStringLiteral("http://127.0.0.1:8090"))+QStringLiteral("/stations")));auto* reply=network_.get(req);connect(reply,&QNetworkReply::finished,this,[this,reply]{auto data=reply->readAll();if(reply->error()!=QNetworkReply::NoError){QString why=reply->errorString();reply->deleteLater();usePredictionDemo(why);return;}auto doc=QJsonDocument::fromJson(data);auto list=doc.object().value("stations").toArray();if(list.isEmpty()){reply->deleteLater();usePredictionDemo(QStringLiteral("预测服务没有可用站点"));return;}QList<QVariantMap> rows;int i=0;for(const auto&v:list){if(i++>=6)break;auto o=v.toObject();QVariantMap row{{"station_id",o.value("station_id").toVariant()},{"station_name",QStringLiteral("预测区域 %1").arg(o.value("station_id").toVariant().toString())},{"h1",QStringLiteral("等待推理")},{"h6",QStringLiteral("等待推理")},{"h24",QStringLiteral("等待推理")},{"free",o.value("pile_total").toInt()},{"risk",QStringLiteral("正常")}};rows.append(row);}predictions_.setRows(rows);predictionSource_=QStringLiteral("模型服务");predictionStatus_=QStringLiteral("服务在线；选择站点后可请求预测");predictionUpdatedAt_=QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");emit predictionChanged();reply->deleteLater();});}
-void AdminAppController::usePredictionDemo(const QString& reason){QList<QVariantMap> rows={{{"station_id",1},{"station_name",QStringLiteral("深圳演示充电站")},{"h1","42.6 kWh"},{"h6","238.4 kWh"},{"h24","886.1 kWh"},{"free",3},{"risk",QStringLiteral("18:00 高峰")}},{{"station_id",2},{"station_name",QStringLiteral("南山科技园站")},{"h1","28.9 kWh"},{"h6","174.2 kWh"},{"h24","641.5 kWh"},{"free",5},{"risk",QStringLiteral("正常")}},{{"station_id",3},{"station_name",QStringLiteral("宝安中心站")},{"h1","51.3 kWh"},{"h6","302.8 kWh"},{"h24","1024.7 kWh"},{"free",2},{"risk",QStringLiteral("容量预警")}}};predictions_.setRows(rows);predictionSource_=QStringLiteral("演示数据");predictionStatus_=QStringLiteral("预测服务未就绪：%1").arg(reason);predictionUpdatedAt_=QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");emit predictionChanged();}
+void AdminAppController::refreshPredictions(){ predictionStatus_=QStringLiteral("正在连接预测服务…");emit predictionChanged(); QNetworkRequest req(QUrl(qEnvironmentVariable("CHARGING_ML_URL",QStringLiteral("http://127.0.0.1:8090"))+QStringLiteral("/stations")));req.setTransferTimeout(4000);auto* reply=network_.get(req);connect(reply,&QNetworkReply::finished,this,[this,reply]{auto data=reply->readAll();if(reply->error()!=QNetworkReply::NoError){QString why=reply->errorString();reply->deleteLater();usePredictionDemo(why);return;}auto list=QJsonDocument::fromJson(data).object().value("stations").toArray();reply->deleteLater();if(list.isEmpty()){usePredictionDemo(QStringLiteral("预测服务没有可用站点"));return;}requestStationForecasts(list);});}
+
+// 对每个站点并发发起 POST /predict(最多 6 个),全部完成后统一汇总展示
+void AdminAppController::requestStationForecasts(const QJsonArray& stations)
+{
+    const QString base = qEnvironmentVariable("CHARGING_ML_URL", QStringLiteral("http://127.0.0.1:8090"));
+    pendingForecastRows_.clear();
+    forecastLoadSum_[0] = forecastLoadSum_[1] = forecastLoadSum_[2] = 0.0;
+    forecastOkCount_ = 0;
+    forecastConfidence_ = 0.0;
+    const int total = qMin(6, stations.size());
+    pendingForecastCount_ = total;
+
+    for (int i = 0; i < total; ++i) {
+        const auto entry = stations.at(i).toObject();
+        const QString zone = entry.value(QStringLiteral("station_id")).toVariant().toString();
+        pendingForecastRows_.append(QVariantMap{
+            {QStringLiteral("station_id"), entry.value(QStringLiteral("station_id")).toVariant()},
+            {QStringLiteral("station_name"), QStringLiteral("预测区域 %1").arg(zone)},
+            {QStringLiteral("h1"), QStringLiteral("…")}, {QStringLiteral("h6"), QStringLiteral("…")},
+            {QStringLiteral("h24"), QStringLiteral("…")},
+            {QStringLiteral("free"), entry.value(QStringLiteral("total_piles")).toInt()},
+            {QStringLiteral("risk"), QStringLiteral("推理中")}});
+        // 只读推理:请求体仅带 station_id,历史负荷/天气由服务端回退数据集
+        QNetworkRequest req(QUrl(base + QStringLiteral("/predict")));
+        req.setTransferTimeout(10000);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+        auto* reply = network_.post(req, QJsonDocument(QJsonObject{{QStringLiteral("station_id"), entry.value(QStringLiteral("station_id"))}}).toJson());
+        connect(reply, &QNetworkReply::finished, this, [this, reply, i] {
+            const auto data = reply->readAll();
+            const bool ok = reply->error() == QNetworkReply::NoError;
+            reply->deleteLater();
+            if (ok) {
+                applyForecastReply(i, QJsonDocument::fromJson(data).object());
+                ++forecastOkCount_;
+            } else {
+                auto row = pendingForecastRows_[i];
+                row[QStringLiteral("h1")] = row[QStringLiteral("h6")] = row[QStringLiteral("h24")] = QStringLiteral("—");
+                row[QStringLiteral("risk")] = QStringLiteral("推理失败");
+                pendingForecastRows_[i] = row;
+            }
+            if (--pendingForecastCount_ == 0)
+                finishForecasts();
+        });
+    }
+}
+
+// 解析单个站点的 /predict 响应:1/6/24h 负荷点估计、预计空闲桩、
+// 风险判定(由 24h 曲线的占用率峰值推出),并累加进合计
+void AdminAppController::applyForecastReply(int row, const QJsonObject& payload)
+{
+    const auto loadKwh = payload.value(QStringLiteral("load_kwh")).toObject();
+    const auto available = payload.value(QStringLiteral("available_piles")).toObject();
+    auto pointAt = [](const QJsonObject& holder, const char* key) {
+        return holder.value(QLatin1String(key)).toObject().value(QStringLiteral("point")).toDouble();
+    };
+    const double h1 = pointAt(loadKwh, "1"), h6 = pointAt(loadKwh, "6"), h24 = pointAt(loadKwh, "24");
+    const int free1 = int(pointAt(available, "1"));
+
+    // 24h 曲线里占用率最高的小时 → 高峰提示;占用率过高/无空闲桩 → 容量预警
+    double peakBusy = 0.0;
+    int peakHour = 0;
+    for (const auto& item : payload.value(QStringLiteral("curve")).toArray()) {
+        const auto point = item.toObject();
+        const double busy = point.value(QStringLiteral("busy_ratio")).toDouble();
+        if (busy > peakBusy) {
+            peakBusy = busy;
+            peakHour = point.value(QStringLiteral("offset")).toInt();
+        }
+    }
+    QString risk = QStringLiteral("正常");
+    if (free1 <= 0 || peakBusy >= 0.9)
+        risk = QStringLiteral("容量预警");
+    else if (peakBusy >= 0.6)
+        risk = QStringLiteral("%1:00 高峰").arg(peakHour, 2, 10, QLatin1Char('0'));
+
+    // 置信水平 = 分位数区间宽度,如 [0.05,0.95] → 90%
+    if (forecastConfidence_ <= 0.0) {
+        const auto quantiles = payload.value(QStringLiteral("quantiles")).toArray();
+        if (quantiles.size() >= 2)
+            forecastConfidence_ = (quantiles.last().toDouble() - quantiles.first().toDouble()) * 100.0;
+    }
+
+    forecastLoadSum_[0] += h1;
+    forecastLoadSum_[1] += h6;
+    forecastLoadSum_[2] += h24;
+
+    auto fmt = [](double v) { return QStringLiteral("%1 kWh").arg(v, 0, 'f', 1); };
+    pendingForecastRows_[row].insert(QStringLiteral("h1"), fmt(h1));
+    pendingForecastRows_[row].insert(QStringLiteral("h6"), fmt(h6));
+    pendingForecastRows_[row].insert(QStringLiteral("h24"), fmt(h24));
+    pendingForecastRows_[row].insert(QStringLiteral("free"), free1);
+    pendingForecastRows_[row].insert(QStringLiteral("risk"), risk);
+}
+
+// 全部站点请求结束后:刷新表格、汇总指标卡数值与状态说明
+void AdminAppController::finishForecasts()
+{
+    predictions_.setRows(pendingForecastRows_);
+    predictionSource_ = QStringLiteral("模型服务");
+    predictionConfidence_ = forecastOkCount_ > 0
+        ? QStringLiteral("%1").arg(qRound(forecastConfidence_))
+        : QStringLiteral("—");
+    if (forecastOkCount_ > 0) {
+        predictionLoad1_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[0], 0, 'f', 1);
+        predictionLoad6_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[1], 0, 'f', 1);
+        predictionLoad24_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[2], 0, 'f', 1);
+        predictionStatus_ = forecastOkCount_ == pendingForecastRows_.size()
+            ? QStringLiteral("服务在线；已完成 %1 个站点的负荷预测").arg(forecastOkCount_)
+            : QStringLiteral("服务在线；%1/%2 个站点预测成功，其余站点请检查模型产物")
+                  .arg(forecastOkCount_).arg(pendingForecastRows_.size());
+    } else {
+        predictionLoad1_ = predictionLoad6_ = predictionLoad24_ = QStringLiteral("—");
+        predictionStatus_ = QStringLiteral("服务在线，但推理全部失败；请确认已运行 train.py 生成模型产物");
+    }
+    predictionUpdatedAt_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+    emit predictionChanged();
+}
+void AdminAppController::usePredictionDemo(const QString& reason){predictionLoad1_=predictionLoad6_=predictionLoad24_=QStringLiteral("—");predictionConfidence_=QStringLiteral("—");QList<QVariantMap> rows={{{"station_id",1},{"station_name",QStringLiteral("深圳演示充电站")},{"h1","42.6 kWh"},{"h6","238.4 kWh"},{"h24","886.1 kWh"},{"free",3},{"risk",QStringLiteral("18:00 高峰")}},{{"station_id",2},{"station_name",QStringLiteral("南山科技园站")},{"h1","28.9 kWh"},{"h6","174.2 kWh"},{"h24","641.5 kWh"},{"free",5},{"risk",QStringLiteral("正常")}},{{"station_id",3},{"station_name",QStringLiteral("宝安中心站")},{"h1","51.3 kWh"},{"h6","302.8 kWh"},{"h24","1024.7 kWh"},{"free",2},{"risk",QStringLiteral("容量预警")}}};predictions_.setRows(rows);predictionSource_=QStringLiteral("演示数据");predictionStatus_=QStringLiteral("预测服务未就绪：%1").arg(reason);predictionUpdatedAt_=QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");emit predictionChanged();}
 
 } // namespace charging::admin
