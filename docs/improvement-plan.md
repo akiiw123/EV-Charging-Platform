@@ -182,3 +182,9 @@ refreshPredictions()
   的缺陷(从项目根启动时 500),现按脚本位置解析,任意目录可启动。
   F——新增 adminDashboardTrendRange 集成测试(days=7/30/越界回退)。
   E2E 验证:/api/dashboard 返回全部新字段,本地 echarts 服务正常。
+- 2026-09-04 B5 与 C4 完成:
+  B5——删除 apps/user-client/src/views/(12 个未编译的旧 Widgets 视图)。
+  C4——冻结用户现在会被踢出已建立会话:路由层在鉴权请求入口复查状态,
+  被冻结立即拒绝(AUTH_USER_FROZEN)并标记会话关闭;TCP 连接循环在空闲期
+  每 5 秒轮询一次,发 server.session.closed 后断开。两个层级均有集成测试
+  (frozenUserKickedOnNextRequest / frozenUserKickedWhileIdle)。

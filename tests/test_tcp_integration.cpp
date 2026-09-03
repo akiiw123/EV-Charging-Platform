@@ -363,6 +363,77 @@ private slots:
         user.waitForDisconnected(1000);
     }
 
+    // C4 冻结踢会话(请求级):管理员冻结后,该用户下一个请求立即拒绝并断开
+    void frozenUserKickedOnNextRequest()
+    {
+        Fixture fixture;
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        const auto login = exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                           {{QStringLiteral("phone"), QStringLiteral("13600136000")}}});
+        QCOMPARE(login.type, QStringLiteral("auth.phone_login.ok"));
+        const qint64 userId = login.payload.value(QStringLiteral("user")).toObject()
+                                  .value(QStringLiteral("id")).toInteger();
+
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("alogin"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("freeze"), QStringLiteral("admin.user.status"),
+                                  {{QStringLiteral("user_id"), userId},
+                                   {QStringLiteral("status"), QStringLiteral("frozen")}}}).type,
+                 QStringLiteral("admin.user.status.ok"));
+
+        // 下一个需要鉴权的请求被拒绝,并附带冻结码
+        const auto denied = exchange(user, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}});
+        QCOMPARE(denied.type, QStringLiteral("user.profile.error"));
+        QCOMPARE(denied.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("AUTH_USER_FROZEN"));
+        // 会话被服务端关闭
+        QTRY_COMPARE_WITH_TIMEOUT(user.state(), QAbstractSocket::UnconnectedState, 3000);
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+    }
+
+    // C4 冻结踢会话(轮询级):冻结后即使不发任何请求,约 5 秒内也会被断开
+    void frozenUserKickedWhileIdle()
+    {
+        Fixture fixture;
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        const auto login = exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                           {{QStringLiteral("phone"), QStringLiteral("13600136000")}}});
+        QCOMPARE(login.type, QStringLiteral("auth.phone_login.ok"));
+        const qint64 userId = login.payload.value(QStringLiteral("user")).toObject()
+                                  .value(QStringLiteral("id")).toInteger();
+
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("alogin"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("freeze"), QStringLiteral("admin.user.status"),
+                                  {{QStringLiteral("user_id"), userId},
+                                   {QStringLiteral("status"), QStringLiteral("frozen")}}}).type,
+                 QStringLiteral("admin.user.status.ok"));
+
+        // 不发任何请求:轮询复查约 5 秒,应在 10 秒内被断开
+        QTRY_COMPARE_WITH_TIMEOUT(user.state(), QAbstractSocket::UnconnectedState, 10000);
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+    }
+
     // B4:同类型请求连发两次,旧响应应被标记为 stale,只有最新响应驱动界面
     void apiClientDropsStaleResponses()
     {
