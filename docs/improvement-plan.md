@@ -170,3 +170,8 @@ refreshPredictions()
   (仓储层补 `PileRepository::update`),PilesPage 新增"新增电桩"对话框与抽屉内
   手工状态切换(空闲/故障/离线)、编辑入口;充电中的电桩一律拒绝并给出提示;
   集成测试 `pileManagementOperations` 覆盖新增/重复编号/非法状态/充电中拒绝。
+- 2026-09-04 B4 完成:ApiClient 维护"请求 ID→发送序号"与"请求类型→最新序号"
+  两张表;同类型的旧响应不再发 responseReceived,改发 staleResponseReceived
+  (管理端仅归还 busy 计数,用户端仅复位 busy),断线重连时清空序号簿;
+  新增集成测试 apiClientDropsStaleResponses(同类型连发两请求,断言 1 新鲜 +
+  1 过期),测试主宏换成 QTEST_GUILESS_MAIN 以提供事件循环。

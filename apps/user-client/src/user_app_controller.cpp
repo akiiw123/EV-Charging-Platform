@@ -44,6 +44,8 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
             [this](const QString& error) { showNotice(error, QStringLiteral("error")); });
     connect(&api_, &charging::core::ApiClient::responseReceived,
             this, &UserAppController::handleResponse);
+    // 过期响应不更新界面,仅复位 busy
+    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { setBusy(false); });
 
     const QString host = qEnvironmentVariable(
         "CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1"));

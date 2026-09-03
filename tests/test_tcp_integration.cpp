@@ -1,3 +1,4 @@
+#include "charging/core/api_client.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/message_protocol.h"
 #include "charging/core/tcp_server.h"
@@ -5,6 +6,7 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QJsonArray>
+#include <QSignalSpy>
 #include <QSqlQuery>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -329,6 +331,31 @@ private slots:
         user.waitForDisconnected(1000);
     }
 
+    // B4:同类型请求连发两次,旧响应应被标记为 stale,只有最新响应驱动界面
+    void apiClientDropsStaleResponses()
+    {
+        Fixture fixture;
+        charging::core::ApiClient client;
+        QSignalSpy fresh(&client, &charging::core::ApiClient::responseReceived);
+        QSignalSpy stale(&client, &charging::core::ApiClient::staleResponseReceived);
+
+        client.connectToServer(QStringLiteral("127.0.0.1"), fixture.port());
+        // 事件循环会在后台消费 accept 通知,必须先在服务端侧接受连接
+        QVERIFY(fixture.acceptConnection());
+        QTRY_VERIFY(client.isConnected());
+
+        // 第二次 send 已把该类型最新序号推后,第一个响应必然过期
+        client.send(QStringLiteral("station.list"));
+        client.send(QStringLiteral("station.list"));
+        QTRY_COMPARE(fresh.count() + stale.count(), 2);
+        QCOMPARE(fresh.count(), 1);
+        QCOMPARE(stale.count(), 1);
+        // 到达的"新鲜"响应一定对应最新请求
+        const auto msg = fresh.first().first().value<charging::core::Message>();
+        // station.list 的响应对服务端而言内容相同,这里只验证计数与路由正确
+        QVERIFY(msg.type == QStringLiteral("station.list.ok"));
+    }
+
     // 默认账号 admin/123456 带首登改密标志:校验改密接口全链路
     void forcedPasswordChangeFlow()
     {
@@ -435,5 +462,5 @@ private:
     }
 };
 
-QTEST_APPLESS_MAIN(TcpIntegrationTest)
+QTEST_GUILESS_MAIN(TcpIntegrationTest)
 #include "test_tcp_integration.moc"
