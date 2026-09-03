@@ -76,18 +76,45 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 18
                     spacing: 16
-                    Rectangle {
-                        width: 76; height: 76; radius: 38
-                        gradient: Gradient {
-                            GradientStop { position: 0; color: "#34D1BF" }
-                            GradientStop { position: 1; color: Theme.primaryDark }
+                    // 头像:已设置 avatar_path 时显示圆形图片,否则回退昵称首字母;
+                    // 点击任意处打开文件选择器更换(预览即时生效)
+                    Item {
+                        width: 76; height: 76
+                        property bool hasAvatar: String(appController.user.avatar_path || "").length > 0
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 38
+                            visible: !parent.hasAvatar
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: "#34D1BF" }
+                                GradientStop { position: 1; color: Theme.primaryDark }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                text: String(appController.user.nickname || "用户").slice(0, 1)
+                                color: "white"
+                                font.pixelSize: 30
+                                font.bold: true
+                            }
                         }
-                        Text {
-                            anchors.centerIn: parent
-                            text: String(appController.user.nickname || "用户").slice(0, 1)
-                            color: "white"
-                            font.pixelSize: 30
-                            font.bold: true
+                        Image {
+                            anchors.fill: parent
+                            visible: parent.hasAvatar
+                            source: parent.hasAvatar ? "file://" + appController.user.avatar_path : ""
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            width: 24; height: 24; radius: 12
+                            color: Theme.primary
+                            border.width: 2; border.color: "white"
+                            Text { anchors.centerIn: parent; text: "✎"; color: "white"; font.pixelSize: 12 }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: appController.pickAvatar()
                         }
                     }
                     ColumnLayout {

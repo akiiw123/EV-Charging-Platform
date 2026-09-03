@@ -63,7 +63,7 @@
 |------|------|----------|------|
 | 1 | **管理端真正接入 ml `/predict`**:逐站点请求预测,表格与指标卡显示真实数值 | A | ✅ 本次完成 |
 | 2 | 强制改密页 + 首登改密流程 | C1 | ✅ 本次完成 |
-| 3 | 头像选择、预览与展示 | B2 | 待做 |
+| 3 | 头像选择、预览与展示 | B2 | ✅ 本次完成 |
 | 4 | Web 大屏 ECharts 本地化 | E1 | 待做 |
 | 5 | 状态文档重写 + 新接口测试补充 | F | 待做 |
 | 6 | 电桩手工状态管理 / 并发请求 ID 映射 / 请求路由拆分 | C2/B4/D3 | 备选 |
@@ -133,3 +133,15 @@ refreshPredictions()
   PBKDF2 落库并清除首登标志,仓储层 `AdministratorRepository::changePassword`),
   管理端登录后若 `must_change_password` 为真则弹出不可关闭的强制改密弹窗,
   成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。
+- 2026-09-03 步骤 3 完成:用户端头像功能落地——点击头像弹出系统文件选择器
+  (QFileDialog,用户端为此链接 QtWidgets),校验格式与 5MB 大小后居中裁方缩放
+  256×256 并绘制为圆形透明 PNG 存入应用数据目录(按手机号命名,避免原图片被
+  移动后失效),路径经 `user.profile.update` 持久化;界面图片优先、昵称首字母
+  兜底,保存后即时预览。新增集成测试 `profileAvatarPathUpdate`。
+  附带修复:管理端 Main.qml 补 `import QtQuick.Layouts`(改密弹窗用到);
+  用户端 main.cpp 显式 `QQuickStyle::setStyle("Basic")`,避免链接 Widgets 后
+  默认切到 Fusion 样式。
+  环境说明:本虚拟机(192.168.202.128)缺少 QtQuick 运行时 QML 模块,GUI 启动
+  需补装 `sudo apt install qml6-module-qtquick-templates qml6-module-qtquick-window
+  qml6-module-qtwebengine`;已用免 root 方案验证:`~/qt-extra-qml/` 下解包了
+  上述 deb,运行前 `export QML_IMPORT_PATH=~/qt-extra-qml/usr/lib/x86_64-linux-gnu/qt6/qml`。

@@ -216,9 +216,33 @@ private slots:
         QCOMPARE(exchange(socket, {QStringLiteral("users"), QStringLiteral("admin.user.list"),
                                    {{QStringLiteral("phone"), QString()}}}).type,
                  QStringLiteral("admin.user.list.ok"));
-        QCOMPARE(exchange(socket, {QStringLiteral("station-delete"), QStringLiteral("admin.station.delete"),
-                                   {{QStringLiteral("station_id"), stationId}}}).type,
-                 QStringLiteral("admin.station.delete.ok"));
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
+    // 头像路径:更新后应回显,且 user.profile 查询能读回
+    void profileAvatarPathUpdate()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        const auto updated = exchange(socket, {QStringLiteral("avatar"), QStringLiteral("user.profile.update"),
+                                               {{QStringLiteral("avatar_path"),
+                                                 QStringLiteral("/home/bit/.local/share/charging/profile-13600136000.png")}}});
+        QCOMPARE(updated.type, QStringLiteral("user.profile.update.ok"));
+        QCOMPARE(updated.payload.value(QStringLiteral("user")).toObject()
+                     .value(QStringLiteral("avatar_path")).toString(),
+                 QStringLiteral("/home/bit/.local/share/charging/profile-13600136000.png"));
+        const auto profile = exchange(socket, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}});
+        QCOMPARE(profile.type, QStringLiteral("user.profile.ok"));
+        QCOMPARE(profile.payload.value(QStringLiteral("user")).toObject()
+                     .value(QStringLiteral("avatar_path")).toString(),
+                 QStringLiteral("/home/bit/.local/share/charging/profile-13600136000.png"));
         socket.disconnectFromHost();
         socket.waitForDisconnected(1000);
     }

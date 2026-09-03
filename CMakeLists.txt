@@ -12,7 +12,7 @@ set(CMAKE_AUTORCC ON)
 option(CHARGING_BUILD_TESTS "Build automated tests" ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS
-    Core Sql Network Qml Quick QuickControls2 WebEngineQuick
+    Core Sql Network Qml Quick QuickControls2 WebEngineQuick Widgets
 )
 
 add_subdirectory(libs/core)
