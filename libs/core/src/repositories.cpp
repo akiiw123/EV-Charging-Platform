@@ -399,6 +399,22 @@ std::optional<ChargingPile> PileRepository::create(const ChargingPile& pile,
     return findById(query.lastInsertId().toLongLong(), errorMessage);
 }
 
+bool PileRepository::update(qint64 pileId, const QString& type, double powerKw,
+                            QString* errorMessage) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE charging_piles SET type = :type, power_kw = :power WHERE id = :id"));
+    query.bindValue(QStringLiteral(":type"), type);
+    query.bindValue(QStringLiteral(":power"), powerKw);
+    query.bindValue(QStringLiteral(":id"), pileId);
+    if (!query.exec()) {
+        setQueryError(errorMessage, query);
+        return false;
+    }
+    return query.numRowsAffected() == 1;
+}
+
 bool PileRepository::updateStatus(qint64 pileId, const QString& status,
                                   QString* errorMessage) const
 {

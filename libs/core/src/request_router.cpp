@@ -325,6 +325,84 @@ Message RequestRouter::route(const Message& request)
         return success(request, {{QStringLiteral("piles"), array}});
     }
 
+    // 单独新增电桩:挂到指定电站,编号唯一约束由数据库保证
+    if (request.type == QStringLiteral("admin.pile.create")) {
+        const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
+        const QString code = request.payload.value(QStringLiteral("code")).toString().trimmed();
+        const QString type = request.payload.value(QStringLiteral("type")).toString();
+        const double powerKw = request.payload.value(QStringLiteral("power_kw")).toDouble();
+        if (!stationId || code.isEmpty() || (type != QStringLiteral("fast") && type != QStringLiteral("slow"))
+            || powerKw <= 0 || powerKw > 1000) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"),
+                         QStringLiteral("请检查电站、编号、类型与功率取值"));
+        }
+        StationRepository stations(database_);
+        if (!stations.findById(*stationId, &repositoryError)) {
+            return error(request, QStringLiteral("STATION_NOT_FOUND"), QStringLiteral("电站不存在"));
+        }
+        ChargingPile pile;
+        pile.stationId = *stationId;
+        pile.code = code;
+        pile.type = type;
+        pile.powerKw = powerKw;
+        PileRepository piles(database_);
+        const auto created = piles.create(pile, &repositoryError);
+        return created ? success(request, {{QStringLiteral("pile"), pileJson(*created)}})
+                       : error(request, QStringLiteral("PILE_CREATE_FAILED"),
+                               repositoryError.contains(QStringLiteral("UNIQUE"))
+                                   ? QStringLiteral("电桩编号已存在") : repositoryError);
+    }
+
+    // 编辑电桩:类型与功率;充电中拒绝,避免在途订单计费口径变化
+    if (request.type == QStringLiteral("admin.pile.update")) {
+        const auto pileId = positiveId(request.payload, QStringLiteral("pile_id"));
+        const QString type = request.payload.value(QStringLiteral("type")).toString();
+        const double powerKw = request.payload.value(QStringLiteral("power_kw")).toDouble();
+        if (!pileId || (type != QStringLiteral("fast") && type != QStringLiteral("slow"))
+            || powerKw <= 0 || powerKw > 1000) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"),
+                         QStringLiteral("类型须为 fast/slow,功率须在 (0,1000] kW"));
+        }
+        PileRepository piles(database_);
+        const auto pile = piles.findById(*pileId, &repositoryError);
+        if (!pile) {
+            return error(request, QStringLiteral("PILE_NOT_FOUND"), QStringLiteral("电桩不存在"));
+        }
+        if (pile->status == QStringLiteral("charging")) {
+            return error(request, QStringLiteral("PILE_UPDATE_FAILED"),
+                         QStringLiteral("充电中的电桩不能编辑"));
+        }
+        if (!piles.update(*pileId, type, powerKw, &repositoryError)) {
+            return error(request, QStringLiteral("PILE_UPDATE_FAILED"), repositoryError);
+        }
+        return success(request, {{QStringLiteral("pile"), pileJson(*piles.findById(*pileId))}});
+    }
+
+    // 手工切换电桩状态:idle/fault/offline;充电中拒绝
+    if (request.type == QStringLiteral("admin.pile.status")) {
+        const auto pileId = positiveId(request.payload, QStringLiteral("pile_id"));
+        const QString status = request.payload.value(QStringLiteral("status")).toString();
+        static const QStringList manualStatuses {QStringLiteral("idle"), QStringLiteral("fault"),
+                                                 QStringLiteral("offline")};
+        if (!pileId || !manualStatuses.contains(status)) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"),
+                         QStringLiteral("状态仅支持 idle/fault/offline"));
+        }
+        PileRepository piles(database_);
+        const auto pile = piles.findById(*pileId, &repositoryError);
+        if (!pile) {
+            return error(request, QStringLiteral("PILE_NOT_FOUND"), QStringLiteral("电桩不存在"));
+        }
+        if (pile->status == QStringLiteral("charging")) {
+            return error(request, QStringLiteral("PILE_STATUS_FAILED"),
+                         QStringLiteral("充电中的电桩不能手工切换状态"));
+        }
+        if (!piles.updateStatus(*pileId, status, &repositoryError)) {
+            return error(request, QStringLiteral("PILE_STATUS_FAILED"), repositoryError);
+        }
+        return success(request, {{QStringLiteral("pile"), pileJson(*piles.findById(*pileId))}});
+    }
+
     if (request.type == QStringLiteral("admin.pile.restart")) {
         const auto pileId = positiveId(request.payload, QStringLiteral("pile_id"));
         if (!pileId) return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("pile_id 无效"));

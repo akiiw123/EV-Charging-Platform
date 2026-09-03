@@ -63,6 +63,9 @@ public:
     QList<ChargingPile> listByStation(qint64 stationId, QString* errorMessage = nullptr) const;
     std::optional<ChargingPile> findById(qint64 id, QString* errorMessage = nullptr) const;
     std::optional<ChargingPile> create(const ChargingPile& pile, QString* errorMessage = nullptr) const;
+    // 编辑电桩类型与功率(管理端"编辑电桩"用;充电中应拒绝以避免计费口径变化)
+    bool update(qint64 pileId, const QString& type, double powerKw,
+                QString* errorMessage = nullptr) const;
     bool updateStatus(qint64 pileId, const QString& status, QString* errorMessage = nullptr) const;
 
 private:

@@ -247,6 +247,88 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    // 电桩管理:单独新增、编辑、手工切换状态(充电中拒绝)
+    void pileManagementOperations()
+    {
+        Fixture fixture;
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        // 单独新增电桩
+        const auto created = exchange(admin, {QStringLiteral("pile-create"), QStringLiteral("admin.pile.create"),
+            {{QStringLiteral("station_id"), 1}, {QStringLiteral("code"), QStringLiteral("TST-01")},
+             {QStringLiteral("type"), QStringLiteral("slow")}, {QStringLiteral("power_kw"), 7.0}}});
+        QCOMPARE(created.type, QStringLiteral("admin.pile.create.ok"));
+        QCOMPARE(created.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("idle"));
+
+        // 重复编号 → 拒绝(数据库唯一约束)
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-dup"), QStringLiteral("admin.pile.create"),
+            {{QStringLiteral("station_id"), 1}, {QStringLiteral("code"), QStringLiteral("TST-01")},
+             {QStringLiteral("type"), QStringLiteral("slow")}, {QStringLiteral("power_kw"), 7.0}}}).type,
+                 QStringLiteral("admin.pile.create.error"));
+        // 非法状态值 → 拒绝
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-bad-status"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 1},
+                                   {QStringLiteral("status"), QStringLiteral("broken")}}}).type,
+                 QStringLiteral("admin.pile.status.error"));
+        // 手工置为故障
+        const auto fault = exchange(admin, {QStringLiteral("pile-fault"), QStringLiteral("admin.pile.status"),
+                                            {{QStringLiteral("pile_id"), 1},
+                                             {QStringLiteral("status"), QStringLiteral("fault")}}});
+        QCOMPARE(fault.type, QStringLiteral("admin.pile.status.ok"));
+        QCOMPARE(fault.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("fault"));
+        // 恢复空闲
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-idle"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 1},
+                                   {QStringLiteral("status"), QStringLiteral("idle")}}}).type,
+                 QStringLiteral("admin.pile.status.ok"));
+        // 编辑功率
+        const auto updated = exchange(admin, {QStringLiteral("pile-update"), QStringLiteral("admin.pile.update"),
+            {{QStringLiteral("pile_id"), 1}, {QStringLiteral("type"), QStringLiteral("fast")},
+             {QStringLiteral("power_kw"), 60.0}}});
+        QCOMPARE(updated.type, QStringLiteral("admin.pile.update.ok"));
+        QCOMPARE(updated.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("power_kw")).toDouble(), 60.0);
+
+        // 充电中的电桩:状态切换与编辑均拒绝
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                 {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        QCOMPARE(exchange(user, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                 {{QStringLiteral("pile_id"), 2}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        QCOMPARE(exchange(user, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                 {{QStringLiteral("order_id"),
+                                   exchange(user, {QStringLiteral("active"), QStringLiteral("order.active"), {}})
+                                       .payload.value(QStringLiteral("order")).toObject()
+                                       .value(QStringLiteral("id")).toInteger()}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("status-charging"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 2},
+                                   {QStringLiteral("status"), QStringLiteral("fault")}}}).type,
+                 QStringLiteral("admin.pile.status.error"));
+        QCOMPARE(exchange(admin, {QStringLiteral("update-charging"), QStringLiteral("admin.pile.update"),
+                                  {{QStringLiteral("pile_id"), 2}, {QStringLiteral("type"), QStringLiteral("fast")},
+                                   {QStringLiteral("power_kw"), 60.0}}}).type,
+                 QStringLiteral("admin.pile.update.error"));
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+        user.disconnectFromHost();
+        user.waitForDisconnected(1000);
+    }
+
     // 默认账号 admin/123456 带首登改密标志:校验改密接口全链路
     void forcedPasswordChangeFlow()
     {

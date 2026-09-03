@@ -93,6 +93,11 @@ public:
     Q_INVOKABLE void updateStation(const QVariantMap& form);
     Q_INVOKABLE void deleteStation(qint64 id);
     Q_INVOKABLE void restartPile(qint64 id);
+    Q_INVOKABLE void createPile(const QVariantMap& form);
+    Q_INVOKABLE void updatePile(const QVariantMap& form);
+    Q_INVOKABLE void setPileStatus(qint64 id, const QString& status);
+    // 供"新增电桩"对话框选择所属电站
+    Q_INVOKABLE QStringList stationNames() const;
     Q_INVOKABLE void setUserStatus(qint64 id, const QString& status);
     Q_INVOKABLE void refreshPredictions();
     // 强制改密流程:校验当前密码并设置新密码(服务端 PBKDF2 落库,清除首登标志)

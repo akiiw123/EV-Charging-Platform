@@ -65,6 +65,15 @@ void AdminAppController::createStation(const QVariantMap& f){request(QStringLite
 void AdminAppController::updateStation(const QVariantMap& f){request(QStringLiteral("admin.station.update"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::deleteStation(qint64 id){request(QStringLiteral("admin.station.delete"),{{"station_id",id}});}
 void AdminAppController::restartPile(qint64 id){request(QStringLiteral("admin.pile.restart"),{{"pile_id",id}});}
+void AdminAppController::createPile(const QVariantMap& f){request(QStringLiteral("admin.pile.create"),QJsonObject::fromVariantMap(f));}
+void AdminAppController::updatePile(const QVariantMap& f){request(QStringLiteral("admin.pile.update"),QJsonObject::fromVariantMap(f));}
+void AdminAppController::setPileStatus(qint64 id,const QString& status){request(QStringLiteral("admin.pile.status"),{{"pile_id",id},{"status",status}});}
+QStringList AdminAppController::stationNames() const
+{
+    QStringList names;
+    for (const auto& v : rawStations_) names << v.toObject().value(QStringLiteral("name")).toString();
+    return names;
+}
 void AdminAppController::setUserStatus(qint64 id,const QString& status){request(QStringLiteral("admin.user.status"),{{"user_id",id},{"status",status}});}
 void AdminAppController::clearNotice(){notice_.clear();noticeKind_.clear();emit noticeChanged();}
 QString AdminAppController::savedUsername() const{return settings_.value(QStringLiteral("login/username")).toString();}
@@ -85,6 +94,9 @@ void AdminAppController::handleResponse(const charging::core::Message& m){ if(bu
     else if(m.type=="admin.user.list.ok")rawUsers_=m.payload.value("users").toArray();
     else if(m.type=="admin.station.create.ok"||m.type=="admin.station.update.ok"||m.type=="admin.station.delete.ok"){showNotice(QStringLiteral("电站信息已更新"));rawStations_={};request("admin.station.list");request("admin.pile.list");refreshDashboard();return;}
     else if(m.type=="admin.pile.restart.ok"){showNotice(QStringLiteral("重启指令执行成功"));rawPiles_={};request("admin.pile.list");refreshDashboard();return;}
+    else if(m.type=="admin.pile.create.ok"){showNotice(QStringLiteral("电桩已新增"));rawPiles_={};request("admin.pile.list");refreshDashboard();return;}
+    else if(m.type=="admin.pile.update.ok"){showNotice(QStringLiteral("电桩信息已更新"));rawPiles_={};request("admin.pile.list");return;}
+    else if(m.type=="admin.pile.status.ok"){showNotice(QStringLiteral("电桩状态已更新"));rawPiles_={};request("admin.pile.list");refreshDashboard();return;}
     else if(m.type=="admin.user.status.ok"){showNotice(QStringLiteral("用户状态已更新"));request("admin.user.list",{{"phone",userQuery_}});return;}
     applyClientFilters();
 }
