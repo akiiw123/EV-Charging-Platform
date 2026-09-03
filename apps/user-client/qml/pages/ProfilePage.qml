@@ -167,6 +167,90 @@ Item {
                     }
                 }
             }
+            Text {
+    Layout.leftMargin: 18
+    Layout.topMargin: 8
+    text: "充值记录"
+    color: Theme.text
+    font.pixelSize: 16
+    font.bold: true
+}
+
+Repeater {
+    model: appController.rechargeHistory
+
+    delegate: AppCard {
+        Layout.fillWidth: true
+        Layout.leftMargin: 18
+        Layout.rightMargin: 18
+        implicitHeight: 108
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Text {
+                    text: "+￥" + Number(modelData.amount || 0).toFixed(2)
+                    color: Theme.primaryDark
+                    font.pixelSize: 18
+                    font.bold: true
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Text {
+                    text: String(modelData.created_at || "--")
+                          .replace("T", " ")
+                          .slice(0, 19)
+                    color: Theme.textMuted
+                    font.pixelSize: 11
+                }
+            }
+
+            Text {
+                text: "充值前：￥"
+                      + Number(modelData.balance_before || 0).toFixed(2)
+                      + "  →  充值后：￥"
+                      + Number(modelData.balance_after || 0).toFixed(2)
+                color: Theme.textMuted
+                font.pixelSize: 12
+            }
+
+            Text {
+                text: "充值记录 #" + (modelData.id || "--")
+                color: Theme.textMuted
+                font.pixelSize: 11
+            }
+        }
+    }
+}
+
+ColumnLayout {
+    Layout.fillWidth: true
+    Layout.topMargin: 20
+    visible: appController.rechargeHistory.length === 0
+    spacing: 6
+
+    Text {
+        Layout.alignment: Qt.AlignHCenter
+        text: "暂无充值记录"
+        color: Theme.textMuted
+        font.pixelSize: 13
+    }
+
+    Text {
+        Layout.alignment: Qt.AlignHCenter
+        text: "完成充值后，记录会显示在这里"
+        color: Theme.textMuted
+        font.pixelSize: 11
+    }
+}
 
             RowLayout {
                 Layout.fillWidth: true
