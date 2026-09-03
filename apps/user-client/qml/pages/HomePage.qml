@@ -33,7 +33,7 @@ Item {
                 id: search
                 Layout.fillWidth: true
                 implicitHeight: 48
-                placeholderText: "搜索地址或充电站"
+                placeholderText: appController.mapKeyConfigured ? "输入任意地址定位(地图Key已配置)" : "输入城市名定位(如:深圳;配置地图Key后支持任意地址)"
                 leftPadding: 16
                 background: Rectangle {
                     radius: 14
@@ -48,6 +48,46 @@ Item {
                 text: "定位"
                 implicitWidth: 78
                 onClicked: appController.locate(search.text)
+            }
+        }
+        // 城市快选(模拟 GPS/区域选择):内置坐标,离线可用
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Repeater {
+                model: appController.presetCities()
+                delegate: Rectangle {
+                    required property var modelData
+                    radius: 12
+                    implicitWidth: cityText.implicitWidth + 22
+                    implicitHeight: 30
+                    color: appController.locationName.indexOf(modelData) === 0
+                           ? Theme.primarySoft : Theme.surface
+                    border.width: 1
+                    border.color: appController.locationName.indexOf(modelData) === 0
+                                  ? Theme.primary : Theme.border
+                    Text {
+                        id: cityText
+                        anchors.centerIn: parent
+                        text: modelData
+                        color: appController.locationName.indexOf(modelData) === 0
+                               ? Theme.primaryDark : Theme.textMuted
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: appController.locate(modelData)
+                    }
+                }
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: "当前: " + appController.locationName
+                      + " (" + Number(appController.latitude).toFixed(2) + ", "
+                      + Number(appController.longitude).toFixed(2) + ")"
+                color: Theme.textMuted
+                font.pixelSize: 11
             }
         }
         RowLayout {
