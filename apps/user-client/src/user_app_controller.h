@@ -25,6 +25,7 @@ class UserAppController final : public QObject {
     Q_PROPERTY(QVariantList stations READ stations NOTIFY stationsChanged)
     Q_PROPERTY(QVariantList piles READ piles NOTIFY pilesChanged)
     Q_PROPERTY(QVariantList history READ history NOTIFY historyChanged)
+    Q_PROPERTY(QVariantList rechargeHistory READ rechargeHistory NOTIFY rechargeHistoryChanged)
     Q_PROPERTY(QString locationName READ locationName NOTIFY locationChanged)
     Q_PROPERTY(double latitude READ latitude NOTIFY locationChanged)
     Q_PROPERTY(double longitude READ longitude NOTIFY locationChanged)
@@ -50,6 +51,7 @@ public:
     QVariantList stations() const;
     QVariantList piles() const;
     QVariantList history() const;
+    QVariantList rechargeHistory() const;
     QString locationName() const;
     bool mapKeyConfigured() const { return !qEnvironmentVariableIsEmpty("TENCENT_MAP_KEY"); }
     double latitude() const;
@@ -87,6 +89,7 @@ signals:
     void stationsChanged();
     void pilesChanged();
     void historyChanged();
+    void rechargeHistoryChanged();
     void locationChanged();
     void searchQueryChanged();
     void chargingEstimateChanged();
@@ -127,6 +130,7 @@ private:
     QVariantList stations_;
     QVariantList piles_;
     QVariantList history_;
+    QVariantList rechargeHistory_;
     QString locationName_ = QStringLiteral("深圳市");
     double latitude_ = 22.543096;
     double longitude_ = 114.057865;

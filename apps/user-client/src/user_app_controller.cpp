@@ -73,6 +73,10 @@ QVariantMap UserAppController::selectedStation() const { return selectedStation_
 QVariantList UserAppController::stations() const { return stations_; }
 QVariantList UserAppController::piles() const { return piles_; }
 QVariantList UserAppController::history() const { return history_; }
+QVariantList UserAppController::rechargeHistory() const
+{
+    return rechargeHistory_;
+}
 QString UserAppController::locationName() const { return locationName_; }
 double UserAppController::latitude() const { return latitude_; }
 double UserAppController::longitude() const { return longitude_; }
@@ -275,9 +279,13 @@ void UserAppController::orderAction(const QString& action)
 void UserAppController::refreshProfile()
 {
     if (!loggedIn_) return;
+
     api_.send(QStringLiteral("user.profile"));
     api_.send(QStringLiteral("order.active"));
     api_.send(QStringLiteral("order.history"));
+
+    // 查询当前用户充值记录
+    api_.send(QStringLiteral("recharge.history"));
 }
 
 void UserAppController::updateNickname(const QString& nickname)
@@ -520,14 +528,23 @@ void UserAppController::handleResponse(const charging::core::Message& message)
     if (message.type == QStringLiteral("user.profile.ok")
         || message.type == QStringLiteral("user.profile.update.ok")
         || message.type == QStringLiteral("wallet.recharge.ok")) {
-        updateUser(payload.value(QStringLiteral("user")).toMap());
-        showNotice(
-            message.type == QStringLiteral("wallet.recharge.ok")
-                ? QStringLiteral("充值成功")
-                : QStringLiteral("资料已更新"),
-            QStringLiteral("success"));
-        return;
+
+    updateUser(payload.value(QStringLiteral("user")).toMap());
+
+    // 如果是充值成功，立即重新获取充值记录，
+    // 这样“我的”页面可以实时显示最新充值记录
+    if (message.type == QStringLiteral("wallet.recharge.ok")) {
+        api_.send(QStringLiteral("recharge.history"));
     }
+
+    showNotice(
+        message.type == QStringLiteral("wallet.recharge.ok")
+            ? QStringLiteral("充值成功")
+            : QStringLiteral("资料已更新"),
+        QStringLiteral("success"));
+
+    return;
+}
     if (message.type == QStringLiteral("order.active.ok")) {
         updateOrder(payload.value(QStringLiteral("order")));
         return;
@@ -537,6 +554,11 @@ void UserAppController::handleResponse(const charging::core::Message& message)
         emit historyChanged();
         return;
     }
+    if (message.type == QStringLiteral("recharge.history.ok")) {
+    rechargeHistory_ = payload.value(QStringLiteral("records")).toList();
+    emit rechargeHistoryChanged();
+    return;
+}
     if (message.type.startsWith(QStringLiteral("order."))) {
         if (payload.contains(QStringLiteral("user")))
             updateUser(payload.value(QStringLiteral("user")).toMap());

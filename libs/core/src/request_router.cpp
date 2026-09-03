@@ -563,6 +563,55 @@ Message RequestRouter::route(const Message& request)
         }
         return success(request, {{QStringLiteral("orders"), array}});
     }
+    if (request.type == QStringLiteral("recharge.history")) {
+    QJsonArray array;
+
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "SELECT id, amount, balance_before, balance_after, created_at "
+        "FROM recharge_records "
+        "WHERE user_id = :user_id "
+        "ORDER BY id DESC "
+        "LIMIT 50"));
+    query.bindValue(QStringLiteral(":user_id"), *authenticatedUserId_);
+
+    if (!query.exec()) {
+        return error(
+            request,
+            QStringLiteral("DATABASE_ERROR"),
+            query.lastError().text());
+    }
+
+    while (query.next()) {
+        QJsonObject item;
+
+        item.insert(
+            QStringLiteral("id"),
+            query.value(0).toLongLong());
+
+        item.insert(
+            QStringLiteral("amount"),
+            query.value(1).toDouble());
+
+        item.insert(
+            QStringLiteral("balance_before"),
+            query.value(2).toDouble());
+
+        item.insert(
+            QStringLiteral("balance_after"),
+            query.value(3).toDouble());
+
+        item.insert(
+            QStringLiteral("created_at"),
+            query.value(4).toString());
+
+        array.append(item);
+    }
+
+    return success(
+        request,
+        {{QStringLiteral("records"), array}});
+}
 
     if (request.type == QStringLiteral("order.reserve")) {
         const auto pileId = positiveId(request.payload, QStringLiteral("pile_id"));

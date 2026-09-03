@@ -194,27 +194,81 @@ bool UserRepository::updateAvatarPath(qint64 userId, const QString& avatarPath,
 
 bool UserRepository::recharge(qint64 userId, double amount, QString* errorMessage) const
 {
+    // 充值金额必须大于 0
     if (amount <= 0.0) {
         setError(errorMessage, QStringLiteral("充值金额必须大于 0"));
         return false;
     }
+
+    // 开启数据库事务：
+    // 查询原余额、修改余额、写入充值记录必须同时成功
     if (!database_.transaction()) {
         setError(errorMessage, database_.lastError().text());
         return false;
     }
+
     QSqlQuery query(database_);
+
+    // 1. 查询充值前余额
     query.prepare(QStringLiteral(
-        "UPDATE users SET wallet_balance = wallet_balance + :amount WHERE id = :id"));
-    query.bindValue(QStringLiteral(":amount"), amount);
+        "SELECT wallet_balance FROM users WHERE id = :id"));
     query.bindValue(QStringLiteral(":id"), userId);
+
+    if (!query.exec() || !query.next()) {
+        return rollback(
+            database_,
+            errorMessage,
+            query.lastError().isValid()
+                ? query.lastError().text()
+                : QStringLiteral("用户不存在"));
+    }
+
+    const double balanceBefore = query.value(0).toDouble();
+    const double balanceAfter = balanceBefore + amount;
+
+    // 2. 更新用户钱包余额
+    query.prepare(QStringLiteral(
+        "UPDATE users "
+        "SET wallet_balance = :balance "
+        "WHERE id = :id"));
+    query.bindValue(QStringLiteral(":balance"), balanceAfter);
+    query.bindValue(QStringLiteral(":id"), userId);
+
     if (!query.exec() || query.numRowsAffected() != 1) {
-        return rollback(database_, errorMessage,
-                        query.lastError().isValid() ? query.lastError().text()
-                                                    : QStringLiteral("用户不存在"));
+        return rollback(
+            database_,
+            errorMessage,
+            query.lastError().isValid()
+                ? query.lastError().text()
+                : QStringLiteral("充值失败"));
     }
+
+    // 3. 写入充值记录
+    query.prepare(QStringLiteral(
+        "INSERT INTO recharge_records "
+        "(user_id, amount, balance_before, balance_after) "
+        "VALUES (:user_id, :amount, :before, :after)"));
+
+    query.bindValue(QStringLiteral(":user_id"), userId);
+    query.bindValue(QStringLiteral(":amount"), amount);
+    query.bindValue(QStringLiteral(":before"), balanceBefore);
+    query.bindValue(QStringLiteral(":after"), balanceAfter);
+
+    if (!query.exec()) {
+        return rollback(
+            database_,
+            errorMessage,
+            query.lastError().text());
+    }
+
+    // 4. 两项操作都成功后才提交事务
     if (!database_.commit()) {
-        return rollback(database_, errorMessage, database_.lastError().text());
+        return rollback(
+            database_,
+            errorMessage,
+            database_.lastError().text());
     }
+
     return true;
 }
 
