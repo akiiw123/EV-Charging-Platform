@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import Charging.UI
 
 Rectangle{id:root;color:Theme.backgroundPrimary
-    Rectangle{anchors.fill:parent;gradient:Gradient{orientation:Gradient.Horizontal;GradientStop{position:0;color:Theme.backgroundPrimary}GradientStop{position:1;color:Theme.backgroundSecondary}}}
+    Rectangle{anchors.fill:parent;color:Theme.backgroundPrimary}
     RowLayout{anchors.fill:parent;anchors.margins:Math.max(50,parent.width*.08);spacing:80
         ColumnLayout{Layout.fillWidth:true;Layout.maximumWidth:620;spacing:18
             Rectangle{width:58;height:58;radius:18;color:Theme.accent;LineIcon{anchors.centerIn:parent;width:28;height:28;name:"pile";strokeColor:"white"}}

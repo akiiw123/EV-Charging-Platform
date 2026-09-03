@@ -17,7 +17,7 @@ Rectangle {
                 LineIcon{anchors.centerIn:parent;name:"pile";strokeColor:"white"}}
             Column{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:68;anchors.verticalCenter:parent.verticalCenter
                 Text{text:"充电运营平台";color:Theme.textPrimary;font.pixelSize:15;font.bold:true}
-                Text{text:"OPERATIONS";color:Theme.textMuted;font.pixelSize:9;font.letterSpacing:1.5}}
+                Text{text:"运营管理端";color:Theme.textMuted;font.pixelSize:10}}
         }
         Repeater{model:[{t:"数据总览",i:"dashboard"},{t:"电站管理",i:"station"},{t:"电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"主题与设置",i:"settings"}]
             delegate:Item{required property var modelData;required property int index;Layout.fillWidth:true;Layout.preferredHeight:48

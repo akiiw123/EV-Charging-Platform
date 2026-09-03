@@ -8,7 +8,7 @@ QtObject {
     property real fontScale: 1.0
 
     readonly property var palettes: ({
-        "default":   { bg:"#F4F7FA", bg2:"#ECF2F6", surface:"#FFFFFF", elevated:"#FFFFFF", hover:"#E8FAF6", selected:"#DDF6F1", border:"#D8E2EA", strong:"#AABAC7", text:"#172B3A", secondary:"#526676", muted:"#718096", accent:"#0F9F8F", hoverAccent:"#0B8B7D", pressed:"#087166", shadow:"#240E2430", overlay:"#66071420", focus:"#54C8B9" },
+        "default":   { bg:"#F6F7F6", bg2:"#EDF0EE", surface:"#FFFFFF", elevated:"#FFFFFF", hover:"#E7F5EE", selected:"#D6EFE3", border:"#DCE3DF", strong:"#A8B5AE", text:"#1C2B24", secondary:"#4E5F56", muted:"#66756D", accent:"#059669", hoverAccent:"#04875F", pressed:"#047857", shadow:"#24141C18", overlay:"#66071A12", focus:"#5ED9A9" },
         "midnight":  { bg:"#07111F", bg2:"#0B1728", surface:"#102039", elevated:"#162B47", hover:"#193453", selected:"#123F55", border:"#29415D", strong:"#466887", text:"#EAF4FF", secondary:"#B3C5D8", muted:"#8299B2", accent:"#18C8F4", hoverAccent:"#46D6F7", pressed:"#09A7D2", shadow:"#73000000", overlay:"#A0000710", focus:"#75E3FF" },
         "aurora":    { bg:"#0B1020", bg2:"#11172B", surface:"#171E35", elevated:"#202944", hover:"#282F50", selected:"#30265E", border:"#333D5F", strong:"#59658C", text:"#F2F0FF", secondary:"#C0BDE1", muted:"#8E91B3", accent:"#8B75FF", hoverAccent:"#A995FF", pressed:"#6F55E9", shadow:"#78000000", overlay:"#A0060914", focus:"#B6A9FF" },
         "graphite":  { bg:"#121416", bg2:"#191C20", surface:"#202429", elevated:"#292E34", hover:"#31363C", selected:"#3B3021", border:"#3B4148", strong:"#606872", text:"#F5F2EC", secondary:"#C9C1B6", muted:"#918B83", accent:"#F2A93B", hoverAccent:"#FFC15C", pressed:"#D58B20", shadow:"#80000000", overlay:"#A00A0B0C", focus:"#FFD083" },
@@ -32,10 +32,10 @@ QtObject {
     readonly property color accent: p.accent
     readonly property color accentHover: p.hoverAccent
     readonly property color accentPressed: p.pressed
-    readonly property color success: "#2ED3A0"
-    readonly property color warning: "#F5B942"
-    readonly property color danger: "#FF6B6F"
-    readonly property color info: "#60A5FA"
+    readonly property color success: "#10B981"
+    readonly property color warning: "#D97706"
+    readonly property color danger: "#DC2626"
+    readonly property color info: "#3B82F6"
     readonly property var chartPalette: [accent, success, warning, "#9B87F5", danger, info]
     readonly property color shadowColor: p.shadow
     readonly property color overlayColor: p.overlay

@@ -4,7 +4,7 @@ import Charging.UI
 import "../components"
 Item{id:root;property var selected:({});Component.onCompleted:adminController.refreshPiles("","","","")
     ColumnLayout{anchors.fill:parent;anchors.margins:24;spacing:16
-        PageHeader{Layout.fillWidth:true;title:"电桩管理";subtitle:"监测设备状态、利用率与运行健康"}
+        PageHeader{Layout.fillWidth:true;title:"电桩管理";subtitle:"查看电桩状态与运行记录"}
         RowLayout{Layout.fillWidth:true;SearchField{id:q;placeholderText:"搜索电桩编号"}FilterComboBox{id:type;model:["全部类型","快充","慢充"]}FilterComboBox{id:state;model:["全部状态","空闲","充电中","故障","离线"]}AppButton{text:"查询";onClicked:adminController.refreshPiles(q.text,"",type.currentIndex===1?"fast":type.currentIndex===2?"slow":"",["","idle","charging","fault","offline"][state.currentIndex])}Item{Layout.fillWidth:true}AppButton{text:"刷新";variant:"secondary";onClicked:adminController.refreshPiles(q.text,"","","")}}
         DataTable{id:table;Layout.fillWidth:true;Layout.fillHeight:true;tableModel:adminController.pilesModel;columns:[{title:"电桩编号",role:"code",width:150},{title:"所属电站",role:"station_name",width:230},{title:"类型",role:"type",width:90,format:function(v){return v==="fast"?"快充":"慢充"}},{title:"额定功率",role:"power_kw",width:110,align:"right",format:function(v){return Number(v).toFixed(1)+" kW"}},{title:"当前状态",role:"status",width:110,align:"center"},{title:"累计次数",role:"charge_count",width:100,align:"right"},{title:"累计时长",role:"total_charge_minutes",width:120,align:"right",format:function(v){return Number(v)+" 分钟"}},{title:"最近心跳",role:"last_heartbeat",width:180,format:function(){return "暂无心跳字段"}}];onRowActivated:function(row,record){root.selected=record;drawer.open()}}
     }

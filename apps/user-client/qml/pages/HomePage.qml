@@ -23,7 +23,7 @@ Item {
             Rectangle {
                 width: 44; height: 44; radius: 14
                 color: Theme.primarySoft
-                Text { anchors.centerIn: parent; text: "ϟ"; color: Theme.primary; font.pixelSize: 25; font.bold: true }
+                AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 24; height: 24 }
             }
         }
         RowLayout {
