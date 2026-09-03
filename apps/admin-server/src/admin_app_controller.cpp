@@ -33,6 +33,8 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     connect(&api_, &charging::core::ApiClient::connected, this, [this] { connected_ = true; emit connectionChanged(); });
     connect(&api_, &charging::core::ApiClient::disconnected, this, [this] { connected_ = false; loggedIn_ = false; busyCount_ = 0; emit connectionChanged(); emit loggedInChanged(); emit busyChanged(); });
     connect(&api_, &charging::core::ApiClient::clientError, this, [this](const QString& text) { busyCount_ = 0; emit busyChanged(); showNotice(text, QStringLiteral("error")); });
+    // 过期响应不更新界面,仅归还 busy 计数
+    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { if (busyCount_ > 0) --busyCount_; emit busyChanged(); });
     connect(&api_, &charging::core::ApiClient::responseReceived, this, &AdminAppController::handleResponse);
     bool ok=false; const int port=qEnvironmentVariableIntValue("CHARGING_SERVER_PORT",&ok);
     api_.connectToServer(qEnvironmentVariable("CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1")), ok && port>0 ? quint16(port) : quint16(45454));
