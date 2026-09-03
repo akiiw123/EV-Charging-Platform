@@ -12,10 +12,15 @@
     <article><small>今日营收</small><strong id="todayRevenue">¥ 0.00</strong></article>
     <article><small>在线电桩</small><strong id="onlinePiles">0</strong></article>
     <article><small>进行中订单</small><strong id="activeOrders">0</strong></article>
+    <article><small>桩位利用率</small><strong id="utilization">0%</strong></article>
   </section>
   <section class="grid">
-    <article class="panel"><h2>近 7 日营收</h2><div id="revenue" class="chart"></div></article>
+    <article class="panel"><h2><span class="range-toggle"><button id="range7" class="on">近 7 日</button><button id="range30">近 30 日</button></span>营收趋势</h2><div id="revenue" class="chart"></div></article>
     <article class="panel"><h2>电桩状态</h2><div id="status" class="chart"></div></article>
+  </section>
+  <section class="grid">
+    <article class="panel"><h2>近 7 日充电时段分布</h2><div id="hourly" class="chart"></div></article>
+    <article class="panel"><h2>站点营收排行</h2><ol id="ranking" class="ranking"></ol></article>
   </section>
   <p id="connectionState">正在读取运营数据…</p>
 </main><script src="app.js"></script></body>
