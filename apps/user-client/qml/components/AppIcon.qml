@@ -4,7 +4,7 @@ import QtQuick
 // (字符图标依赖系统字体,不同环境渲染不一致,且辨识度低)
 Canvas {
     id: root
-    property string name: "bolt"          // home | bolt | person | pen
+    property string name: "bolt"          // home | bolt | person | pen | order
     property color iconColor: "#FFFFFF"
     width: 20; height: 20
     antialiasing: true
@@ -36,6 +36,12 @@ Canvas {
             ctx.moveTo(4, 17)
             ctx.bezierCurveTo(4.6, 12.6, 7, 11.4, 10, 11.4)
             ctx.bezierCurveTo(13, 11.4, 15.4, 12.6, 16, 17)
+            ctx.stroke()
+        } else if (name === "order") {    // 订单清单
+            ctx.beginPath()
+            ctx.moveTo(5, 4.5); ctx.lineTo(15, 4.5)
+            ctx.moveTo(5, 9); ctx.lineTo(15, 9)
+            ctx.moveTo(5, 13.5); ctx.lineTo(11, 13.5)
             ctx.stroke()
         } else if (name === "pen") {      // 铅笔
             ctx.beginPath()

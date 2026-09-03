@@ -22,6 +22,7 @@ qt_add_qml_module(charging-user
         qml/pages/HomePage.qml
         qml/pages/StationDetailPage.qml
         qml/pages/ChargingPage.qml
+        qml/pages/OrdersPage.qml
         qml/pages/ProfilePage.qml
         qml/pages/MapPage.qml
 )
