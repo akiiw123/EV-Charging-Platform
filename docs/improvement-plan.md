@@ -131,8 +131,8 @@ refreshPredictions()
   默认 127.0.0.1:8090),可先用于界面联调;正式演示请运行 `ml/service.py` + `train.py` 产物。
 - 2026-09-03 步骤 2 完成:新增 `admin.password.change` 接口(校验旧密码 → 强度检查 →
   PBKDF2 落库并清除首登标志,仓储层 `AdministratorRepository::changePassword`),
-  管理端登录后若 `must_change_password` 为真则弹出不可关闭的强制改密弹窗,
-  成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。
+  管理端登录后若 `must_change_password` 为真则弹出改密提醒弹窗
+  (可"稍后再说"/Esc 关闭,每次登录重新提醒),成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。
 - 2026-09-03 步骤 3 完成:用户端头像功能落地——点击头像弹出系统文件选择器
   (QFileDialog,用户端为此链接 QtWidgets),校验格式与 5MB 大小后居中裁方缩放
   256×256 并绘制为圆形透明 PNG 存入应用数据目录(按手机号命名,避免原图片被
