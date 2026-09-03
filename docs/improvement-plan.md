@@ -175,3 +175,10 @@ refreshPredictions()
   (管理端仅归还 busy 计数,用户端仅复位 busy),断线重连时清空序号簿;
   新增集成测试 apiClientDropsStaleResponses(同类型连发两请求,断言 1 新鲜 +
   1 过期),测试主宏换成 QTEST_GUILESS_MAIN 以提供事件循环。
+- 2026-09-04 E3 与 F 完成:
+  E3——大屏 API 新增 桩位利用率、站点营收排行(前5)、近7日 24 小时时段分布,
+  营收趋势扩至 30 天并在前端提供 近7日/近30日 切换;新增两个面板与对应 ECharts
+  渲染,样式延续深色大屏语言。顺手修复 server.py 默认数据库路径按工作目录解析
+  的缺陷(从项目根启动时 500),现按脚本位置解析,任意目录可启动。
+  F——新增 adminDashboardTrendRange 集成测试(days=7/30/越界回退)。
+  E2E 验证:/api/dashboard 返回全部新字段,本地 echarts 服务正常。

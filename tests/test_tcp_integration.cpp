@@ -249,6 +249,38 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    // 总览趋势区间:days=7/30 生效,越界值收敛到边界
+    void adminDashboardTrendRange()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                   {{QStringLiteral("username"), QStringLiteral("admin")},
+                                    {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        const auto d7 = exchange(socket, {QStringLiteral("dash7"), QStringLiteral("admin.dashboard"),
+                                          {{QStringLiteral("days"), 7}}});
+        QCOMPARE(d7.type, QStringLiteral("admin.dashboard.ok"));
+        QCOMPARE(d7.payload.value(QStringLiteral("trend_days")).toInt(), 7);
+        QVERIFY(d7.payload.value(QStringLiteral("revenue_trend")).toArray().size() <= 7);
+
+        const auto d30 = exchange(socket, {QStringLiteral("dash30"), QStringLiteral("admin.dashboard"),
+                                           {{QStringLiteral("days"), 30}}});
+        QCOMPARE(d30.payload.value(QStringLiteral("trend_days")).toInt(), 30);
+        QVERIFY(d30.payload.value(QStringLiteral("revenue_trend")).toArray().size() <= 30);
+
+        // 越界(days=0)应收敛到下界 7
+        const auto d0 = exchange(socket, {QStringLiteral("dash0"), QStringLiteral("admin.dashboard"),
+                                          {{QStringLiteral("days"), 0}}});
+        QCOMPARE(d0.payload.value(QStringLiteral("trend_days")).toInt(), 7);
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
     // 电桩管理:单独新增、编辑、手工切换状态(充电中拒绝)
     void pileManagementOperations()
     {

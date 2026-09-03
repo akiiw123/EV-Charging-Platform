@@ -13,3 +13,14 @@ strong { display: block; margin-top: 10px; color: #55d6be; font-size: 30px; }
 h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .chart { height: 380px; }
 @media (max-width: 800px) { .metrics, .grid { grid-template-columns: 1fr; } }
+
+/* 站点排行 / 时段切换(新增面板) */
+.ranking { list-style: none; margin: 10px 0 0; padding: 0; }
+.ranking li { display: flex; align-items: baseline; gap: 10px; padding: 9px 2px; border-bottom: 1px dashed #1d4a72; font-size: 14px; }
+.ranking li:last-child { border-bottom: none; }
+.ranking li.empty { color: #8fb6d9; justify-content: center; }
+.ranking .rank { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 6px; background: #153e63; color: #55d6be; font-weight: 600; flex: none; }
+.ranking li small { margin-left: auto; color: #8fb6d9; }
+.range-toggle button { background: transparent; border: 1px solid #3277ad; color: #9bbbd8; border-radius: 999px; padding: 3px 12px; margin-left: 6px; cursor: pointer; font-size: 12px; }
+.range-toggle button.on { background: #1b6ef3; border-color: #1b6ef3; color: #fff; }
+.grid.three { grid-template-columns: 1fr 1fr; }
