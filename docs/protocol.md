@@ -38,6 +38,10 @@ export CHARGING_SERVER_PORT=45454
 - `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势；`payload.days` 可选 7/30 指定趋势区间。
 - `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
+- `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
+  编号全局唯一，重复返回 `PILE_CREATE_FAILED`。
+- `admin.pile.update`：编辑类型与功率，`payload.pile_id/type/power_kw`；充电中拒绝（`PILE_UPDATE_FAILED`）。
+- `admin.pile.status`：手工切换状态，`payload.pile_id/status(idle|fault|offline)`；充电中拒绝（`PILE_STATUS_FAILED`）。
 - `admin.user.list` / `admin.user.status`：手机号模糊搜索及用户冻结、解冻。
 - `admin.password.change`：`payload.old_password` / `new_password`；校验当前密码后将新密码以
   PBKDF2-SHA256 落库并清除首登改密标志。新密码至少 8 位且不得与当前密码相同，
