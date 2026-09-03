@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS charging_orders (
     amount REAL NOT NULL DEFAULT 0 CHECK(amount >= 0),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS recharge_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    amount REAL NOT NULL CHECK(amount > 0),
+    balance_before REAL NOT NULL DEFAULT 0 CHECK(balance_before >= 0),
+    balance_after REAL NOT NULL DEFAULT 0 CHECK(balance_after >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_active_order
 ON charging_orders(user_id)
@@ -64,3 +72,4 @@ WHERE status IN ('reserved', 'charging', 'awaiting_payment');
 
 INSERT OR IGNORE INTO schema_versions(version) VALUES (1);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (2);
+INSERT OR IGNORE INTO schema_versions(version) VALUES (3);

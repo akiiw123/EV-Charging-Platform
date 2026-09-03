@@ -17,7 +17,9 @@ ApplicationWindow {
 
     property string currentPage: "home"
     property int currentTab: currentPage === "home" ? 0
-                             : currentPage === "charging" ? 1 : 2
+                         : currentPage === "charging" ? 1
+                         : currentPage === "orders" ? 2
+                         : 3
     // 未完成订单引导弹窗:每次登录只弹一次,登出后重置
     property bool orderPromptShown: false
 
@@ -30,6 +32,7 @@ ApplicationWindow {
 
     function showHome() { currentPage = "home" }
     function showCharging() { currentPage = "charging" }
+    function showOrders() { currentPage = "orders" }
     function showProfile() { currentPage = "profile"; appController.refreshProfile() }
     function showStation() { currentPage = "station" }
     function showMap() { currentPage = "map" }
@@ -51,6 +54,10 @@ ApplicationWindow {
         }
     }
     Component { id: chargingComponent; ChargingPage {} }
+    Component {
+    id: ordersComponent
+    OrdersPage {}
+    }
     Component {
         id: profileComponent
         ProfilePage { onLoggedOut: app.showHome() }
@@ -122,10 +129,11 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: bottomNav.visible ? bottomNav.top : parent.bottom
             sourceComponent: app.currentPage === "home" ? homeComponent
-                           : app.currentPage === "station" ? stationComponent
-                           : app.currentPage === "charging" ? chargingComponent
-                           : app.currentPage === "profile" ? profileComponent
-                           : mapComponent
+               : app.currentPage === "station" ? stationComponent
+               : app.currentPage === "charging" ? chargingComponent
+               : app.currentPage === "orders" ? ordersComponent
+               : app.currentPage === "profile" ? profileComponent
+               : mapComponent
         }
 
         BottomNav {
@@ -134,13 +142,21 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             visible: app.currentPage === "home"
-                     || app.currentPage === "charging"
-                     || app.currentPage === "profile"
-            currentIndex: app.currentTab
-            onSelected: function(index) {
-                if (index === 0) app.showHome()
-                else if (index === 1) app.showCharging()
-                else app.showProfile()
+         || app.currentPage === "charging"
+         || app.currentPage === "orders"
+         || app.currentPage === "profile"
+
+        currentIndex: app.currentTab
+
+        onSelected: function(index) {
+            if (index === 0)
+            app.showHome()
+            else if (index === 1)
+            app.showCharging()
+            else if (index === 2)
+            app.showOrders()
+            else if (index === 3)
+            app.showProfile()
             }
         }
     }

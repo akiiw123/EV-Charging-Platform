@@ -20,6 +20,7 @@ Rectangle {
             model: [
                 { icon: "⌂", text: "首页" },
                 { icon: "ϟ", text: "充电" },
+                { icon: "☷", text: "订单" },
                 { icon: "●", text: "我的" }
             ]
             delegate: Rectangle {
