@@ -7,7 +7,7 @@ import "../components"
 ScrollView{id:root;contentWidth:availableWidth;clip:true
     Component.onCompleted:adminController.refreshDashboard()
     ColumnLayout{x:24;width:root.availableWidth-48;spacing:16
-        PageHeader{Layout.fillWidth:true;title:"运营数据总览";subtitle:"实时掌握营收、订单与设备健康状态"}
+        PageHeader{Layout.fillWidth:true;title:"运营数据总览";subtitle:"营收、订单与设备状态汇总"}
         GridLayout{Layout.fillWidth:true;columns:4;rowSpacing:12;columnSpacing:12
             MetricCard{Layout.fillWidth:true;label:"今日营收";value:"¥ "+Number(adminController.dashboard.today_revenue||0).toFixed(2);trend:"今日实时"}
             MetricCard{Layout.fillWidth:true;label:"本月营收";value:"¥ "+Number(adminController.dashboard.month_revenue||0).toFixed(2);trend:"本月累计";tone:Theme.info}

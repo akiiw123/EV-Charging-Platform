@@ -14,6 +14,7 @@ qt_add_qml_module(charging-user
         qml/Theme.qml
         qml/components/AppButton.qml
         qml/components/AppCard.qml
+        qml/components/AppIcon.qml
         qml/components/BottomNav.qml
         qml/components/StationCard.qml
         qml/components/StatusBadge.qml
