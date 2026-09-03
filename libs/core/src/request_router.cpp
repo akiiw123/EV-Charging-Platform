@@ -38,8 +38,10 @@ QJsonObject pileJson(const ChargingPile& pile)
 QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile>& piles)
 {
     int idleCount = 0;
+    int offlineCount = 0;
     for (const auto& pile : piles) {
         idleCount += pile.status == QStringLiteral("idle") ? 1 : 0;
+        offlineCount += pile.status == QStringLiteral("offline") ? 1 : 0;
     }
     return {{QStringLiteral("id"), station.id},
             {QStringLiteral("name"), station.name},
@@ -49,6 +51,8 @@ QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile
             {QStringLiteral("price_per_kwh"), station.pricePerKwh},
             {QStringLiteral("pile_count"), piles.size()},
             {QStringLiteral("idle_pile_count"), idleCount},
+            {QStringLiteral("offline_count"), offlineCount},
+            {QStringLiteral("online_rate"), piles.isEmpty() ? 0.0 : (piles.size() - offlineCount) * 100.0 / piles.size()},
             {QStringLiteral("created_at"), station.createdAt.toString(Qt::ISODate)}};
 }
 
@@ -133,6 +137,19 @@ Message RequestRouter::route(const Message& request)
         metrics.insert(QStringLiteral("today_revenue"), revenue.value(0).toDouble());
         metrics.insert(QStringLiteral("month_revenue"), revenue.value(1).toDouble());
         metrics.insert(QStringLiteral("total_revenue"), revenue.value(2).toDouble());
+        QSqlQuery summary(database_);
+        if (!summary.exec(QStringLiteral(
+                "SELECT "
+                "(SELECT COUNT(*) FROM charging_orders WHERE date(created_at)=date('now','localtime')),"
+                "(SELECT COUNT(*) FROM charging_orders),"
+                "(SELECT COUNT(*) FROM users),"
+                "(SELECT COUNT(*) FROM charging_stations)")) || !summary.next()) {
+            return error(request, QStringLiteral("DATABASE_ERROR"), summary.lastError().text());
+        }
+        metrics.insert(QStringLiteral("today_orders"), summary.value(0).toInt());
+        metrics.insert(QStringLiteral("total_orders"), summary.value(1).toInt());
+        metrics.insert(QStringLiteral("registered_users"), summary.value(2).toInt());
+        metrics.insert(QStringLiteral("station_count"), summary.value(3).toInt());
         QSqlQuery pileCounts(database_);
         if (!pileCounts.exec(QStringLiteral("SELECT status,COUNT(*) FROM charging_piles GROUP BY status"))) {
             return error(request, QStringLiteral("DATABASE_ERROR"), pileCounts.lastError().text());
@@ -149,9 +166,23 @@ Message RequestRouter::route(const Message& request)
             trend.append(QJsonObject {{QStringLiteral("date"), trendQuery.value(0).toString()},
                                       {QStringLiteral("amount"), trendQuery.value(1).toDouble()}});
         }
+        int totalPiles = 0;
+        for (const auto& value : statuses) totalPiles += value.toInt();
+        const int onlinePiles = totalPiles - statuses.value(QStringLiteral("offline")).toInt();
+        metrics.insert(QStringLiteral("online_piles"), onlinePiles);
+        metrics.insert(QStringLiteral("fault_piles"), statuses.value(QStringLiteral("fault")).toInt());
+        metrics.insert(QStringLiteral("online_rate"), totalPiles > 0 ? onlinePiles * 100.0 / totalPiles : 0.0);
+        QJsonArray stationEnergy;
+        QSqlQuery energyQuery(database_);
+        energyQuery.exec(QStringLiteral(
+            "SELECT s.name,COALESCE(SUM(o.energy_kwh),0) FROM charging_stations s "
+            "LEFT JOIN charging_piles p ON p.station_id=s.id "
+            "LEFT JOIN charging_orders o ON o.pile_id=p.id GROUP BY s.id ORDER BY 2 DESC LIMIT 8"));
+        while (energyQuery.next()) stationEnergy.append(QJsonObject{{QStringLiteral("name"),energyQuery.value(0).toString()},{QStringLiteral("energy"),energyQuery.value(1).toDouble()}});
         return success(request, {{QStringLiteral("metrics"), metrics},
                                  {QStringLiteral("pile_status"), statuses},
-                                 {QStringLiteral("revenue_trend"), trend}});
+                                 {QStringLiteral("revenue_trend"), trend},
+                                 {QStringLiteral("station_energy"), stationEnergy}});
     }
 
     if (request.type == QStringLiteral("admin.station.list")) {
@@ -190,6 +221,37 @@ Message RequestRouter::route(const Message& request)
         return success(request, {{QStringLiteral("station"), stationJson(*station, piles.listByStation(station->id))}});
     }
 
+    if (request.type == QStringLiteral("admin.station.update")) {
+        const auto stationId = positiveId(request.payload, QStringLiteral("id"));
+        const QString name = request.payload.value(QStringLiteral("name")).toString().trimmed();
+        const QString address = request.payload.value(QStringLiteral("address")).toString().trimmed();
+        const double latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
+        const double longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
+        const double price = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
+        if (!stationId || name.isEmpty() || address.isEmpty() || latitude < -90 || latitude > 90
+            || longitude < -180 || longitude > 180 || price < 0) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("电站表单内容无效"));
+        }
+        QSqlQuery query(database_);
+        query.prepare(QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,latitude=:lat,longitude=:lng,price_per_kwh=:price WHERE id=:id"));
+        query.bindValue(QStringLiteral(":name"), name); query.bindValue(QStringLiteral(":address"), address);
+        query.bindValue(QStringLiteral(":lat"), latitude); query.bindValue(QStringLiteral(":lng"), longitude);
+        query.bindValue(QStringLiteral(":price"), price); query.bindValue(QStringLiteral(":id"), *stationId);
+        if (!query.exec() || query.numRowsAffected() != 1) return error(request, QStringLiteral("STATION_UPDATE_FAILED"), query.lastError().isValid() ? query.lastError().text() : QStringLiteral("电站不存在"));
+        return success(request, {{QStringLiteral("id"), *stationId}});
+    }
+
+    if (request.type == QStringLiteral("admin.station.delete")) {
+        const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
+        if (!stationId) return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("station_id 无效"));
+        QSqlQuery active(database_); active.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id AND o.status IN ('reserved','charging','awaiting_payment')")); active.bindValue(QStringLiteral(":id"),*stationId);
+        if (!active.exec() || !active.next()) return error(request, QStringLiteral("DATABASE_ERROR"),active.lastError().text());
+        if (active.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在进行中或待结算订单，不能删除"));
+        QSqlQuery query(database_); query.prepare(QStringLiteral("DELETE FROM charging_stations WHERE id=:id"));query.bindValue(QStringLiteral(":id"),*stationId);
+        if(!query.exec()||query.numRowsAffected()!=1)return error(request,QStringLiteral("STATION_DELETE_FAILED"),query.lastError().isValid()?query.lastError().text():QStringLiteral("电站不存在"));
+        return success(request,{{QStringLiteral("id"),*stationId}});
+    }
+
     if (request.type == QStringLiteral("admin.pile.list")) {
         QSqlQuery query(database_);
         query.prepare(QStringLiteral(
@@ -220,15 +282,34 @@ Message RequestRouter::route(const Message& request)
 
     if (request.type == QStringLiteral("admin.user.list")) {
         QSqlQuery query(database_);
-        query.prepare(QStringLiteral("SELECT * FROM users WHERE phone LIKE :phone ORDER BY id DESC LIMIT 200"));
+        query.prepare(QStringLiteral("SELECT u.*,MAX(o.created_at) AS last_activity,COUNT(o.id) AS order_count,COALESCE(SUM(CASE WHEN o.status='completed' THEN o.amount ELSE 0 END),0) AS total_spent FROM users u LEFT JOIN charging_orders o ON o.user_id=u.id WHERE u.phone LIKE :phone GROUP BY u.id ORDER BY u.id DESC LIMIT 200"));
         query.bindValue(QStringLiteral(":phone"), QStringLiteral("%") + request.payload.value(QStringLiteral("phone")).toString() + QStringLiteral("%"));
         if (!query.exec()) return error(request, QStringLiteral("DATABASE_ERROR"), query.lastError().text());
         QJsonArray array;
         while (query.next()) array.append(QJsonObject {{QStringLiteral("id"), query.value("id").toLongLong()},
             {QStringLiteral("phone"), query.value("phone").toString()}, {QStringLiteral("nickname"), query.value("nickname").toString()},
             {QStringLiteral("wallet_balance"), query.value("wallet_balance").toDouble()}, {QStringLiteral("status"), query.value("status").toString()},
-            {QStringLiteral("created_at"), query.value("created_at").toString()}});
+            {QStringLiteral("created_at"), query.value("created_at").toString()}, {QStringLiteral("last_activity"), query.value("last_activity").toString()},
+            {QStringLiteral("order_count"), query.value("order_count").toInt()}, {QStringLiteral("total_spent"), query.value("total_spent").toDouble()}});
         return success(request, {{QStringLiteral("users"), array}});
+    }
+
+    if (request.type == QStringLiteral("admin.order.list")) {
+        QSqlQuery query(database_);
+        query.prepare(QStringLiteral(
+            "SELECT o.id,u.phone,s.name,p.code,o.status,o.created_at,o.started_at,o.ended_at,o.energy_kwh,o.amount,"
+            "CASE WHEN o.started_at IS NULL THEN 0 ELSE CAST((julianday(COALESCE(o.ended_at,'now'))-julianday(o.started_at))*86400 AS INTEGER) END "
+            "FROM charging_orders o JOIN users u ON u.id=o.user_id JOIN charging_piles p ON p.id=o.pile_id "
+            "JOIN charging_stations s ON s.id=p.station_id ORDER BY o.id DESC LIMIT 500"));
+        if (!query.exec()) return error(request,QStringLiteral("DATABASE_ERROR"),query.lastError().text());
+        QJsonArray array; while(query.next()) array.append(QJsonObject{{QStringLiteral("id"),query.value(0).toLongLong()},
+            {QStringLiteral("order_no"),QStringLiteral("#%1").arg(query.value(0).toLongLong(),6,10,QLatin1Char('0'))},
+            {QStringLiteral("phone"),query.value(1).toString()},{QStringLiteral("station_name"),query.value(2).toString()},
+            {QStringLiteral("pile_code"),query.value(3).toString()},{QStringLiteral("status"),query.value(4).toString()},
+            {QStringLiteral("created_at"),query.value(5).toString()},{QStringLiteral("started_at"),query.value(6).toString()},
+            {QStringLiteral("ended_at"),query.value(7).toString()},{QStringLiteral("energy_kwh"),query.value(8).toDouble()},
+            {QStringLiteral("amount"),query.value(9).toDouble()},{QStringLiteral("duration_seconds"),query.value(10).toInt()}});
+        return success(request,{{QStringLiteral("orders"),array}});
     }
 
     if (request.type == QStringLiteral("admin.user.status")) {

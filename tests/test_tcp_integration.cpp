@@ -154,8 +154,13 @@ private slots:
                                     {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
                  QStringLiteral("admin.login.ok"));
         QVERIFY(fixture.administratorPasswordHash().startsWith(QStringLiteral("PBKDF2-SHA256$")));
-        QCOMPARE(exchange(socket, {QStringLiteral("dashboard"), QStringLiteral("admin.dashboard"), {}}).type,
-                 QStringLiteral("admin.dashboard.ok"));
+        const auto dashboard = exchange(socket, {QStringLiteral("dashboard"), QStringLiteral("admin.dashboard"), {}});
+        QCOMPARE(dashboard.type, QStringLiteral("admin.dashboard.ok"));
+        QVERIFY(dashboard.payload.value(QStringLiteral("metrics")).toObject()
+                    .contains(QStringLiteral("online_rate")));
+        QVERIFY(dashboard.payload.contains(QStringLiteral("station_energy")));
+        QCOMPARE(exchange(socket, {QStringLiteral("orders"), QStringLiteral("admin.order.list"), {}}).type,
+                 QStringLiteral("admin.order.list.ok"));
         const int initialPileCount = exchange(
             socket, {QStringLiteral("initial-piles"), QStringLiteral("admin.pile.list"), {}})
                                          .payload.value(QStringLiteral("piles")).toArray().size();
@@ -164,12 +169,22 @@ private slots:
              {QStringLiteral("latitude"), 41.8}, {QStringLiteral("longitude"), 123.4},
              {QStringLiteral("price_per_kwh"), 1.5}, {QStringLiteral("pile_count"), 2}}});
         QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
+        const qint64 stationId = created.payload.value(QStringLiteral("station")).toObject()
+                                     .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(socket, {QStringLiteral("station-update"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("测试新站（已编辑）")},
+             {QStringLiteral("address"), QStringLiteral("测试路2号")}, {QStringLiteral("latitude"), 41.81},
+             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6}}}).type,
+                 QStringLiteral("admin.station.update.ok"));
         const auto piles = exchange(socket, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
         QCOMPARE(piles.type, QStringLiteral("admin.pile.list.ok"));
         QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), initialPileCount + 2);
         QCOMPARE(exchange(socket, {QStringLiteral("users"), QStringLiteral("admin.user.list"),
                                    {{QStringLiteral("phone"), QString()}}}).type,
                  QStringLiteral("admin.user.list.ok"));
+        QCOMPARE(exchange(socket, {QStringLiteral("station-delete"), QStringLiteral("admin.station.delete"),
+                                   {{QStringLiteral("station_id"), stationId}}}).type,
+                 QStringLiteral("admin.station.delete.ok"));
         socket.disconnectFromHost();
         socket.waitForDisconnected(1000);
     }
