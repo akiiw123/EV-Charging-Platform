@@ -15,6 +15,7 @@ public:
 private:
     Message success(const Message& request, const QJsonObject& payload) const;
     Message error(const Message& request, const QString& code, const QString& message) const;
+    void expireStaleReservations();
 
     QSqlDatabase database_;
     std::optional<qint64> authenticatedUserId_;

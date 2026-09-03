@@ -55,6 +55,40 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    void staleReservationAutoExpires()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        const auto reserve = exchange(socket, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                               {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reserve.type, QStringLiteral("order.reserve.ok"));
+
+        // 把预约创建时间改到 20 分钟前,模拟超时未开始充电
+        QSqlQuery backdate(fixture.database());
+        QVERIFY(backdate.exec(QStringLiteral(
+            "UPDATE charging_orders SET created_at=datetime('now','-20 minutes') "
+            "WHERE status='reserved'")));
+
+        // 任意请求入口都会触发过期清理:活动订单应已被自动取消
+        const auto active = exchange(socket, {QStringLiteral("active"), QStringLiteral("order.active"), {}});
+        QCOMPARE(active.type, QStringLiteral("order.active.ok"));
+        QVERIFY(active.payload.value(QStringLiteral("order")).isNull());
+
+        // 配额释放后,同一用户可再次预约同一电桩
+        QCOMPARE(exchange(socket, {QStringLiteral("reserve-2"), QStringLiteral("order.reserve"),
+                                   {{QStringLiteral("pile_id"), 1}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
     void authenticatedChargingLifecycle()
     {
         Fixture fixture;
@@ -205,6 +239,7 @@ private:
 
         quint16 port() const { return server_.serverPort(); }
         bool acceptConnection() { return server_.waitForNewConnection(1000); }
+        QSqlDatabase database() const { return manager_.database(); }
         QString administratorPasswordHash() const
         {
             QSqlQuery query(manager_.database());

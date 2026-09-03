@@ -72,7 +72,8 @@ public:
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshAll();
-    Q_INVOKABLE void refreshDashboard();
+    // days 为趋势统计区间(7 或 30 日),默认 30
+    Q_INVOKABLE void refreshDashboard(int days = 30);
     Q_INVOKABLE void refreshStations(const QString& query = {});
     Q_INVOKABLE void refreshPiles(const QString& query = {}, const QString& station = {}, const QString& type = {}, const QString& status = {});
     Q_INVOKABLE void refreshOrders(const QString& query = {}, const QString& status = {});

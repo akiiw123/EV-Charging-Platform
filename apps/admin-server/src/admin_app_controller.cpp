@@ -46,7 +46,11 @@ void AdminAppController::request(const QString& type, const QJsonObject& payload
 void AdminAppController::login(const QString& username,const QString& password,bool remember) { errorMessage_.clear(); if(username.trimmed().isEmpty()||password.isEmpty()){errorMessage_=QStringLiteral("请输入管理员账号和密码");emit noticeChanged();return;} settings_.setValue(QStringLiteral("login/username"),remember?username:QString()); request(QStringLiteral("admin.login"),{{"username",username},{"password",password}}); }
 void AdminAppController::logout(){ loggedIn_=false; administrator_.clear(); emit loggedInChanged(); }
 void AdminAppController::refreshAll(){ refreshDashboard(); request(QStringLiteral("admin.station.list")); request(QStringLiteral("admin.pile.list")); request(QStringLiteral("admin.order.list")); request(QStringLiteral("admin.user.list"),{{"phone",QString()}}); }
-void AdminAppController::refreshDashboard(){ request(QStringLiteral("admin.dashboard")); }
+void AdminAppController::refreshDashboard(int days)
+{
+    // 请求指定区间的运营总览,服务端按 days(7/30)返回营收趋势
+    request(QStringLiteral("admin.dashboard"), {{QStringLiteral("days"), days}});
+}
 void AdminAppController::refreshStations(const QString& q){ stationQuery_=q; applyClientFilters(); if(rawStations_.isEmpty())request(QStringLiteral("admin.station.list")); }
 void AdminAppController::refreshPiles(const QString& q,const QString& station,const QString& type,const QString& status){pileQuery_=q;pileStation_=station;pileType_=type;pileState_=status;applyClientFilters();if(rawPiles_.isEmpty())request(QStringLiteral("admin.pile.list"));}
 void AdminAppController::refreshOrders(const QString& q,const QString& status){orderQuery_=q;orderState_=status;applyClientFilters();if(rawOrders_.isEmpty())request(QStringLiteral("admin.order.list"));}
