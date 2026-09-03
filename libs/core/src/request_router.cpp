@@ -95,6 +95,28 @@ void RequestRouter::expireStaleReservations()
         "AND created_at < datetime('now','-15 minutes')"));
 }
 
+// 冻结踢会话(轮询入口):由 TCP 连接循环定期调用,查询当前登录用户的状态。
+// 已被冻结 -> 清除登录身份、标记会话关闭并返回 true,由连接层负责断开。
+// 仅在已认证且未关闭时查询,普通浏览请求开销可忽略。
+bool RequestRouter::refreshSession()
+{
+    if (sessionClosed_ || !authenticatedUserId_) {
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("SELECT status FROM users WHERE id = :id"));
+    query.bindValue(QStringLiteral(":id"), *authenticatedUserId_);
+    if (!query.exec() || !query.next()) {
+        return false;   // 查询失败按在线处理,避免误踢
+    }
+    if (query.value(0).toString() == QStringLiteral("frozen")) {
+        authenticatedUserId_.reset();
+        sessionClosed_ = true;
+        return true;
+    }
+    return false;
+}
+
 Message RequestRouter::route(const Message& request)
 {
     // 每次请求前先清理超时预约,保证后续查询/预约看到的是最新状态
@@ -460,6 +482,11 @@ Message RequestRouter::route(const Message& request)
         || request.type.startsWith(QStringLiteral("order."));
     if (requiresAuthentication && !authenticatedUserId_) {
         return error(request, QStringLiteral("AUTH_REQUIRED"), QStringLiteral("请先登录"));
+    }
+    // C4:已登录用户被冻结后,下一个请求立即拒绝并关闭会话
+    if (requiresAuthentication && refreshSession()) {
+        return error(request, QStringLiteral("AUTH_USER_FROZEN"),
+                     QStringLiteral("账号已被冻结,连接即将断开"));
     }
 
     if (request.type == QStringLiteral("user.profile")) {

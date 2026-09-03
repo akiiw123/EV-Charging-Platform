@@ -42,10 +42,24 @@ public:
 
         RequestRouter router(database.database());
         QByteArray buffer;
+        int idleCycles = 0;   // 250ms/次,20 次 ≈ 5 秒做一次冻结复查
         while (!stopping_->load() && socket.state() == QAbstractSocket::ConnectedState) {
             if (!socket.waitForReadyRead(250)) {
+                // C4:空闲时也定期复查登录用户是否被冻结,被冻结则断开
+                if (++idleCycles >= 20) {
+                    idleCycles = 0;
+                    if (router.refreshSession()) {
+                        write(&socket, {QStringLiteral("server"),
+                                        QStringLiteral("server.session.closed"),
+                                        {{QStringLiteral("code"), QStringLiteral("AUTH_USER_FROZEN")},
+                                         {QStringLiteral("message"),
+                                          QStringLiteral("账号已被冻结,连接已断开")}}});
+                        break;
+                    }
+                }
                 continue;
             }
+            idleCycles = 0;
             buffer.append(socket.readAll());
             if (buffer.size() > kMaximumMessageBytes && !buffer.contains('\n')) {
                 write(&socket, protocolError(QStringLiteral("消息超过 1 MiB 限制")));
@@ -66,6 +80,10 @@ public:
                     continue;
                 }
                 write(&socket, router.route(request));
+            }
+            // 会话被关闭(冻结踢出)时,发完错误响应即断开连接
+            if (router.sessionClosed()) {
+                break;
             }
         }
         socket.disconnectFromHost();
