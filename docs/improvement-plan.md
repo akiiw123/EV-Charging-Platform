@@ -145,3 +145,8 @@ refreshPredictions()
   需补装 `sudo apt install qml6-module-qtquick-templates qml6-module-qtquick-window
   qml6-module-qtwebengine`;已用免 root 方案验证:`~/qt-extra-qml/` 下解包了
   上述 deb,运行前 `export QML_IMPORT_PATH=~/qt-extra-qml/usr/lib/x86_64-linux-gnu/qt6/qml`。
+- 2026-09-03 新增 `docs/manual-testing.md` 手动测试指南:覆盖环境准备、用户端
+  (登录/资料/头像/充电闭环/活动订单引导/预约超时/断线重连)、管理端(强制改密/
+  总览/四类管理/预测页)、Web 大屏、异常边界与 10 分钟演示路径;含 UI 去AI化
+  视觉重塑提交(`63e8311`,基于 ui-ux-pro-max 技能库数据:主色改生态绿 #059669、
+  字符图标替换为矢量 AppIcon、装饰渐变拉平、文案去营销腔)。
