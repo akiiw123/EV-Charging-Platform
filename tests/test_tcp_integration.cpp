@@ -1,3 +1,4 @@
+#include "charging/core/api_client.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/message_protocol.h"
 #include "charging/core/tcp_server.h"
@@ -5,6 +6,7 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QJsonArray>
+#include <QSignalSpy>
 #include <QSqlQuery>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -247,6 +249,216 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    // 总览趋势区间:days=7/30 生效,越界值收敛到边界
+    void adminDashboardTrendRange()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                   {{QStringLiteral("username"), QStringLiteral("admin")},
+                                    {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        const auto d7 = exchange(socket, {QStringLiteral("dash7"), QStringLiteral("admin.dashboard"),
+                                          {{QStringLiteral("days"), 7}}});
+        QCOMPARE(d7.type, QStringLiteral("admin.dashboard.ok"));
+        QCOMPARE(d7.payload.value(QStringLiteral("trend_days")).toInt(), 7);
+        QVERIFY(d7.payload.value(QStringLiteral("revenue_trend")).toArray().size() <= 7);
+
+        const auto d30 = exchange(socket, {QStringLiteral("dash30"), QStringLiteral("admin.dashboard"),
+                                           {{QStringLiteral("days"), 30}}});
+        QCOMPARE(d30.payload.value(QStringLiteral("trend_days")).toInt(), 30);
+        QVERIFY(d30.payload.value(QStringLiteral("revenue_trend")).toArray().size() <= 30);
+
+        // 越界(days=0)应收敛到下界 7
+        const auto d0 = exchange(socket, {QStringLiteral("dash0"), QStringLiteral("admin.dashboard"),
+                                          {{QStringLiteral("days"), 0}}});
+        QCOMPARE(d0.payload.value(QStringLiteral("trend_days")).toInt(), 7);
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
+    // 电桩管理:单独新增、编辑、手工切换状态(充电中拒绝)
+    void pileManagementOperations()
+    {
+        Fixture fixture;
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        // 单独新增电桩
+        const auto created = exchange(admin, {QStringLiteral("pile-create"), QStringLiteral("admin.pile.create"),
+            {{QStringLiteral("station_id"), 1}, {QStringLiteral("code"), QStringLiteral("TST-01")},
+             {QStringLiteral("type"), QStringLiteral("slow")}, {QStringLiteral("power_kw"), 7.0}}});
+        QCOMPARE(created.type, QStringLiteral("admin.pile.create.ok"));
+        QCOMPARE(created.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("idle"));
+
+        // 重复编号 → 拒绝(数据库唯一约束)
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-dup"), QStringLiteral("admin.pile.create"),
+            {{QStringLiteral("station_id"), 1}, {QStringLiteral("code"), QStringLiteral("TST-01")},
+             {QStringLiteral("type"), QStringLiteral("slow")}, {QStringLiteral("power_kw"), 7.0}}}).type,
+                 QStringLiteral("admin.pile.create.error"));
+        // 非法状态值 → 拒绝
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-bad-status"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 1},
+                                   {QStringLiteral("status"), QStringLiteral("broken")}}}).type,
+                 QStringLiteral("admin.pile.status.error"));
+        // 手工置为故障
+        const auto fault = exchange(admin, {QStringLiteral("pile-fault"), QStringLiteral("admin.pile.status"),
+                                            {{QStringLiteral("pile_id"), 1},
+                                             {QStringLiteral("status"), QStringLiteral("fault")}}});
+        QCOMPARE(fault.type, QStringLiteral("admin.pile.status.ok"));
+        QCOMPARE(fault.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("fault"));
+        // 恢复空闲
+        QCOMPARE(exchange(admin, {QStringLiteral("pile-idle"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 1},
+                                   {QStringLiteral("status"), QStringLiteral("idle")}}}).type,
+                 QStringLiteral("admin.pile.status.ok"));
+        // 编辑功率
+        const auto updated = exchange(admin, {QStringLiteral("pile-update"), QStringLiteral("admin.pile.update"),
+            {{QStringLiteral("pile_id"), 1}, {QStringLiteral("type"), QStringLiteral("fast")},
+             {QStringLiteral("power_kw"), 60.0}}});
+        QCOMPARE(updated.type, QStringLiteral("admin.pile.update.ok"));
+        QCOMPARE(updated.payload.value(QStringLiteral("pile")).toObject()
+                     .value(QStringLiteral("power_kw")).toDouble(), 60.0);
+
+        // 充电中的电桩:状态切换与编辑均拒绝
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                 {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        QCOMPARE(exchange(user, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                 {{QStringLiteral("pile_id"), 2}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        QCOMPARE(exchange(user, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                 {{QStringLiteral("order_id"),
+                                   exchange(user, {QStringLiteral("active"), QStringLiteral("order.active"), {}})
+                                       .payload.value(QStringLiteral("order")).toObject()
+                                       .value(QStringLiteral("id")).toInteger()}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("status-charging"), QStringLiteral("admin.pile.status"),
+                                  {{QStringLiteral("pile_id"), 2},
+                                   {QStringLiteral("status"), QStringLiteral("fault")}}}).type,
+                 QStringLiteral("admin.pile.status.error"));
+        QCOMPARE(exchange(admin, {QStringLiteral("update-charging"), QStringLiteral("admin.pile.update"),
+                                  {{QStringLiteral("pile_id"), 2}, {QStringLiteral("type"), QStringLiteral("fast")},
+                                   {QStringLiteral("power_kw"), 60.0}}}).type,
+                 QStringLiteral("admin.pile.update.error"));
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+        user.disconnectFromHost();
+        user.waitForDisconnected(1000);
+    }
+
+    // C4 冻结踢会话(请求级):管理员冻结后,该用户下一个请求立即拒绝并断开
+    void frozenUserKickedOnNextRequest()
+    {
+        Fixture fixture;
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        const auto login = exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                           {{QStringLiteral("phone"), QStringLiteral("13600136000")}}});
+        QCOMPARE(login.type, QStringLiteral("auth.phone_login.ok"));
+        const qint64 userId = login.payload.value(QStringLiteral("user")).toObject()
+                                  .value(QStringLiteral("id")).toInteger();
+
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("alogin"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("freeze"), QStringLiteral("admin.user.status"),
+                                  {{QStringLiteral("user_id"), userId},
+                                   {QStringLiteral("status"), QStringLiteral("frozen")}}}).type,
+                 QStringLiteral("admin.user.status.ok"));
+
+        // 下一个需要鉴权的请求被拒绝,并附带冻结码
+        const auto denied = exchange(user, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}});
+        QCOMPARE(denied.type, QStringLiteral("user.profile.error"));
+        QCOMPARE(denied.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("AUTH_USER_FROZEN"));
+        // 会话被服务端关闭
+        QTRY_COMPARE_WITH_TIMEOUT(user.state(), QAbstractSocket::UnconnectedState, 3000);
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+    }
+
+    // C4 冻结踢会话(轮询级):冻结后即使不发任何请求,约 5 秒内也会被断开
+    void frozenUserKickedWhileIdle()
+    {
+        Fixture fixture;
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        const auto login = exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                           {{QStringLiteral("phone"), QStringLiteral("13600136000")}}});
+        QCOMPARE(login.type, QStringLiteral("auth.phone_login.ok"));
+        const qint64 userId = login.payload.value(QStringLiteral("user")).toObject()
+                                  .value(QStringLiteral("id")).toInteger();
+
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("alogin"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+        QCOMPARE(exchange(admin, {QStringLiteral("freeze"), QStringLiteral("admin.user.status"),
+                                  {{QStringLiteral("user_id"), userId},
+                                   {QStringLiteral("status"), QStringLiteral("frozen")}}}).type,
+                 QStringLiteral("admin.user.status.ok"));
+
+        // 不发任何请求:轮询复查约 5 秒,应在 10 秒内被断开
+        QTRY_COMPARE_WITH_TIMEOUT(user.state(), QAbstractSocket::UnconnectedState, 10000);
+        admin.disconnectFromHost();
+        admin.waitForDisconnected(1000);
+    }
+
+    // B4:同类型请求连发两次,旧响应应被标记为 stale,只有最新响应驱动界面
+    void apiClientDropsStaleResponses()
+    {
+        Fixture fixture;
+        charging::core::ApiClient client;
+        QSignalSpy fresh(&client, &charging::core::ApiClient::responseReceived);
+        QSignalSpy stale(&client, &charging::core::ApiClient::staleResponseReceived);
+
+        client.connectToServer(QStringLiteral("127.0.0.1"), fixture.port());
+        // 事件循环会在后台消费 accept 通知,必须先在服务端侧接受连接
+        QVERIFY(fixture.acceptConnection());
+        QTRY_VERIFY(client.isConnected());
+
+        // 第二次 send 已把该类型最新序号推后,第一个响应必然过期
+        client.send(QStringLiteral("station.list"));
+        client.send(QStringLiteral("station.list"));
+        QTRY_COMPARE(fresh.count() + stale.count(), 2);
+        QCOMPARE(fresh.count(), 1);
+        QCOMPARE(stale.count(), 1);
+        // 到达的"新鲜"响应一定对应最新请求
+        const auto msg = fresh.first().first().value<charging::core::Message>();
+        // station.list 的响应对服务端而言内容相同,这里只验证计数与路由正确
+        QVERIFY(msg.type == QStringLiteral("station.list.ok"));
+    }
+
     // 默认账号 admin/123456 带首登改密标志:校验改密接口全链路
     void forcedPasswordChangeFlow()
     {
@@ -353,5 +565,5 @@ private:
     }
 };
 
-QTEST_APPLESS_MAIN(TcpIntegrationTest)
+QTEST_GUILESS_MAIN(TcpIntegrationTest)
 #include "test_tcp_integration.moc"

@@ -64,7 +64,7 @@
 | 1 | **管理端真正接入 ml `/predict`**:逐站点请求预测,表格与指标卡显示真实数值 | A | ✅ 本次完成 |
 | 2 | 强制改密页 + 首登改密流程 | C1 | ✅ 本次完成 |
 | 3 | 头像选择、预览与展示 | B2 | ✅ 本次完成 |
-| 4 | Web 大屏 ECharts 本地化 | E1 | 待做 |
+| 4 | Web 大屏 ECharts 本地化 | E1 | ✅ 已完成 |
 | 5 | 状态文档重写 + 新接口测试补充 | F | 待做 |
 | 6 | 电桩手工状态管理 / 并发请求 ID 映射 / 请求路由拆分 | C2/B4/D3 | 备选 |
 
@@ -131,8 +131,8 @@ refreshPredictions()
   默认 127.0.0.1:8090),可先用于界面联调;正式演示请运行 `ml/service.py` + `train.py` 产物。
 - 2026-09-03 步骤 2 完成:新增 `admin.password.change` 接口(校验旧密码 → 强度检查 →
   PBKDF2 落库并清除首登标志,仓储层 `AdministratorRepository::changePassword`),
-  管理端登录后若 `must_change_password` 为真则弹出不可关闭的强制改密弹窗,
-  成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。
+  管理端登录后若 `must_change_password` 为真则弹出改密提醒弹窗
+  (可"稍后再说"/Esc 关闭,每次登录重新提醒),成功后自动放行;新增集成测试 `forcedPasswordChangeFlow` 覆盖全链路。
 - 2026-09-03 步骤 3 完成:用户端头像功能落地——点击头像弹出系统文件选择器
   (QFileDialog,用户端为此链接 QtWidgets),校验格式与 5MB 大小后居中裁方缩放
   256×256 并绘制为圆形透明 PNG 存入应用数据目录(按手机号命名,避免原图片被
@@ -145,3 +145,46 @@ refreshPredictions()
   需补装 `sudo apt install qml6-module-qtquick-templates qml6-module-qtquick-window
   qml6-module-qtwebengine`;已用免 root 方案验证:`~/qt-extra-qml/` 下解包了
   上述 deb,运行前 `export QML_IMPORT_PATH=~/qt-extra-qml/usr/lib/x86_64-linux-gnu/qt6/qml`。
+- 2026-09-03 新增 `docs/manual-testing.md` 手动测试指南:覆盖环境准备、用户端
+  (登录/资料/头像/充电闭环/活动订单引导/预约超时/断线重连)、管理端(强制改密/
+  总览/四类管理/预测页)、Web 大屏、异常边界与 10 分钟演示路径;含 UI 去AI化
+  视觉重塑提交(`63e8311`,基于 ui-ux-pro-max 技能库数据:主色改生态绿 #059669、
+  字符图标替换为矢量 AppIcon、装饰渐变拉平、文案去营销腔)。
+
+- 2026-09-03 复查:对照第 1 节清单逐项核查代码,结论——已完成 A(预测接入)、
+  B2(头像)、C1(改密提醒,已可跳过)、UI 去AI化;B5 确认 views/ 旧视图从未被
+  CMakeLists 引用(仅磁盘残留,可直接删除);F 部分完成(admin.station.update/
+  delete 与改密已有测试,dashboard days 与头像服务端测试已有/部分)。其余
+  B1/B3/B4、C2/C3/C4、D1–D4、E1–E3 保持未动,优先级建议不变(下一步 E1 成本最低)。
+
+- 2026-09-03 步骤 4(E1)与 B1 完成:
+  E1——echarts.min.js(1.0MB)随 `web/dashboard/` 目录分发,`index.html` 改本地
+  引用,离线环境可正常渲染;已验证静态服务 200 返回完整文件。
+  B1——用户端定位落地:6 个内置城市即时定位(模拟 GPS/区域选择,离线可用);
+  配置 `TENCENT_MAP_KEY` 后任意地址经腾讯 WebService geocoder 解析经纬度
+  (响应结构已实测核对),解析失败/无 Key 明确提示并保持原位;首页新增城市
+  快选芯片与当前坐标读数,距离计算/排序/显示(原有)从此吃到真实输入。
+- 2026-09-03 第 2 次扫描更新快照:E1、B1 落地后,完成度 ✅5 / 🟡2 / ❌11。
+  新增证据列,所有状态均以当前代码 grep 取证;B5 降级为"磁盘残留"。
+- 2026-09-03 步骤 6 之 C2 完成:新增 `admin.pile.create/update/status` 三个管理接口
+  (仓储层补 `PileRepository::update`),PilesPage 新增"新增电桩"对话框与抽屉内
+  手工状态切换(空闲/故障/离线)、编辑入口;充电中的电桩一律拒绝并给出提示;
+  集成测试 `pileManagementOperations` 覆盖新增/重复编号/非法状态/充电中拒绝。
+- 2026-09-04 B4 完成:ApiClient 维护"请求 ID→发送序号"与"请求类型→最新序号"
+  两张表;同类型的旧响应不再发 responseReceived,改发 staleResponseReceived
+  (管理端仅归还 busy 计数,用户端仅复位 busy),断线重连时清空序号簿;
+  新增集成测试 apiClientDropsStaleResponses(同类型连发两请求,断言 1 新鲜 +
+  1 过期),测试主宏换成 QTEST_GUILESS_MAIN 以提供事件循环。
+- 2026-09-04 E3 与 F 完成:
+  E3——大屏 API 新增 桩位利用率、站点营收排行(前5)、近7日 24 小时时段分布,
+  营收趋势扩至 30 天并在前端提供 近7日/近30日 切换;新增两个面板与对应 ECharts
+  渲染,样式延续深色大屏语言。顺手修复 server.py 默认数据库路径按工作目录解析
+  的缺陷(从项目根启动时 500),现按脚本位置解析,任意目录可启动。
+  F——新增 adminDashboardTrendRange 集成测试(days=7/30/越界回退)。
+  E2E 验证:/api/dashboard 返回全部新字段,本地 echarts 服务正常。
+- 2026-09-04 B5 与 C4 完成:
+  B5——删除 apps/user-client/src/views/(12 个未编译的旧 Widgets 视图)。
+  C4——冻结用户现在会被踢出已建立会话:路由层在鉴权请求入口复查状态,
+  被冻结立即拒绝(AUTH_USER_FROZEN)并标记会话关闭;TCP 连接循环在空闲期
+  每 5 秒轮询一次,发 server.session.closed 后断开。两个层级均有集成测试
+  (frozenUserKickedOnNextRequest / frozenUserKickedWhileIdle)。

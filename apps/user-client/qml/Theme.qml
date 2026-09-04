@@ -1,19 +1,22 @@
 pragma Singleton
 import QtQuick
 
+// 设计令牌:与管理端统一为参考图(ChargePilot)提取的"信号蓝 + 藏青墨 + 浅灰底"
+// 品牌家族;绿色仅作成功/可用状态色,不再作主色
 QtObject {
-    readonly property color primary: "#0F9F8F"
-    readonly property color primaryDark: "#0B776D"
-    readonly property color primarySoft: "#E8FAF6"
-    readonly property color background: "#F4F7FA"
+    readonly property string fontFamily: Qt.application.font.family
+    readonly property color primary: "#1B6EF3"
+    readonly property color primaryDark: "#155FD6"
+    readonly property color primarySoft: "#EAF2FF"
+    readonly property color background: "#F4F6F8"
     readonly property color surface: "#FFFFFF"
-    readonly property color text: "#172B3A"
-    readonly property color textMuted: "#718096"
-    readonly property color border: "#E2E8F0"
-    readonly property color danger: "#E5484D"
-    readonly property color warning: "#F59E0B"
-    readonly property color success: "#16A085"
-    readonly property int radiusSmall: 10
-    readonly property int radius: 16
-    readonly property int radiusLarge: 24
+    readonly property color text: "#0B1531"
+    readonly property color textMuted: "#6B7480"
+    readonly property color border: "#E3E7EC"
+    readonly property color danger: "#DC2626"
+    readonly property color warning: "#D97706"
+    readonly property color success: "#16A34A"
+    readonly property int radiusSmall: 8
+    readonly property int radius: 14
+    readonly property int radiusLarge: 20
 }

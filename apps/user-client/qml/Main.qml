@@ -14,6 +14,7 @@ ApplicationWindow {
     visible: true
     title: "充电客户端"
     color: Theme.background
+    font.family: Theme.fontFamily
 
     property string currentPage: "home"
     property int currentTab: currentPage === "home" ? 0
@@ -80,26 +81,22 @@ ApplicationWindow {
         anchors.fill: parent
         visible: appController.loggedIn
 
-        Rectangle {
-            id: topBar
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: app.currentPage === "map" ? 0 : 64
-            visible: height > 0
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: Theme.primaryDark }
-                GradientStop { position: 1; color: Theme.primary }
-            }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                Rectangle {
-                    width: 38; height: 38; radius: 13; color: "#24FFFFFF"
-                    Text { anchors.centerIn: parent; text: "ϟ"; color: "white"; font.pixelSize: 25; font.bold: true }
-                }
+            Rectangle {
+                id: topBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: app.currentPage === "map" ? 0 : 64
+                visible: height > 0
+                color: Theme.primaryDark
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 20
+                    anchors.rightMargin: 20
+                    Rectangle {
+                        width: 38; height: 38; radius: 12; color: "#24FFFFFF"
+                        AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: "white"; width: 22; height: 22 }
+                    }
                 Text { text: "充电客户端"; color: "white"; font.pixelSize: 18; font.bold: true }
                 Item { Layout.fillWidth: true }
                 Column {

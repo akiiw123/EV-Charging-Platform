@@ -18,10 +18,10 @@ Rectangle {
         spacing: 8
         Repeater {
             model: [
-                { icon: "⌂", text: "首页" },
-                { icon: "ϟ", text: "充电" },
-                { icon: "☷", text: "订单" },
-                { icon: "●", text: "我的" }
+                { icon: "home", text: "首页" },
+                { icon: "bolt", text: "充电" },
+                { icon: "order", text: "订单" },
+                { icon: "person", text: "我的" }
             ]
             delegate: Rectangle {
                 Layout.fillWidth: true
@@ -31,12 +31,11 @@ Rectangle {
                 color: nav.currentIndex === index ? Theme.primarySoft : "transparent"
                 Column {
                     anchors.centerIn: parent
-                    spacing: 2
-                    Text {
+                    spacing: 3
+                    AppIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: modelData.icon
-                        font.pixelSize: 21
-                        color: nav.currentIndex === index ? Theme.primary : Theme.textMuted
+                        name: modelData.icon
+                        iconColor: nav.currentIndex === index ? Theme.primary : Theme.textMuted
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter

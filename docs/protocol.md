@@ -32,12 +32,20 @@ export CHARGING_SERVER_PORT=45454
 
 用户相关接口绑定当前 TCP 连接的登录身份，不接受客户端提交任意用户 ID。连接重建后必须重新登录。
 
+被冻结的用户会话会被服务端主动断开：用户发出下一个鉴权请求时立即拒绝
+（`AUTH_USER_FROZEN`）并断开；即使不发请求，服务端约每 5 秒轮询一次，
+发送 `server.session.closed` 后断开。客户端可自动重连，但重新登录仍会被拒。
+
 ## 管理接口
 
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
 - `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势；`payload.days` 可选 7/30 指定趋势区间。
 - `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
+- `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
+  编号全局唯一，重复返回 `PILE_CREATE_FAILED`。
+- `admin.pile.update`：编辑类型与功率，`payload.pile_id/type/power_kw`；充电中拒绝（`PILE_UPDATE_FAILED`）。
+- `admin.pile.status`：手工切换状态，`payload.pile_id/status(idle|fault|offline)`；充电中拒绝（`PILE_STATUS_FAILED`）。
 - `admin.user.list` / `admin.user.status`：手机号模糊搜索及用户冻结、解冻。
 - `admin.password.change`：`payload.old_password` / `new_password`；校验当前密码后将新密码以
   PBKDF2-SHA256 落库并清除首登改密标志。新密码至少 8 位且不得与当前密码相同，

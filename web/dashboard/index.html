@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>充电桩运营数据大屏</title><link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <!-- ECharts 本地化:随大屏目录分发,离线环境(无外网)也能正常渲染 -->
+  <script src="echarts.min.js"></script>
 </head>
 <body><main>
   <header><h1>充电桩运营数据大屏</h1><span id="clock"></span></header>
@@ -11,10 +12,15 @@
     <article><small>今日营收</small><strong id="todayRevenue">¥ 0.00</strong></article>
     <article><small>在线电桩</small><strong id="onlinePiles">0</strong></article>
     <article><small>进行中订单</small><strong id="activeOrders">0</strong></article>
+    <article><small>桩位利用率</small><strong id="utilization">0%</strong></article>
   </section>
   <section class="grid">
-    <article class="panel"><h2>近 7 日营收</h2><div id="revenue" class="chart"></div></article>
+    <article class="panel"><h2><span class="range-toggle"><button id="range7" class="on">近 7 日</button><button id="range30">近 30 日</button></span>营收趋势</h2><div id="revenue" class="chart"></div></article>
     <article class="panel"><h2>电桩状态</h2><div id="status" class="chart"></div></article>
+  </section>
+  <section class="grid">
+    <article class="panel"><h2>近 7 日充电时段分布</h2><div id="hourly" class="chart"></div></article>
+    <article class="panel"><h2>站点营收排行</h2><ol id="ranking" class="ranking"></ol></article>
   </section>
   <p id="connectionState">正在读取运营数据…</p>
 </main><script src="app.js"></script></body>

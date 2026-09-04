@@ -104,7 +104,7 @@ Item {
                     Rectangle {
                         width: 48; height: 48; radius: 15
                         color: modelData.status === "idle" ? Theme.primarySoft : "#F1F5F9"
-                        Text { anchors.centerIn: parent; text: "ϟ"; font.pixelSize: 26; font.bold: true; color: modelData.status === "idle" ? Theme.primary : Theme.textMuted }
+                        AppIcon { anchors.centerIn: parent; name: "bolt"; width: 24; height: 24; iconColor: modelData.status === "idle" ? Theme.primary : Theme.textMuted }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true

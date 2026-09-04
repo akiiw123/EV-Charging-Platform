@@ -2,6 +2,7 @@
 
 #include "charging/core/api_client.h"
 
+#include <QNetworkAccessManager>
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
@@ -28,6 +29,8 @@ class UserAppController final : public QObject {
     Q_PROPERTY(QString locationName READ locationName NOTIFY locationChanged)
     Q_PROPERTY(double latitude READ latitude NOTIFY locationChanged)
     Q_PROPERTY(double longitude READ longitude NOTIFY locationChanged)
+    // 是否配置了腾讯地图 Key:决定能否对任意地址做真实地理编码
+    Q_PROPERTY(bool mapKeyConfigured READ mapKeyConfigured NOTIFY locationChanged)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
     Q_PROPERTY(QString chargingEstimate READ chargingEstimate NOTIFY chargingEstimateChanged)
     Q_PROPERTY(QUrl mapUrl READ mapUrl NOTIFY mapChanged)
@@ -50,6 +53,7 @@ public:
     QVariantList history() const;
     QVariantList rechargeHistory() const;
     QString locationName() const;
+    bool mapKeyConfigured() const { return !qEnvironmentVariableIsEmpty("TENCENT_MAP_KEY"); }
     double latitude() const;
     double longitude() const;
     QString searchQuery() const;
@@ -62,6 +66,7 @@ public:
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshStations();
     Q_INVOKABLE void locate(const QString& address);
+    Q_INVOKABLE QVariantList presetCities() const { return presetCities_; }
     Q_INVOKABLE void selectStation(const QVariantMap& station);
     Q_INVOKABLE void reserve(qint64 pileId, double powerKw);
     Q_INVOKABLE void orderAction(const QString& action);
@@ -102,6 +107,12 @@ private:
     void rebuildStations();
     void loadPiles(qint64 stationId);
     void updateChargingEstimate();
+    void applyLocation(const QString& name, double latitude, double longitude);
+    void geocodeAddress(const QString& address);
+    QNetworkAccessManager network_;
+    QVariantList presetCities_{
+        QStringLiteral("北京"), QStringLiteral("上海"), QStringLiteral("广州"),
+        QStringLiteral("深圳"), QStringLiteral("沈阳"), QStringLiteral("杭州")};
     static double distanceKm(double lat1, double lon1, double lat2, double lon2);
 
     charging::core::ApiClient api_;

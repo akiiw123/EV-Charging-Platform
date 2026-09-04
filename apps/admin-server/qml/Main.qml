@@ -20,11 +20,11 @@ ApplicationWindow {
     LoginPage { anchors.fill: parent; visible: !adminController.loggedIn }
     AppShell { anchors.fill: parent; visible: adminController.loggedIn }
 
-    // 首登强制改密:检测到初始密码时弹出,改密成功前无法关闭或绕过
+    // 首登改密提醒:检测到初始密码时弹出,可关闭稍后处理(每次登录会再提醒)
     Dialog {
         id: changePasswordDialog
         modal: true
-        closePolicy: Popup.NoAutoClose
+        closePolicy: Popup.CloseOnEscape
         visible: adminController.loggedIn && adminController.mustChangePassword
         anchors.centerIn: parent
         width: 430
@@ -47,8 +47,14 @@ ApplicationWindow {
             Text { id: cpError; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.danger; font.pixelSize: Theme.fontCaption; visible: text.length > 0 }
             RowLayout {
                 Layout.fillWidth: true; Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
                 AppButton {
+                    Layout.fillWidth: true
+                    text: "稍后再说"
+                    variant: "secondary"
+                    onClicked: changePasswordDialog.close()
+                }
+                AppButton {
+                    Layout.fillWidth: true
                     text: "确认修改"
                     onClicked: {
                         cpError.text = ""
