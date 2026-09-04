@@ -93,4 +93,31 @@ private:
     mutable QSqlDatabase database_;
 };
 
+class PricingRepository final {
+public:
+    explicit PricingRepository(QSqlDatabase database);
+
+    // 站点未配置规则时返回 std::nullopt，调用方需回退到 charging_stations.price_per_kwh
+    std::optional<PricingRule> findRule(qint64 stationId, QString* errorMessage = nullptr) const;
+    QList<PricingPeriod> listPeriods(qint64 stationId, QString* errorMessage = nullptr) const;
+
+    // 解析某时刻适用的电价：规则启用且命中时段则用分时电价，否则用站点固定电价。
+    // 只有站点本身不存在时才失败。
+    std::optional<double> pricePerKwhAt(qint64 stationId, const QDateTime& when,
+                                        QString* errorMessage = nullptr) const;
+
+    // 占位费 = max(0, occupiedMinutes - freeMoveMinutes) * occupancyFeePerMinute，
+    // 并按 occupancyFeeCap 封顶（cap <= 0 表示不封顶），结果保留两位小数。
+    std::optional<double> occupancyFee(qint64 stationId, int occupiedMinutes,
+                                       QString* errorMessage = nullptr) const;
+
+    bool saveRule(const PricingRule& rule, QString* errorMessage = nullptr) const;
+    // 事务内整组替换该站的分时电价段；时段重叠或越界时整体失败，不留下半截数据
+    bool replacePeriods(qint64 stationId, const QList<PricingPeriod>& periods,
+                        QString* errorMessage = nullptr) const;
+
+private:
+    mutable QSqlDatabase database_;
+};
+
 } // namespace charging::core
