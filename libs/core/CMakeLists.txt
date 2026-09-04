@@ -1,10 +1,8 @@
 add_library(charging-core STATIC
     include/charging/core/api_client.h
-    include/charging/core/database_maintenance.h
     include/charging/core/password_security.h
     include/charging/core/tcp_server.h
     src/api_client.cpp
-    src/database_maintenance.cpp
     src/database_manager.cpp
     src/message_protocol.cpp
     src/password_security.cpp

@@ -34,24 +34,48 @@ VALUES (900001, 900002, 900002, 'awaiting_payment',
 
 UPDATE charging_piles SET status = 'fault'
 WHERE id = 900002 AND code = 'SZ001-02';
+-- 北京理工大学良乡校区周边模拟充电站
+-- 以下数据仅用于课程项目功能演示
 
--- 收费规则演示数据：1 号站配置完整分时电价 + 占位费。
--- 时段为左闭右开的当日分钟区间，跨零点拆成两条。
-INSERT OR IGNORE INTO charging_pricing_rules
-    (station_id, enabled, free_move_minutes, occupancy_fee_per_minute, occupancy_fee_cap)
-VALUES (1, 1, 15, 0.50, 30.00);
-
-INSERT OR IGNORE INTO charging_pricing_periods
-    (station_id, start_minute, end_minute, period_type, price_per_kwh)
+INSERT OR IGNORE INTO charging_stations
+(id, name, address, latitude, longitude, price_per_kwh)
 VALUES
-    (1,    0,  480, 'valley', 0.80),
-    (1,  480,  660, 'peak',   1.50),
-    (1,  660, 1080, 'flat',   1.20),
-    (1, 1080, 1320, 'peak',   1.50),
-    (1, 1320, 1440, 'valley', 0.80);
+    (900010, '北理工良乡东门充电站',
+     '北京市房山区北京理工大学良乡校区东门附近',
+     39.7308, 116.1715, 1.28),
 
--- 900001 号站只配置占位费，不配置分时电价段，
--- 用于演示"查不到时段则回退 charging_stations.price_per_kwh"。
-INSERT OR IGNORE INTO charging_pricing_rules
-    (station_id, enabled, free_move_minutes, occupancy_fee_per_minute, occupancy_fee_cap)
-VALUES (900001, 1, 10, 0.80, 0);
+    (900011, '良乡大学城快充站',
+     '北京市房山区良乡大学城地铁站附近',
+     39.7278, 116.1692, 1.32),
+
+    (900012, '北理工良乡南门充电站',
+     '北京市房山区北京理工大学良乡校区南门附近',
+     39.7249, 116.1728, 1.25),
+
+    (900013, '良乡高教园充电站',
+     '北京市房山区良乡高教园区',
+     39.7332, 116.1648, 1.38),
+
+    (900014, '学园北街充电站',
+     '北京市房山区良乡大学城学园北街附近',
+     39.7350, 116.1760, 1.30);
+
+
+-- 为北京模拟充电站添加充电桩
+INSERT OR IGNORE INTO charging_piles
+(id, station_id, code, type, power_kw, status)
+VALUES
+    (900010, 900010, 'BJ010-01', 'fast', 120, 'idle'),
+    (900011, 900010, 'BJ010-02', 'slow', 7, 'idle'),
+
+    (900012, 900011, 'BJ011-01', 'fast', 120, 'idle'),
+    (900013, 900011, 'BJ011-02', 'fast', 60, 'idle'),
+
+    (900014, 900012, 'BJ012-01', 'fast', 120, 'idle'),
+    (900015, 900012, 'BJ012-02', 'slow', 7, 'idle'),
+
+    (900016, 900013, 'BJ013-01', 'fast', 180, 'idle'),
+    (900017, 900013, 'BJ013-02', 'fast', 120, 'idle'),
+
+    (900018, 900014, 'BJ014-01', 'fast', 120, 'idle'),
+    (900019, 900014, 'BJ014-02', 'slow', 7, 'idle');
