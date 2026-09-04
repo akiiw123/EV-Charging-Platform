@@ -48,6 +48,15 @@ Web 运营大屏 ─── HTTP/JSON ─────┘   （当前由只读 Pyt
 - 已实现预约、开始充电、停止充电、结算、取消预约和历史订单查询。
 - 预约、开始、停止和结算的关键状态变更使用数据库事务。
 - SQLite `CURRENT_TIMESTAMP` 按 UTC 存储，C++ 展示层已转换为本地时间，已修复固定多出 8 小时的问题。
+- 新增收费数据表 `charging_pricing_rules`（免费挪车时间、每分钟占位费、费用上限，每站最多一条）
+  和 `charging_pricing_periods`（分时电价段，分钟区间左闭右开，跨零点拆成两条），
+  由 `PricingRepository` 统一读写，服务端通过只读接口 `station.pricing` 对外提供。
+- **计费口径未变**：`order.stop` 仍按 `charging_stations.price_per_kwh` 固定电价结算。
+  分时电价是新增的可选能力，`enabled = 0` 或站点未配置时段时自动回退固定电价，
+  占位费目前只提供计算接口，尚未接入订单结算。
+- 新增 `DatabaseMaintenance`：`VACUUM INTO` 在线原子备份、备份文件完整性校验、
+  覆盖恢复（含拒绝连接占用、清理 `-wal`/`-shm` 边车文件）、
+  `integrity_check` + `foreign_key_check` 合并损坏检查。操作步骤见 `docs/database-maintenance.md`。
 
 ### 3.3 TCP 通信与并发服务
 
@@ -99,6 +108,23 @@ Web 运营大屏 ─── HTTP/JSON ─────┘   （当前由只读 Pyt
 - 覆盖充电开始时间与当前时间一致，不再出现固定 8 小时偏差。
 - 覆盖管理员错误密码、登录、电站新增、电桩查询、用户查询和权限校验。
 - 覆盖 PBKDF2 哈希生成、正确/错误密码校验、畸形哈希拒绝和旧密码自动升级。
+- 新增 `pricing-tests`（18 个用例）：分时电价按时刻解析、左闭右开边界、
+  未启用/未配置时回退固定电价、占位费的免费时长与封顶/不封顶、
+  规则 UPSERT 单行保证、时段整组替换、重叠时段拒绝并验证回滚、级联删除，
+  以及回归保护用例 `existingChargingFlowStillBillsWithFixedPrice`
+  （确认既有充电计费仍按固定电价、钱包扣款金额不变）。
+- 新增 `database-maintenance-tests`（9 个用例）：健康库通过完整性检查、
+  外键违例可被检出、备份生成并可校验、缺失/非数据库/截断备份均被拒绝、
+  连接占用时拒绝恢复、恢复后被删数据可找回。
+- 新增 `database-robustness-tests`（13 个用例），对应四类场景：
+  **错误数据**（CHECK 与唯一约束拒绝非法字段值、重复值、断裂外键关系，
+  仓储层拒绝非法手机号/金额/昵称/状态）、**保存失败**（写入失败不留半条数据、
+  非法订单状态迁移被拒、更新不存在的行返回失败）、
+  **同时操作**（未提交写入对其他连接不可见、两个线程抢同一电桩预约只有 1 个成功）、
+  **记录较多**（单事务写入 1000 用户 + 3000 订单后分页与边界裁剪仍正确，实测约 137 ms）。
+- 修复既有缺陷：`test_repositories` 使用 `QTEST_APPLESS_MAIN`，不创建 `QCoreApplication`，
+  导致 `QSqlDatabase` 无法加载驱动而直接段错误（在改动前的 HEAD 上同样复现）；
+  已改为 `QTEST_GUILESS_MAIN`，与 `test_tcp_integration` 保持一致。
 
 ## 4. 部分实现的功能
 
