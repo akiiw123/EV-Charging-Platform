@@ -27,16 +27,12 @@ Item {
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 width: 88; height: 88; radius: 28
-                gradient: Gradient {
-                    GradientStop { position: 0; color: "#22C9B5" }
-                    GradientStop { position: 1; color: Theme.primaryDark }
-                }
-                Text {
+                color: Theme.primaryDark
+                AppIcon {
                     anchors.centerIn: parent
-                    text: "ϟ"
-                    color: "white"
-                    font.pixelSize: 52
-                    font.bold: true
+                    name: "bolt"
+                    iconColor: "white"
+                    width: 48; height: 48
                 }
             }
             Text {

@@ -38,6 +38,9 @@ QString ApiClient::send(const QString& type, const QJsonObject& payload)
         return {};
     }
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const quint64 seq = ++sendCounter_;
+    seqById_[id] = seq;
+    latestSeqByType_[type] = seq;   // 同类型的新请求使先前请求"过期"
     socket_.write(MessageProtocol::encode({id, type, payload}));
     return id;
 }
@@ -52,6 +55,8 @@ void ApiClient::reconnect()
     if (host_.isEmpty() || port_ == 0 || socket_.state() != QAbstractSocket::UnconnectedState) {
         return;
     }
+    // 断线后旧请求不会再有响应,清空序号簿避免残留
+    seqById_.clear();
     socket_.connectToHost(host_, port_);
 }
 
@@ -67,6 +72,18 @@ void ApiClient::readAvailable()
         if (!MessageProtocol::decodeLine(line, &message, &error)) {
             emit clientError(error);
             continue;
+        }
+        // 过期判定:响应 id 对应的发送序号落后于该请求类型的最新序号时,
+        // 说明客户端已经发出过更新的同类请求,旧响应不再驱动界面
+        if (seqById_.contains(message.id)) {
+            const quint64 seq = seqById_.take(message.id);
+            QString base = message.type;
+            if (base.endsWith(QStringLiteral(".ok")) || base.endsWith(QStringLiteral(".error")))
+                base = base.section(QStringLiteral("."), 0, -2);
+            if (seq < latestSeqByType_.value(base, seq)) {
+                emit staleResponseReceived(message);
+                continue;
+            }
         }
         emit responseReceived(message);
     }

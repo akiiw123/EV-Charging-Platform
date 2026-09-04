@@ -62,8 +62,8 @@ Item {
                 Text { text: "个人中心"; color: Theme.text; font.pixelSize: 25; font.bold: true }
                 Item { Layout.fillWidth: true }
                 Rectangle {
-                    width: 42; height: 42; radius: 14; color: Theme.primarySoft
-                    Text { anchors.centerIn: parent; text: "●"; color: Theme.primary; font.pixelSize: 20 }
+                    width: 42; height: 42; radius: 12; color: Theme.primarySoft
+                    AppIcon { anchors.centerIn: parent; name: "person"; iconColor: Theme.primary; width: 22; height: 22 }
                 }
             }
 
@@ -85,10 +85,7 @@ Item {
                             anchors.fill: parent
                             radius: 38
                             visible: !parent.hasAvatar
-                            gradient: Gradient {
-                                GradientStop { position: 0; color: "#34D1BF" }
-                                GradientStop { position: 1; color: Theme.primaryDark }
-                            }
+                            color: Theme.primaryDark
                             Text {
                                 anchors.centerIn: parent
                                 text: String(appController.user.nickname || "用户").slice(0, 1)
@@ -109,7 +106,7 @@ Item {
                             width: 24; height: 24; radius: 12
                             color: Theme.primary
                             border.width: 2; border.color: "white"
-                            Text { anchors.centerIn: parent; text: "✎"; color: "white"; font.pixelSize: 12 }
+                            AppIcon { anchors.centerIn: parent; name: "pen"; iconColor: "white"; width: 13; height: 13 }
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -146,10 +143,7 @@ Item {
                 Layout.rightMargin: 18
                 implicitHeight: 112
                 radius: Theme.radius
-                gradient: Gradient {
-                    GradientStop { position: 0; color: "#0B776D" }
-                    GradientStop { position: 1; color: "#17AA99" }
-                }
+                color: Theme.primaryDark
                 RowLayout {
                     anchors.fill: parent
                     anchors.margins: 20

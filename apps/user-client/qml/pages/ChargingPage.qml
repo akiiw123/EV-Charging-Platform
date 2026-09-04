@@ -22,7 +22,7 @@ Item {
             Item { Layout.fillWidth: true }
             Rectangle {
                 width: 48; height: 48; radius: 16; color: Theme.primarySoft
-                Text { anchors.centerIn: parent; text: "ϟ"; color: Theme.primary; font.pixelSize: 28; font.bold: true }
+                AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 26; height: 26 }
             }
         }
 
@@ -43,12 +43,11 @@ Item {
                         color: order.status === "charging" ? Theme.primary : Theme.surface
                         border.width: 2
                         border.color: order.status === "charging" ? Theme.primary : Theme.border
-                        Text {
+                        AppIcon {
                             anchors.centerIn: parent
-                            text: order.id ? "ϟ" : "○"
-                            color: order.status === "charging" ? "white" : Theme.textMuted
-                            font.pixelSize: 38
-                            font.bold: true
+                            name: "bolt"
+                            iconColor: order.status === "charging" ? "white" : Theme.textMuted
+                            width: 40; height: 40
                         }
                     }
                     SequentialAnimation on scale {

@@ -3,6 +3,9 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
+#include <QJsonDocument>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -41,6 +44,8 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
             [this](const QString& error) { showNotice(error, QStringLiteral("error")); });
     connect(&api_, &charging::core::ApiClient::responseReceived,
             this, &UserAppController::handleResponse);
+    // 过期响应不更新界面,仅复位 busy
+    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { setBusy(false); });
 
     const QString host = qEnvironmentVariable(
         "CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1"));
@@ -148,22 +153,50 @@ void UserAppController::refreshStations()
     if (loggedIn_) api_.send(QStringLiteral("station.list"));
 }
 
+// 内置城市坐标表:相当于"模拟 GPS/区域选择",离线可用
+static const char* kPresetCityKeys[] = {
+    "北京", "上海", "广州", "深圳", "沈阳", "杭州"
+};
+static const double kPresetCityCoords[][3] = {
+    {39.9042, 116.4074},   // 北京
+    {31.2304, 121.4737},   // 上海
+    {23.1291, 113.2644},   // 广州
+    {22.5431, 114.0579},   // 深圳
+    {41.8057, 123.4315},   // 沈阳
+    {30.2741, 120.1551},   // 杭州
+};
+
 void UserAppController::locate(const QString& address)
 {
     const QString text = address.trimmed();
-    if (text.contains(QStringLiteral("北京"))) {
-        locationName_ = QStringLiteral("北京市");
-        latitude_ = 39.9042;
-        longitude_ = 116.4074;
-    } else if (text.contains(QStringLiteral("沈阳"))) {
-        locationName_ = QStringLiteral("沈阳市");
-        latitude_ = 41.8057;
-        longitude_ = 123.4315;
-    } else {
-        locationName_ = QStringLiteral("深圳市");
-        latitude_ = 22.543096;
-        longitude_ = 114.057865;
+    if (text.isEmpty()) {
+        showNotice(QStringLiteral("请输入城市或地址"), QStringLiteral("error"));
+        return;
     }
+    // 1) 命中内置城市:即时定位,不依赖网络
+    for (int i = 0; i < 6; ++i) {
+        if (text.contains(QString::fromUtf8(kPresetCityKeys[i]))) {
+            applyLocation(QString::fromUtf8(kPresetCityKeys[i]) + QStringLiteral("市"),
+                          kPresetCityCoords[i][0], kPresetCityCoords[i][1]);
+            return;
+        }
+    }
+    // 2) 其他地址:配置了地图 Key 则真实地理编码
+    if (mapKeyConfigured()) {
+        geocodeAddress(text);
+        return;
+    }
+    // 3) 降级:无 Key 时保持当前定位并说明原因
+    showNotice(QStringLiteral("未配置 TENCENT_MAP_KEY,暂只支持内置城市定位(北京/上海/广州/深圳/沈阳/杭州)"),
+               QStringLiteral("error"));
+}
+
+// 统一的定位落地:写状态、持久化、触发按距离重排
+void UserAppController::applyLocation(const QString& name, double latitude, double longitude)
+{
+    locationName_ = name;
+    latitude_ = latitude;
+    longitude_ = longitude;
     QSettings settings;
     settings.setValue(QStringLiteral("location/name"), locationName_);
     settings.setValue(QStringLiteral("location/latitude"), latitude_);
@@ -171,6 +204,39 @@ void UserAppController::locate(const QString& address)
     emit locationChanged();
     rebuildStations();
     showNotice(QStringLiteral("已定位到 %1").arg(locationName_), QStringLiteral("success"));
+}
+
+// 腾讯 WebService 地理编码:address -> 经纬度(Key 从环境变量读取,不入库不打包)
+void UserAppController::geocodeAddress(const QString& address)
+{
+    QUrl url(QStringLiteral("https://apis.map.qq.com/ws/geocoder/v1/"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("address"), address);
+    query.addQueryItem(QStringLiteral("key"), qEnvironmentVariable("TENCENT_MAP_KEY"));
+    url.setQuery(query);
+    QNetworkRequest request(url);
+    request.setTransferTimeout(5000);
+    auto* reply = network_.get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, address] {
+        const auto data = reply->readAll();
+        const bool ok = reply->error() == QNetworkReply::NoError;
+        reply->deleteLater();
+        if (!ok) {
+            showNotice(QStringLiteral("定位服务不可达,保持当前定位"), QStringLiteral("error"));
+            return;
+        }
+        const auto result = QJsonDocument::fromJson(data).object();
+        if (result.value(QStringLiteral("status")).toInt() != 0) {
+            showNotice(QStringLiteral("地址解析失败: %1")
+                           .arg(result.value(QStringLiteral("message")).toString()),
+                       QStringLiteral("error"));
+            return;
+        }
+        const auto location = result.value(QStringLiteral("result")).toObject()
+                                  .value(QStringLiteral("location")).toObject();
+        applyLocation(address, location.value(QStringLiteral("lat")).toDouble(),
+                      location.value(QStringLiteral("lng")).toDouble());
+    });
 }
 
 void UserAppController::selectStation(const QVariantMap& station)

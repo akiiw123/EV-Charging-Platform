@@ -6,7 +6,7 @@ import "../components"
 
 Item{id:root;property var selected:({});Component.onCompleted:adminController.refreshStations("")
     ColumnLayout{anchors.fill:parent;anchors.margins:24;spacing:16
-        PageHeader{Layout.fillWidth:true;title:"电站管理";subtitle:"管理电站资料、价格与站内设备"}
+        PageHeader{Layout.fillWidth:true;title:"电站管理";subtitle:"电站资料与价格维护"}
         RowLayout{Layout.fillWidth:true;SearchField{id:search;placeholderText:"搜索电站名称或地址";onAccepted:adminController.refreshStations(text)}FilterComboBox{model:["全部区域","深圳市","南山区","宝安区"]}Item{Layout.fillWidth:true}AppButton{text:"刷新";variant:"secondary";onClicked:adminController.refreshStations(search.text)}AppButton{text:"新增电站";onClicked:{root.selected={};editor.open()}}}
         DataTable{id:table;Layout.fillWidth:true;Layout.fillHeight:true;tableModel:adminController.stationsModel;columns:[{title:"ID",role:"id",width:64},{title:"电站名称",role:"name",width:190},{title:"详细地址",role:"address",width:300},{title:"纬度",role:"latitude",width:105},{title:"经度",role:"longitude",width:105},{title:"单价",role:"price_per_kwh",width:90,align:"right",format:function(v){return "¥"+Number(v).toFixed(2)}},{title:"电桩",role:"pile_count",width:78,align:"right"},{title:"空闲",role:"idle_pile_count",width:78,align:"right"},{title:"在线率",role:"online_rate",width:90,align:"right",format:function(v,r){return Number(r.pile_count)?((Number(r.pile_count)-Number(r.offline_count||0))*100/Number(r.pile_count)).toFixed(1)+"%":"—"}},{title:"创建时间",role:"created_at",width:170}];onRowActivated:function(row,record){root.selected=record;drawer.open()}}
     }
