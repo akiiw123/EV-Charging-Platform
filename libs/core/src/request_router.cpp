@@ -4,7 +4,6 @@
 #include "charging/core/password_security.h"
 
 #include <QJsonArray>
-#include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QtMath>
@@ -77,26 +76,6 @@ std::optional<qint64> positiveId(const QJsonObject& payload, const QString& name
         return std::nullopt;
     }
     return value.toInteger();
-}
-
-QJsonObject pricingPeriodJson(const PricingPeriod& period)
-{
-    return {{QStringLiteral("id"), period.id},
-            {QStringLiteral("station_id"), period.stationId},
-            {QStringLiteral("start_minute"), period.startMinute},
-            {QStringLiteral("end_minute"), period.endMinute},
-            {QStringLiteral("period_type"), period.periodType},
-            {QStringLiteral("price_per_kwh"), period.pricePerKwh}};
-}
-
-QJsonObject pricingRuleJson(const PricingRule& rule)
-{
-    return {{QStringLiteral("station_id"), rule.stationId},
-            {QStringLiteral("enabled"), rule.enabled},
-            {QStringLiteral("free_move_minutes"), rule.freeMoveMinutes},
-            {QStringLiteral("occupancy_fee_per_minute"), rule.occupancyFeePerMinute},
-            {QStringLiteral("occupancy_fee_cap"), rule.occupancyFeeCap},
-            {QStringLiteral("updated_at"), rule.updatedAt.toString(Qt::ISODate)}};
 }
 
 } // namespace
@@ -741,41 +720,6 @@ Message RequestRouter::route(const Message& request)
         QJsonObject payload = stationJson(*station, stationPiles);
         payload.insert(QStringLiteral("piles"), pileArray);
         return success(request, {{QStringLiteral("station"), payload}});
-    }
-
-    // 只读接口：统一读取站点收费数据（固定电价、分时电价段、免费挪车时间与占位费规则）。
-    // 新增类型不影响旧客户端；充电计费仍走 charging_stations.price_per_kwh。
-    if (request.type == QStringLiteral("station.pricing")) {
-        const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
-        if (!stationId) {
-            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("station_id 无效"));
-        }
-        StationRepository stations(database_);
-        const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
-            return error(request, QStringLiteral("STATION_NOT_FOUND"),
-                         repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
-        }
-
-        PricingRepository pricing(database_);
-        QJsonArray periodArray;
-        for (const auto& period : pricing.listPeriods(*stationId, &repositoryError)) {
-            periodArray.append(pricingPeriodJson(period));
-        }
-        const auto rule = pricing.findRule(*stationId, &repositoryError);
-        const auto currentPrice =
-            pricing.pricePerKwhAt(*stationId, QDateTime::currentDateTime(), &repositoryError);
-        if (!currentPrice) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
-        }
-
-        QJsonObject payload {{QStringLiteral("station_id"), *stationId},
-                             {QStringLiteral("fixed_price_per_kwh"), station->pricePerKwh},
-                             {QStringLiteral("current_price_per_kwh"), *currentPrice},
-                             {QStringLiteral("periods"), periodArray}};
-        payload.insert(QStringLiteral("rule"),
-                       rule ? QJsonValue(pricingRuleJson(*rule)) : QJsonValue::Null);
-        return success(request, {{QStringLiteral("pricing"), payload}});
     }
 
     if (request.type == QStringLiteral("pile.list")) {
