@@ -56,27 +56,4 @@ struct ChargingOrder {
     QDateTime createdAt;
 };
 
-// 分时电价段，对应 charging_pricing_periods。
-// 分钟区间左闭右开，取值 [0, 1440]。
-struct PricingPeriod {
-    qint64 id = 0;
-    qint64 stationId = 0;
-    int startMinute = 0;
-    int endMinute = 0;
-    QString periodType;   // peak / flat / valley
-    double pricePerKwh = 0.0;
-};
-
-// 站点收费规则，对应 charging_pricing_rules。
-// enabled 为 false 时电价回退到 charging_stations.price_per_kwh；
-// occupancyFeeCap <= 0 表示占位费不封顶。
-struct PricingRule {
-    qint64 stationId = 0;
-    bool enabled = true;
-    int freeMoveMinutes = 0;
-    double occupancyFeePerMinute = 0.0;
-    double occupancyFeeCap = 0.0;
-    QDateTime updatedAt;
-};
-
 } // namespace charging::core

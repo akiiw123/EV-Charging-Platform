@@ -119,6 +119,5 @@ private:
     }
 };
 
-// 使用 QSqlDatabase 必须有 QCoreApplication；QTEST_APPLESS_MAIN 会直接段错误
-QTEST_GUILESS_MAIN(RepositoryTest)
+QTEST_APPLESS_MAIN(RepositoryTest)
 #include "test_repositories.moc"
