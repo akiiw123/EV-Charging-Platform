@@ -4,6 +4,7 @@
 #include "charging/core/password_security.h"
 
 #include <QJsonArray>
+#include <QDate>
 #include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -231,16 +232,23 @@ Message RequestRouter::route(const Message& request)
         metrics.insert(QStringLiteral("month_revenue"), revenue.value(1).toDouble());
         metrics.insert(QStringLiteral("total_revenue"), revenue.value(2).toDouble());
         QSqlQuery summary(database_);
+        // 订单口径与需求矩阵一致:只统计已完成(completed)订单
         if (!summary.exec(QStringLiteral(
                 "SELECT "
-                "(SELECT COUNT(*) FROM charging_orders WHERE date(created_at)=date('now','localtime')),"
-                "(SELECT COUNT(*) FROM charging_orders),"
+                "(SELECT COUNT(*) FROM charging_orders WHERE date(created_at)=date('now','localtime') AND status='completed'),"
+                "(SELECT COUNT(*) FROM charging_orders WHERE status='completed'),"
                 "(SELECT COUNT(*) FROM users),"
                 "(SELECT COUNT(*) FROM charging_stations)")) || !summary.next()) {
             return error(request, QStringLiteral("DATABASE_ERROR"), summary.lastError().text());
         }
-        metrics.insert(QStringLiteral("today_orders"), summary.value(0).toInt());
-        metrics.insert(QStringLiteral("total_orders"), summary.value(1).toInt());
+        const int completedToday = summary.value(0).toInt();
+        const int completedTotal = summary.value(1).toInt();
+        metrics.insert(QStringLiteral("completed_orders_today"), completedToday);
+        metrics.insert(QStringLiteral("completed_orders_total"), completedTotal);
+        // 平均订单金额 = 累计营收 / 已完成订单数,无订单时为 0
+        const double totalRevenue = metrics.value(QStringLiteral("total_revenue")).toDouble();
+        metrics.insert(QStringLiteral("avg_order_amount"),
+                       completedTotal > 0 ? qRound64(totalRevenue * 100.0 / completedTotal) / 100.0 : 0.0);
         metrics.insert(QStringLiteral("registered_users"), summary.value(2).toInt());
         metrics.insert(QStringLiteral("station_count"), summary.value(3).toInt());
         QSqlQuery pileCounts(database_);
@@ -260,9 +268,15 @@ Message RequestRouter::route(const Message& request)
             "GROUP BY date(created_at,'localtime') ORDER BY date(created_at,'localtime')"));
         trendQuery.bindValue(QStringLiteral(":offset"), -(trendDays - 1));
         trendQuery.exec();
-        while (trendQuery.next()) {
-            trend.append(QJsonObject {{QStringLiteral("date"), trendQuery.value(0).toString()},
-                                      {QStringLiteral("amount"), trendQuery.value(1).toDouble()}});
+        QMap<QString, double> amountByDate;
+        while (trendQuery.next())
+            amountByDate.insert(trendQuery.value(0).toString(), trendQuery.value(1).toDouble());
+        // 连续日期补 0:没有订单的日期也要出现,保证横轴日期连续
+        for (int i = trendDays - 1; i >= 0; --i) {
+            const QString day =
+                QDate::currentDate().addDays(-i).toString(QStringLiteral("yyyy-MM-dd"));
+            trend.append(QJsonObject {{QStringLiteral("date"), day},
+                                      {QStringLiteral("amount"), amountByDate.value(day, 0.0)}});
         }
         int totalPiles = 0;
         for (const auto& value : statuses) totalPiles += value.toInt();
