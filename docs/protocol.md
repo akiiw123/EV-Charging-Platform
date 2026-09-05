@@ -20,7 +20,7 @@ export CHARGING_SERVER_PORT=45454
 ## 已实现请求
 
 - `auth.phone_login`：`payload.phone` 为 11 位手机号；不存在时自动注册。
-- `station.list`：返回所有电站、总桩数和空闲桩数。
+- `station.list`：返回所有**营业中**电站、总桩数和空闲桩数;逻辑停用(disabled)的电站对用户端不可见。
 - `station.detail`：`payload.station_id` 为电站 ID；返回电站及电桩明细。
 - `station.pricing`：`payload.station_id` 为电站 ID；只读返回该站收费数据，
   `payload.pricing` 含 `fixed_price_per_kwh`（`charging_stations.price_per_kwh`）、
@@ -70,7 +70,10 @@ export CHARGING_SERVER_PORT=45454
 
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
 - `admin.dashboard`：今日/本月/累计营收、已完成订单数(今日/累计)、平均订单金额、注册用户数、电桩状态分布、在线率、近7/30日营收趋势(缺数据日期补0,日期连续);`payload.days` 可选 7/30 指定趋势区间。营收与订单数口径均只统计 `completed` 订单。
-- `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
+- `admin.station.list` / `admin.station.create`：电站查询(含已停用,带营业状态)和新增，并可批量初始化电桩。
+- `admin.station.update`：编辑电站资料;可选 `payload.status`(`active`/`disabled`)实现**逻辑停用/恢复营业**——
+  停用后用户端不再展示该电站、其电桩不可预约(服务端在 `order.reserve` 兜底校验);
+  历史订单与数据保留,可随时恢复。删除接口仍保留,有活动订单时拒绝。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
 - `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
   编号全局唯一，重复返回 `PILE_CREATE_FAILED`。

@@ -30,6 +30,7 @@ struct ChargingStation {
     double latitude = 0.0;
     double longitude = 0.0;
     double pricePerKwh = 0.0;
+    QString status = QStringLiteral("active");   // active 正常营业 / disabled 逻辑停用
     QDateTime createdAt;
 };
 

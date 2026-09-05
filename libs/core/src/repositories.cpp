@@ -69,6 +69,7 @@ ChargingStation readStation(const QSqlQuery& query)
             query.value(QStringLiteral("latitude")).toDouble(),
             query.value(QStringLiteral("longitude")).toDouble(),
             query.value(QStringLiteral("price_per_kwh")).toDouble(),
+            query.value(QStringLiteral("status")).toString(),
             dateTime(query.value(QStringLiteral("created_at")))};
 }
 
@@ -568,10 +569,18 @@ std::optional<ChargingOrder> OrderRepository::createReservation(qint64 userId, q
         return std::nullopt;
     }
     QSqlQuery check(database_);
-    check.prepare(QStringLiteral("SELECT status FROM charging_piles WHERE id = :id"));
+    check.prepare(QStringLiteral(
+        "SELECT p.status, COALESCE(s.status,'active') FROM charging_piles p "
+        "LEFT JOIN charging_stations s ON s.id = p.station_id WHERE p.id = :id"));
     check.bindValue(QStringLiteral(":id"), pileId);
-    if (!check.exec() || !check.next() || check.value(0).toString() != QStringLiteral("idle")) {
+    if (!check.exec() || !check.next()
+        || check.value(0).toString() != QStringLiteral("idle")) {
         rollback(database_, errorMessage, QStringLiteral("电桩不存在或当前不可预约"));
+        return std::nullopt;
+    }
+    // 所属电站已逻辑停用:禁止预约(用户端本来就看不到,这里是服务端兜底)
+    if (check.value(1).toString() == QStringLiteral("disabled")) {
+        rollback(database_, errorMessage, QStringLiteral("该充电站已停业,暂不可预约"));
         return std::nullopt;
     }
     QSqlQuery insert(database_);

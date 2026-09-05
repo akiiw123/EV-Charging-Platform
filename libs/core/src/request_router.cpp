@@ -56,6 +56,7 @@ QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile
             {QStringLiteral("idle_pile_count"), idleCount},
             {QStringLiteral("offline_count"), offlineCount},
             {QStringLiteral("online_rate"), piles.isEmpty() ? 0.0 : (piles.size() - offlineCount) * 100.0 / piles.size()},
+            {QStringLiteral("status"), station.status},
             {QStringLiteral("created_at"), station.createdAt.toString(Qt::ISODate)}};
 }
 
@@ -369,15 +370,26 @@ Message RequestRouter::route(const Message& request)
         const double latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
         const double longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
         const double price = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
+        // 可选逻辑停用状态:仅允许 active/disabled(第一阶段与成员二协商后的统一接口)
+        const QString status = request.payload.value(QStringLiteral("status")).toString();
+        if (!status.isEmpty() && status != QStringLiteral("active") && status != QStringLiteral("disabled")) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"),
+                         QStringLiteral("电站状态仅支持 active/disabled"));
+        }
         if (!stationId || name.isEmpty() || address.isEmpty() || latitude < -90 || latitude > 90
             || longitude < -180 || longitude > 180 || price < 0) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("电站表单内容无效"));
         }
         QSqlQuery query(database_);
-        query.prepare(QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,latitude=:lat,longitude=:lng,price_per_kwh=:price WHERE id=:id"));
+        QString sql = QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,"
+                                     "latitude=:lat,longitude=:lng,price_per_kwh=:price");
+        if (!status.isEmpty()) sql += QStringLiteral(",status=:status");
+        sql += QStringLiteral(" WHERE id=:id");
+        query.prepare(sql);
         query.bindValue(QStringLiteral(":name"), name); query.bindValue(QStringLiteral(":address"), address);
         query.bindValue(QStringLiteral(":lat"), latitude); query.bindValue(QStringLiteral(":lng"), longitude);
         query.bindValue(QStringLiteral(":price"), price); query.bindValue(QStringLiteral(":id"), *stationId);
+        if (!status.isEmpty()) query.bindValue(QStringLiteral(":status"), status);
         if (!query.exec() || query.numRowsAffected() != 1) return error(request, QStringLiteral("STATION_UPDATE_FAILED"), query.lastError().isValid() ? query.lastError().text() : QStringLiteral("电站不存在"));
         return success(request, {{QStringLiteral("id"), *stationId}});
     }
@@ -770,6 +782,8 @@ Message RequestRouter::route(const Message& request)
         PileRepository piles(database_);
         QJsonArray array;
         for (const auto& station : stations.list(&repositoryError)) {
+            // 逻辑停用的电站对用户端不可见
+            if (station.status == QStringLiteral("disabled")) continue;
             array.append(stationJson(station, piles.listByStation(station.id, &repositoryError)));
         }
         if (!repositoryError.isEmpty()) {
@@ -786,7 +800,8 @@ Message RequestRouter::route(const Message& request)
         StationRepository stations(database_);
         PileRepository piles(database_);
         const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
+        // 逻辑停用的电站对用户端不可见
+        if (!station || station->status == QStringLiteral("disabled")) {
             return error(request, QStringLiteral("STATION_NOT_FOUND"),
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }

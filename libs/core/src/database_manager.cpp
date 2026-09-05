@@ -63,8 +63,48 @@ bool DatabaseManager::initialize(QString* errorMessage)
         }
         return false;
     }
-    return executeScript(QStringLiteral(CHARGING_SCHEMA_PATH), errorMessage)
-        && executeScript(QStringLiteral(CHARGING_SEED_PATH), errorMessage);
+    if (!executeScript(QStringLiteral(CHARGING_SCHEMA_PATH), errorMessage)) {
+        return false;
+    }
+    if (!migrate(errorMessage)) {
+        return false;
+    }
+    return executeScript(QStringLiteral(CHARGING_SEED_PATH), errorMessage);
+}
+
+// 幂等迁移:schema.sql 不能写 ALTER TABLE(对已有库重跑会因重复加列而中止
+// 整个初始化),因此结构性变更在这里用代码执行——按 PRAGMA 检查缺列才补。
+// 版本 5(2026-09):charging_stations 增加营业状态 status 列。
+bool DatabaseManager::migrate(QString* errorMessage)
+{
+    QSqlQuery pragma(database_);
+    if (!pragma.exec(QStringLiteral("PRAGMA table_info(charging_stations)"))) {
+        if (errorMessage) {
+            *errorMessage = pragma.lastError().text();
+        }
+        return false;
+    }
+    bool hasStatus = false;
+    while (pragma.next()) {
+        if (pragma.value(1).toString() == QStringLiteral("status")) {
+            hasStatus = true;
+            break;
+        }
+    }
+    if (hasStatus) {
+        return true;
+    }
+    QSqlQuery alter(database_);
+    if (!alter.exec(QStringLiteral(
+            "ALTER TABLE charging_stations ADD COLUMN "
+            "status TEXT NOT NULL DEFAULT 'active' "
+            "CHECK(status IN ('active','disabled'))"))) {
+        if (errorMessage) {
+            *errorMessage = alter.lastError().text();
+        }
+        return false;
+    }
+    return true;
 }
 
 bool DatabaseManager::isOpen() const

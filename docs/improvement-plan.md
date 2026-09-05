@@ -212,3 +212,11 @@ refreshPredictions()
   ⑤电站详情页注明预约占用由订单唯一约束保证;protocol.md 补充预约占用策略、
   冻结对在途订单的处理、重复请求保护策略三个章节;
   ⑥新增 3 个集成测试:结算语义与越权停止、超时预约明确提示。17/17 通过。
+- 2026-09-05 电站逻辑停用落地(矩阵 NO.44 △→○,NO.49 营业状态字段补齐):
+  charging_stations 新增 status(active/disabled),DatabaseManager::initialize 增加
+  幂等列迁移(schema → migrate → seed 顺序),老库自动补列;admin.station.update
+  支持可选 status 字段;用户端 station.list/detail 过滤停用电站,
+  order.reserve 兜底校验所属电站营业状态;管理端电站表新增营业状态列与
+  停用/恢复按钮(二次确认);seed 将 900014 演示为停用态。
+  新增集成测试 stationDisableLifecycle。**注意:合入 main 时应一并合入本分支
+  (含分时电价恢复),避免再次出现功能覆盖。**
