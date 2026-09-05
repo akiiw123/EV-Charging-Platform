@@ -363,6 +363,107 @@ private slots:
         user.waitForDisconnected(1000);
     }
 
+    // 龙云任务:重复结算给出明确错误且不重复扣款;越权停止被拒绝
+    void settlementSemanticsAndOwnership()
+    {
+        Fixture fixture;
+        QTcpSocket userA;
+        userA.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userA.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userA, {QStringLiteral("loginA"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        QCOMPARE(exchange(userA, {QStringLiteral("recharge"), QStringLiteral("wallet.recharge"),
+                                  {{QStringLiteral("amount"), 200}}}).type,
+                 QStringLiteral("wallet.recharge.ok"));
+
+        QTcpSocket userB;
+        userB.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userB.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userB, {QStringLiteral("loginB"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13500135000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 用户 A 预约桩1并充电至待结算
+        QCOMPARE(exchange(userA, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                  {{QStringLiteral("pile_id"), 1}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        const auto active = exchange(userA, {QStringLiteral("active"), QStringLiteral("order.active"), {}});
+        const qint64 orderId = active.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(userA, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QCOMPARE(exchange(userA, {QStringLiteral("stop"), QStringLiteral("order.stop"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.stop.ok"));
+
+        // 越权:用户 B 尝试停止用户 A 的订单 → 订单不存在(不泄露他单信息)
+        QCOMPARE(exchange(userB, {QStringLiteral("stop-other"), QStringLiteral("order.stop"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.stop.error"));
+
+        // 首次结算成功
+        const auto settle1 = exchange(userA, {QStringLiteral("settle"), QStringLiteral("order.settle"),
+                                              {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(settle1.type, QStringLiteral("order.settle.ok"));
+        const double balanceAfterFirst = settle1.payload.value(QStringLiteral("user")).toObject()
+                                             .value(QStringLiteral("wallet_balance")).toDouble();
+
+        // 重复结算 → 明确错误
+        const auto settle2 = exchange(userA, {QStringLiteral("settle2"), QStringLiteral("order.settle"),
+                                              {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(settle2.type, QStringLiteral("order.settle.error"));
+        QVERIFY(settle2.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("请勿重复操作")));
+
+        // 余额只被扣一次:结算后余额 = 充值额 - 订单金额,再结算后不变
+        const auto profile = exchange(userA, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}});
+        const double balance = profile.payload.value(QStringLiteral("user")).toObject()
+                                   .value(QStringLiteral("wallet_balance")).toDouble();
+        QCOMPARE(balance, balanceAfterFirst);
+        userA.disconnectFromHost(); userA.waitForDisconnected(1000);
+        userB.disconnectFromHost(); userB.waitForDisconnected(1000);
+    }
+
+    // 龙云任务:超时自动取消的预约,start/cancel 返回明确的超时提示
+    void timeoutReservationGivesClearMessage()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        const auto reserve = exchange(socket, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                               {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reserve.type, QStringLiteral("order.reserve.ok"));
+        const qint64 orderId = reserve.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QSqlQuery backdate(fixture.database());
+        QVERIFY(backdate.exec(QStringLiteral(
+            "UPDATE charging_orders SET created_at=datetime('now','-20 minutes') "
+            "WHERE status='reserved'")));
+
+        // 任意请求触发超时清理后,start 返回明确的超时提示(而不是笼统失败)
+        const auto start = exchange(socket, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                             {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(start.type, QStringLiteral("order.start.error"));
+        QVERIFY(start.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("超时")));
+
+        // 超时释放后可重新预约
+        QCOMPARE(exchange(socket, {QStringLiteral("reserve-2"), QStringLiteral("order.reserve"),
+                                   {{QStringLiteral("pile_id"), 1}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
     // C4 冻结踢会话(请求级):管理员冻结后,该用户下一个请求立即拒绝并断开
     void frozenUserKickedOnNextRequest()
     {

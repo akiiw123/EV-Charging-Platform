@@ -81,6 +81,11 @@ Item {
                 onClicked: { appController.openNavigation("walk"); page.openMap() }
             }
         }
+        Text {
+            Layout.leftMargin: 18; Layout.rightMargin: 18
+            text: "预约占用由订单唯一约束保证:每个用户/每个电桩同时仅支持一个活动订单,预约后请及时开始充电(超 15 分钟未开始将自动释放)。"
+            color: Theme.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap
+        }
         RowLayout {
             Layout.fillWidth: true
             Text { text: "站内电桩"; color: Theme.text; font.pixelSize: 19; font.bold: true }
