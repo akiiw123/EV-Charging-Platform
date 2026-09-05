@@ -34,6 +34,8 @@ VALUES (900001, 900002, 900002, 'awaiting_payment',
 
 UPDATE charging_piles SET status = 'fault'
 WHERE id = 900002 AND code = 'SZ001-02';
+
+-- ===== 良乡校区周边演示电站(PR#6 新增) =====
 -- 北京理工大学良乡校区周边模拟充电站
 -- 以下数据仅用于课程项目功能演示
 
@@ -79,3 +81,24 @@ VALUES
 
     (900018, 900014, 'BJ014-01', 'fast', 120, 'idle'),
     (900019, 900014, 'BJ014-02', 'slow', 7, 'idle');
+
+-- 收费规则演示数据：1 号站配置完整分时电价 + 占位费。
+-- 时段为左闭右开的当日分钟区间，跨零点拆成两条。
+INSERT OR IGNORE INTO charging_pricing_rules
+    (station_id, enabled, free_move_minutes, occupancy_fee_per_minute, occupancy_fee_cap)
+VALUES (1, 1, 15, 0.50, 30.00);
+
+INSERT OR IGNORE INTO charging_pricing_periods
+    (station_id, start_minute, end_minute, period_type, price_per_kwh)
+VALUES
+    (1,    0,  480, 'valley', 0.80),
+    (1,  480,  660, 'peak',   1.50),
+    (1,  660, 1080, 'flat',   1.20),
+    (1, 1080, 1320, 'peak',   1.50),
+    (1, 1320, 1440, 'valley', 0.80);
+
+-- 900001 号站只配置占位费，不配置分时电价段，
+-- 用于演示"查不到时段则回退 charging_stations.price_per_kwh"。
+INSERT OR IGNORE INTO charging_pricing_rules
+    (station_id, enabled, free_move_minutes, occupancy_fee_per_minute, occupancy_fee_cap)
+VALUES (900001, 1, 10, 0.80, 0);

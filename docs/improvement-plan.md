@@ -188,3 +188,11 @@ refreshPredictions()
   被冻结立即拒绝(AUTH_USER_FROZEN)并标记会话关闭;TCP 连接循环在空闲期
   每 5 秒轮询一次,发 server.session.closed 后断开。两个层级均有集成测试
   (frozenUserKickedOnNextRequest / frozenUserKickedWhileIdle)。
+- 2026-09-05 合并 main(06d3bc0)并修复一次功能覆盖事故:
+  PR #6 "Add files via upload" 从过期副本上传,把 PR #5 刚合入的分时电价/
+  数据库维护功能整块删除(-477 行,仅剩无法编译的孤儿测试文件)。glm 分支
+  已 revert 该提交恢复全部功能,同时保留 PR #6 的有效部分(北理工良乡校区
+  周边演示电站与定位点);队友的 3 个测试套件(pricing/database-maintenance/
+  database-robustness)已重新注册进 CMake 并全部通过(现共 6 套件)。
+  **提醒:请勿用"上传文件"方式提交整目录覆盖,务必走 git 提交,避免再次覆盖
+  他人功能。**

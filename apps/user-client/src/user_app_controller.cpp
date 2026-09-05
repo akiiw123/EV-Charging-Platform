@@ -158,7 +158,7 @@ static const char* kPresetCityKeys[] = {
     "北京", "上海", "广州", "深圳", "沈阳", "杭州"
 };
 static const double kPresetCityCoords[][3] = {
-    {39.7296, 116.1710},   // 北京：北理工良乡校区。
+    {39.7296, 116.1710},   // 北京:北理工良乡校区(课程演示)
     {31.2304, 121.4737},   // 上海
     {23.1291, 113.2644},   // 广州
     {22.5431, 114.0579},   // 深圳
@@ -175,23 +175,17 @@ void UserAppController::locate(const QString& address)
     }
     // 1) 命中内置城市:即时定位,不依赖网络
     for (int i = 0; i < 6; ++i) {
-    const QString city = QString::fromUtf8(kPresetCityKeys[i]);
-
-    if (text == city || text == city + QStringLiteral("市")) {
-    QString displayName = city + QStringLiteral("市");
-
-    // 北京快捷定位用于课程演示，定位到北京理工大学良乡校区
-    if (city == QStringLiteral("北京")) {
-        displayName = QStringLiteral("北京理工大学良乡校区");
+        const QString city = QString::fromUtf8(kPresetCityKeys[i]);
+        if (text == city || text == city + QStringLiteral("市")) {
+            QString displayName = city + QStringLiteral("市");
+            // 北京快捷定位用于课程演示,定位到北京理工大学良乡校区
+            if (city == QStringLiteral("北京")) {
+                displayName = QStringLiteral("北京理工大学良乡校区");
+            }
+            applyLocation(displayName, kPresetCityCoords[i][0], kPresetCityCoords[i][1]);
+            return;
+        }
     }
-
-    applyLocation(
-        displayName,
-        kPresetCityCoords[i][0],
-        kPresetCityCoords[i][1]);
-    return;
-}
-}
     // 2) 其他地址:配置了地图 Key 则真实地理编码
     if (mapKeyConfigured()) {
         geocodeAddress(text);
