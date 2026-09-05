@@ -32,7 +32,7 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     clock_.start();
     connect(&api_, &charging::core::ApiClient::connected, this, [this] { connected_ = true; emit connectionChanged(); });
     connect(&api_, &charging::core::ApiClient::disconnected, this, [this] { connected_ = false; loggedIn_ = false; busyCount_ = 0; emit connectionChanged(); emit loggedInChanged(); emit busyChanged(); });
-    connect(&api_, &charging::core::ApiClient::clientError, this, [this](const QString& text) { busyCount_ = 0; emit busyChanged(); showNotice(text, QStringLiteral("error")); });
+    connect(&api_, &charging::core::ApiClient::clientError, this, [this](const QString& text) { busyCount_ = 0; if(!loadFailed_){loadFailed_=true;emit loadFailedChanged();} emit busyChanged(); showNotice(text, QStringLiteral("error")); });
     // 过期响应不更新界面,仅归还 busy 计数
     connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { if (busyCount_ > 0) --busyCount_; emit busyChanged(); });
     connect(&api_, &charging::core::ApiClient::responseReceived, this, &AdminAppController::handleResponse);
@@ -44,7 +44,7 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     }
 }
 
-void AdminAppController::request(const QString& type, const QJsonObject& payload) { if (!api_.isConnected()) { showNotice(QStringLiteral("服务未连接，请稍后重试"), QStringLiteral("error")); return; } ++busyCount_; emit busyChanged(); api_.send(type,payload); }
+void AdminAppController::request(const QString& type, const QJsonObject& payload) { if (!api_.isConnected()) { showNotice(QStringLiteral("服务未连接，请稍后重试"), QStringLiteral("error")); return; } if(loadFailed_){loadFailed_=false;emit loadFailedChanged();} ++busyCount_; emit busyChanged(); api_.send(type,payload); }
 void AdminAppController::login(const QString& username,const QString& password,bool remember) { errorMessage_.clear(); if(username.trimmed().isEmpty()||password.isEmpty()){errorMessage_=QStringLiteral("请输入管理员账号和密码");emit noticeChanged();return;} settings_.setValue(QStringLiteral("login/username"),remember?username:QString()); request(QStringLiteral("admin.login"),{{"username",username},{"password",password}}); }
 void AdminAppController::logout(){ loggedIn_=false; administrator_.clear(); if(mustChangePassword_){mustChangePassword_=false;emit mustChangePasswordChanged();} emit loggedInChanged(); }
 void AdminAppController::changePassword(const QString& oldPassword,const QString& newPassword)
@@ -70,6 +70,17 @@ void AdminAppController::restartPile(qint64 id){request(QStringLiteral("admin.pi
 void AdminAppController::createPile(const QVariantMap& f){request(QStringLiteral("admin.pile.create"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::updatePile(const QVariantMap& f){request(QStringLiteral("admin.pile.update"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::setPileStatus(qint64 id,const QString& status){request(QStringLiteral("admin.pile.status"),{{"pile_id",id},{"status",status}});}
+QVariantList AdminAppController::pilesOfStation(const QString& stationName) const
+{
+    QVariantList out;
+    for (const auto& v : rawPiles_) {
+        const auto o = v.toObject();
+        if (o.value(QStringLiteral("station_name")).toString() == stationName)
+            out.append(o.toVariantMap());
+    }
+    return out;
+}
+
 QStringList AdminAppController::stationNames() const
 {
     QStringList names;
@@ -88,7 +99,7 @@ void AdminAppController::showNotice(const QString&t,const QString&k){notice_=t;n
 
 void AdminAppController::handleResponse(const charging::core::Message& m){ if(busyCount_>0)--busyCount_;emit busyChanged(); if(m.type.endsWith(".error")){showNotice(m.payload.value("message").toString(),"error");if(m.type==QStringLiteral("admin.password.change.error"))emit passwordChangeResult(false);return;}
     if(m.type=="admin.login.ok"){loggedIn_=true;administrator_=m.payload.value("administrator").toObject().value("username").toString();const bool mustChange=m.payload.value("administrator").toObject().value("must_change_password").toBool();if(mustChange!=mustChangePassword_){mustChangePassword_=mustChange;emit mustChangePasswordChanged();}errorMessage_.clear();emit loggedInChanged();emit noticeChanged();refreshAll();return;}
-    if(m.type=="admin.password.change.ok"){mustChangePassword_=false;emit mustChangePasswordChanged();showNotice(QStringLiteral("密码已更新，请牢记新密码"));emit passwordChangeResult(true);return;}
+    if(m.type=="admin.password.change.ok"){mustChangePassword_=false;emit mustChangePasswordChanged();showNotice(QStringLiteral("密码已更新，请使用新密码重新登录"));emit passwordChangeResult(true);logout();return;}
     if(m.type=="admin.dashboard.ok"){dashboard_=m.payload.value("metrics").toObject().toVariantMap();pileStatus_=m.payload.value("pile_status").toObject().toVariantMap();revenueTrend_=m.payload.value("revenue_trend").toArray().toVariantList();stationEnergy_=m.payload.value("station_energy").toArray().toVariantList();emit dashboardChanged();return;}
     if(m.type=="admin.station.list.ok")rawStations_=m.payload.value("stations").toArray();
     else if(m.type=="admin.pile.list.ok")rawPiles_=m.payload.value("piles").toArray();

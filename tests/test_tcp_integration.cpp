@@ -363,6 +363,107 @@ private slots:
         user.waitForDisconnected(1000);
     }
 
+    // 龙云任务:重复结算给出明确错误且不重复扣款;越权停止被拒绝
+    void settlementSemanticsAndOwnership()
+    {
+        Fixture fixture;
+        QTcpSocket userA;
+        userA.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userA.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userA, {QStringLiteral("loginA"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        QCOMPARE(exchange(userA, {QStringLiteral("recharge"), QStringLiteral("wallet.recharge"),
+                                  {{QStringLiteral("amount"), 200}}}).type,
+                 QStringLiteral("wallet.recharge.ok"));
+
+        QTcpSocket userB;
+        userB.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userB.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userB, {QStringLiteral("loginB"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13500135000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 用户 A 预约桩1并充电至待结算
+        QCOMPARE(exchange(userA, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                  {{QStringLiteral("pile_id"), 1}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        const auto active = exchange(userA, {QStringLiteral("active"), QStringLiteral("order.active"), {}});
+        const qint64 orderId = active.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(userA, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QCOMPARE(exchange(userA, {QStringLiteral("stop"), QStringLiteral("order.stop"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.stop.ok"));
+
+        // 越权:用户 B 尝试停止用户 A 的订单 → 订单不存在(不泄露他单信息)
+        QCOMPARE(exchange(userB, {QStringLiteral("stop-other"), QStringLiteral("order.stop"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.stop.error"));
+
+        // 首次结算成功
+        const auto settle1 = exchange(userA, {QStringLiteral("settle"), QStringLiteral("order.settle"),
+                                              {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(settle1.type, QStringLiteral("order.settle.ok"));
+        const double balanceAfterFirst = settle1.payload.value(QStringLiteral("user")).toObject()
+                                             .value(QStringLiteral("wallet_balance")).toDouble();
+
+        // 重复结算 → 明确错误
+        const auto settle2 = exchange(userA, {QStringLiteral("settle2"), QStringLiteral("order.settle"),
+                                              {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(settle2.type, QStringLiteral("order.settle.error"));
+        QVERIFY(settle2.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("请勿重复操作")));
+
+        // 余额只被扣一次:结算后余额 = 充值额 - 订单金额,再结算后不变
+        const auto profile = exchange(userA, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}});
+        const double balance = profile.payload.value(QStringLiteral("user")).toObject()
+                                   .value(QStringLiteral("wallet_balance")).toDouble();
+        QCOMPARE(balance, balanceAfterFirst);
+        userA.disconnectFromHost(); userA.waitForDisconnected(1000);
+        userB.disconnectFromHost(); userB.waitForDisconnected(1000);
+    }
+
+    // 龙云任务:超时自动取消的预约,start/cancel 返回明确的超时提示
+    void timeoutReservationGivesClearMessage()
+    {
+        Fixture fixture;
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(socket.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(socket, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        const auto reserve = exchange(socket, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                               {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reserve.type, QStringLiteral("order.reserve.ok"));
+        const qint64 orderId = reserve.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QSqlQuery backdate(fixture.database());
+        QVERIFY(backdate.exec(QStringLiteral(
+            "UPDATE charging_orders SET created_at=datetime('now','-20 minutes') "
+            "WHERE status='reserved'")));
+
+        // 任意请求触发超时清理后,start 返回明确的超时提示(而不是笼统失败)
+        const auto start = exchange(socket, {QStringLiteral("start"), QStringLiteral("order.start"),
+                                             {{QStringLiteral("order_id"), orderId}}});
+        QCOMPARE(start.type, QStringLiteral("order.start.error"));
+        QVERIFY(start.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("超时")));
+
+        // 超时释放后可重新预约
+        QCOMPARE(exchange(socket, {QStringLiteral("reserve-2"), QStringLiteral("order.reserve"),
+                                   {{QStringLiteral("pile_id"), 1}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        socket.disconnectFromHost();
+        socket.waitForDisconnected(1000);
+    }
+
     // C4 冻结踢会话(请求级):管理员冻结后,该用户下一个请求立即拒绝并断开
     void frozenUserKickedOnNextRequest()
     {
@@ -432,6 +533,94 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(user.state(), QAbstractSocket::UnconnectedState, 10000);
         admin.disconnectFromHost();
         admin.waitForDisconnected(1000);
+    }
+
+    // 逻辑停用生命周期:停用后用户端不可见/不可约,恢复后一切照旧
+    void stationDisableLifecycle()
+    {
+        Fixture fixture;
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        // 新建电站(含 1 个电桩)用于本用例
+        const auto created = exchange(admin, {QStringLiteral("create"), QStringLiteral("admin.station.create"),
+            {{QStringLiteral("name"), QStringLiteral("停用测试站")}, {QStringLiteral("address"), QStringLiteral("测试路9号")},
+             {QStringLiteral("latitude"), 39.72}, {QStringLiteral("longitude"), 116.17},
+             {QStringLiteral("price_per_kwh"), 1.2}, {QStringLiteral("pile_count"), 1}}});
+        QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
+        const qint64 stationId = created.payload.value(QStringLiteral("station")).toObject()
+                                     .value(QStringLiteral("id")).toInteger();
+        qint64 pileId = 0;
+        const auto piles = exchange(admin, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
+        for (const auto& p : piles.payload.value(QStringLiteral("piles")).toArray()) {
+            if (p.toObject().value(QStringLiteral("station_id")).toInteger() == stationId) {
+                pileId = p.toObject().value(QStringLiteral("id")).toInteger();
+                break;
+            }
+        }
+        QVERIFY(pileId > 0);
+
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                 {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 停用前:用户端可见
+        auto list = exchange(user, {QStringLiteral("list"), QStringLiteral("station.list"), {}});
+        bool found = false;
+        for (const auto& st : list.payload.value(QStringLiteral("stations")).toArray())
+            if (st.toObject().value(QStringLiteral("id")).toInteger() == stationId) found = true;
+        QVERIFY(found);
+
+        // 管理员停用(通过 admin.station.update 的 status 字段)
+        QCOMPARE(exchange(admin, {QStringLiteral("disable"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("停用测试站")},
+             {QStringLiteral("address"), QStringLiteral("测试路9号")}, {QStringLiteral("latitude"), 39.72},
+             {QStringLiteral("longitude"), 116.17}, {QStringLiteral("price_per_kwh"), 1.2},
+             {QStringLiteral("status"), QStringLiteral("disabled")}}}).type,
+                 QStringLiteral("admin.station.update.ok"));
+
+        // 用户端:列表不可见、详情不存在、预约被拒(明确提示停业)
+        list = exchange(user, {QStringLiteral("list"), QStringLiteral("station.list"), {}});
+        found = false;
+        for (const auto& st : list.payload.value(QStringLiteral("stations")).toArray())
+            if (st.toObject().value(QStringLiteral("id")).toInteger() == stationId) found = true;
+        QVERIFY(!found);
+        QCOMPARE(exchange(user, {QStringLiteral("detail"), QStringLiteral("station.detail"),
+                                 {{QStringLiteral("station_id"), stationId}}}).type,
+                 QStringLiteral("station.detail.error"));
+        const auto reserve = exchange(user, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                             {{QStringLiteral("pile_id"), pileId}}});
+        QCOMPARE(reserve.type, QStringLiteral("order.reserve.error"));
+        QVERIFY(reserve.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("停业")));
+
+        // 恢复营业:重新可见、可预约
+        QCOMPARE(exchange(admin, {QStringLiteral("enable"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("停用测试站")},
+             {QStringLiteral("address"), QStringLiteral("测试路9号")}, {QStringLiteral("latitude"), 39.72},
+             {QStringLiteral("longitude"), 116.17}, {QStringLiteral("price_per_kwh"), 1.2},
+             {QStringLiteral("status"), QStringLiteral("active")}}}).type,
+                 QStringLiteral("admin.station.update.ok"));
+        list = exchange(user, {QStringLiteral("list"), QStringLiteral("station.list"), {}});
+        found = false;
+        for (const auto& st : list.payload.value(QStringLiteral("stations")).toArray())
+            if (st.toObject().value(QStringLiteral("id")).toInteger() == stationId) found = true;
+        QVERIFY(found);
+        QCOMPARE(exchange(user, {QStringLiteral("reserve2"), QStringLiteral("order.reserve"),
+                                 {{QStringLiteral("pile_id"), pileId}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        user.disconnectFromHost(); user.waitForDisconnected(1000);
+        admin.disconnectFromHost(); admin.waitForDisconnected(1000);
     }
 
     // B4:同类型请求连发两次,旧响应应被标记为 stale,只有最新响应驱动界面

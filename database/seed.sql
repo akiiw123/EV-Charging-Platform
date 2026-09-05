@@ -102,3 +102,7 @@ VALUES
 INSERT OR IGNORE INTO charging_pricing_rules
     (station_id, enabled, free_move_minutes, occupancy_fee_per_minute, occupancy_fee_cap)
 VALUES (900001, 1, 10, 0.80, 0);
+
+-- 900014 学园北街充电站演示"逻辑停用":用户端不可见、不可预约,
+-- 管理端可随时恢复营业(历史订单保留)。
+UPDATE charging_stations SET status = 'disabled' WHERE id = 900014;

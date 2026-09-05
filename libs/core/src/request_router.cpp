@@ -1,9 +1,11 @@
 #include "charging/core/request_router.h"
 
+#include "charging/core/business_rules.h"
 #include "charging/core/repositories.h"
 #include "charging/core/password_security.h"
 
 #include <QJsonArray>
+#include <QDate>
 #include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -54,6 +56,7 @@ QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile
             {QStringLiteral("idle_pile_count"), idleCount},
             {QStringLiteral("offline_count"), offlineCount},
             {QStringLiteral("online_rate"), piles.isEmpty() ? 0.0 : (piles.size() - offlineCount) * 100.0 / piles.size()},
+            {QStringLiteral("status"), station.status},
             {QStringLiteral("created_at"), station.createdAt.toString(Qt::ISODate)}};
 }
 
@@ -110,10 +113,28 @@ RequestRouter::RequestRouter(QSqlDatabase database) : database_(std::move(databa
 void RequestRouter::expireStaleReservations()
 {
     QSqlQuery query(database_);
-    query.exec(QStringLiteral(
+    query.prepare(QStringLiteral(
         "UPDATE charging_orders SET status='cancelled' "
         "WHERE status='reserved' "
-        "AND created_at < datetime('now','-15 minutes')"));
+        "AND created_at < datetime('now', :minutes || ' minutes')"));
+    query.bindValue(QStringLiteral(":minutes"),
+                    -kReservationTimeoutMinutes);
+    query.exec();
+}
+
+// 判断一笔已取消的预约是否"因超时被系统取消":创建时间已超出保留窗口。
+// 本阶段不新增字段,取消原因统一存为 cancelled,这里仅用于生成可读的失败提示。
+bool reservationExpiredByTimeout(const QSqlDatabase& database, const ChargingOrder& order)
+{
+    if (order.status != QStringLiteral("cancelled"))
+        return false;
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT created_at < datetime('now', :minutes || ' minutes') "
+        "FROM charging_orders WHERE id = :id"));
+    query.bindValue(QStringLiteral(":minutes"), -kReservationTimeoutMinutes);
+    query.bindValue(QStringLiteral(":id"), order.id);
+    return query.exec() && query.next() && query.value(0).toInt() == 1;
 }
 
 // 冻结踢会话(轮询入口):由 TCP 连接循环定期调用,查询当前登录用户的状态。
@@ -136,6 +157,16 @@ bool RequestRouter::refreshSession()
         return true;
     }
     return false;
+}
+
+// 数据库错误统一出口:原始错误只进服务端日志(qWarning),
+// 客户端一律收到通用可读提示,避免 SQLite 内部信息直接暴露
+Message RequestRouter::storageError(const Message& request, const QString& context,
+                                    const QString& detail) const
+{
+    qWarning() << "[charging-platform] 数据库错误(" << context << "):" << detail;
+    return error(request, QStringLiteral("DATABASE_ERROR"),
+                 QStringLiteral("操作失败,请稍后重试;若持续出现请联系管理员"));
 }
 
 Message RequestRouter::route(const Message& request)
@@ -170,7 +201,7 @@ Message RequestRouter::route(const Message& request)
         if (password::needsUpgrade(administrator->passwordHash)
             && !administrators.updatePasswordHash(administrator->id, password::hash(password),
                                                   &repositoryError)) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
         authenticatedAdminId_ = administrator->id;
         return success(request, {{QStringLiteral("administrator"),
@@ -196,8 +227,7 @@ Message RequestRouter::route(const Message& request)
         AdministratorRepository administrators(database_);
         const auto administrator = administrators.findById(*authenticatedAdminId_, &repositoryError);
         if (!administrator) {
-            return error(request, QStringLiteral("DATABASE_ERROR"),
-                         repositoryError.isEmpty() ? QStringLiteral("管理员不存在") : repositoryError);
+            return storageError(request, QStringLiteral("管理员查询"), repositoryError);
         }
         if (!password::verify(oldPassword, administrator->passwordHash)) {
             return error(request, QStringLiteral("PASSWORD_OLD_MISMATCH"),
@@ -209,7 +239,7 @@ Message RequestRouter::route(const Message& request)
         }
         if (!administrators.changePassword(administrator->id, password::hash(newPassword),
                                            &repositoryError)) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
         return success(request, {{QStringLiteral("must_change_password"), false}});
     }
@@ -225,27 +255,34 @@ Message RequestRouter::route(const Message& request)
                 "COALESCE(SUM(CASE WHEN strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime') THEN amount END),0),"
                 "COALESCE(SUM(amount),0) FROM charging_orders WHERE status='completed'"))
             || !revenue.next()) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), revenue.lastError().text());
+            return storageError(request, QStringLiteral("营收统计"), revenue.lastError().text());
         }
         metrics.insert(QStringLiteral("today_revenue"), revenue.value(0).toDouble());
         metrics.insert(QStringLiteral("month_revenue"), revenue.value(1).toDouble());
         metrics.insert(QStringLiteral("total_revenue"), revenue.value(2).toDouble());
         QSqlQuery summary(database_);
+        // 订单口径与需求矩阵一致:只统计已完成(completed)订单
         if (!summary.exec(QStringLiteral(
                 "SELECT "
-                "(SELECT COUNT(*) FROM charging_orders WHERE date(created_at)=date('now','localtime')),"
-                "(SELECT COUNT(*) FROM charging_orders),"
+                "(SELECT COUNT(*) FROM charging_orders WHERE date(created_at)=date('now','localtime') AND status='completed'),"
+                "(SELECT COUNT(*) FROM charging_orders WHERE status='completed'),"
                 "(SELECT COUNT(*) FROM users),"
                 "(SELECT COUNT(*) FROM charging_stations)")) || !summary.next()) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), summary.lastError().text());
+            return storageError(request, QStringLiteral("总览汇总"), summary.lastError().text());
         }
-        metrics.insert(QStringLiteral("today_orders"), summary.value(0).toInt());
-        metrics.insert(QStringLiteral("total_orders"), summary.value(1).toInt());
+        const int completedToday = summary.value(0).toInt();
+        const int completedTotal = summary.value(1).toInt();
+        metrics.insert(QStringLiteral("completed_orders_today"), completedToday);
+        metrics.insert(QStringLiteral("completed_orders_total"), completedTotal);
+        // 平均订单金额 = 累计营收 / 已完成订单数,无订单时为 0
+        const double totalRevenue = metrics.value(QStringLiteral("total_revenue")).toDouble();
+        metrics.insert(QStringLiteral("avg_order_amount"),
+                       completedTotal > 0 ? qRound64(totalRevenue * 100.0 / completedTotal) / 100.0 : 0.0);
         metrics.insert(QStringLiteral("registered_users"), summary.value(2).toInt());
         metrics.insert(QStringLiteral("station_count"), summary.value(3).toInt());
         QSqlQuery pileCounts(database_);
         if (!pileCounts.exec(QStringLiteral("SELECT status,COUNT(*) FROM charging_piles GROUP BY status"))) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), pileCounts.lastError().text());
+            return storageError(request, QStringLiteral("电桩状态统计"), pileCounts.lastError().text());
         }
         QJsonObject statuses {{QStringLiteral("idle"), 0}, {QStringLiteral("charging"), 0},
                               {QStringLiteral("fault"), 0}, {QStringLiteral("offline"), 0}};
@@ -260,9 +297,15 @@ Message RequestRouter::route(const Message& request)
             "GROUP BY date(created_at,'localtime') ORDER BY date(created_at,'localtime')"));
         trendQuery.bindValue(QStringLiteral(":offset"), -(trendDays - 1));
         trendQuery.exec();
-        while (trendQuery.next()) {
-            trend.append(QJsonObject {{QStringLiteral("date"), trendQuery.value(0).toString()},
-                                      {QStringLiteral("amount"), trendQuery.value(1).toDouble()}});
+        QMap<QString, double> amountByDate;
+        while (trendQuery.next())
+            amountByDate.insert(trendQuery.value(0).toString(), trendQuery.value(1).toDouble());
+        // 连续日期补 0:没有订单的日期也要出现,保证横轴日期连续
+        for (int i = trendDays - 1; i >= 0; --i) {
+            const QString day =
+                QDate::currentDate().addDays(-i).toString(QStringLiteral("yyyy-MM-dd"));
+            trend.append(QJsonObject {{QStringLiteral("date"), day},
+                                      {QStringLiteral("amount"), amountByDate.value(day, 0.0)}});
         }
         int totalPiles = 0;
         for (const auto& value : statuses) totalPiles += value.toInt();
@@ -304,7 +347,7 @@ Message RequestRouter::route(const Message& request)
             || pileCount < 1 || pileCount > 100) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("经纬度或电桩数量无效"));
         }
-        if (!database_.transaction()) return error(request, QStringLiteral("DATABASE_ERROR"), database_.lastError().text());
+        if (!database_.transaction()) return storageError(request, QStringLiteral("数据库操作"), database_.lastError().text());
         StationRepository stations(database_); PileRepository piles(database_);
         const auto station = stations.create(value, &repositoryError);
         if (!station) { database_.rollback(); return error(request, QStringLiteral("STATION_CREATE_FAILED"), repositoryError); }
@@ -316,7 +359,7 @@ Message RequestRouter::route(const Message& request)
                 database_.rollback(); return error(request, QStringLiteral("STATION_CREATE_FAILED"), repositoryError);
             }
         }
-        if (!database_.commit()) return error(request, QStringLiteral("DATABASE_ERROR"), database_.lastError().text());
+        if (!database_.commit()) return storageError(request, QStringLiteral("数据库操作"), database_.lastError().text());
         return success(request, {{QStringLiteral("station"), stationJson(*station, piles.listByStation(station->id))}});
     }
 
@@ -327,15 +370,26 @@ Message RequestRouter::route(const Message& request)
         const double latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
         const double longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
         const double price = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
+        // 可选逻辑停用状态:仅允许 active/disabled(第一阶段与成员二协商后的统一接口)
+        const QString status = request.payload.value(QStringLiteral("status")).toString();
+        if (!status.isEmpty() && status != QStringLiteral("active") && status != QStringLiteral("disabled")) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"),
+                         QStringLiteral("电站状态仅支持 active/disabled"));
+        }
         if (!stationId || name.isEmpty() || address.isEmpty() || latitude < -90 || latitude > 90
             || longitude < -180 || longitude > 180 || price < 0) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("电站表单内容无效"));
         }
         QSqlQuery query(database_);
-        query.prepare(QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,latitude=:lat,longitude=:lng,price_per_kwh=:price WHERE id=:id"));
+        QString sql = QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,"
+                                     "latitude=:lat,longitude=:lng,price_per_kwh=:price");
+        if (!status.isEmpty()) sql += QStringLiteral(",status=:status");
+        sql += QStringLiteral(" WHERE id=:id");
+        query.prepare(sql);
         query.bindValue(QStringLiteral(":name"), name); query.bindValue(QStringLiteral(":address"), address);
         query.bindValue(QStringLiteral(":lat"), latitude); query.bindValue(QStringLiteral(":lng"), longitude);
         query.bindValue(QStringLiteral(":price"), price); query.bindValue(QStringLiteral(":id"), *stationId);
+        if (!status.isEmpty()) query.bindValue(QStringLiteral(":status"), status);
         if (!query.exec() || query.numRowsAffected() != 1) return error(request, QStringLiteral("STATION_UPDATE_FAILED"), query.lastError().isValid() ? query.lastError().text() : QStringLiteral("电站不存在"));
         return success(request, {{QStringLiteral("id"), *stationId}});
     }
@@ -344,7 +398,7 @@ Message RequestRouter::route(const Message& request)
         const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
         if (!stationId) return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("station_id 无效"));
         QSqlQuery active(database_); active.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id AND o.status IN ('reserved','charging','awaiting_payment')")); active.bindValue(QStringLiteral(":id"),*stationId);
-        if (!active.exec() || !active.next()) return error(request, QStringLiteral("DATABASE_ERROR"),active.lastError().text());
+        if (!active.exec() || !active.next()) return storageError(request, QStringLiteral("附近站点查询"), active.lastError().text());
         if (active.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在进行中或待结算订单，不能删除"));
         QSqlQuery query(database_); query.prepare(QStringLiteral("DELETE FROM charging_stations WHERE id=:id"));query.bindValue(QStringLiteral(":id"),*stationId);
         if(!query.exec()||query.numRowsAffected()!=1)return error(request,QStringLiteral("STATION_DELETE_FAILED"),query.lastError().isValid()?query.lastError().text():QStringLiteral("电站不存在"));
@@ -356,7 +410,7 @@ Message RequestRouter::route(const Message& request)
         query.prepare(QStringLiteral(
             "SELECT p.id,p.station_id,p.code,p.type,p.power_kw,p.status,p.charge_count,p.total_charge_minutes,s.name "
             "FROM charging_piles p JOIN charging_stations s ON s.id=p.station_id ORDER BY p.id"));
-        if (!query.exec()) return error(request, QStringLiteral("DATABASE_ERROR"), query.lastError().text());
+        if (!query.exec()) return storageError(request, QStringLiteral("数据查询"), query.lastError().text());
         QJsonArray array;
         while (query.next()) {
             array.append(QJsonObject {{QStringLiteral("id"), query.value(0).toLongLong()},
@@ -461,7 +515,7 @@ Message RequestRouter::route(const Message& request)
         QSqlQuery query(database_);
         query.prepare(QStringLiteral("SELECT u.*,MAX(o.created_at) AS last_activity,COUNT(o.id) AS order_count,COALESCE(SUM(CASE WHEN o.status='completed' THEN o.amount ELSE 0 END),0) AS total_spent FROM users u LEFT JOIN charging_orders o ON o.user_id=u.id WHERE u.phone LIKE :phone GROUP BY u.id ORDER BY u.id DESC LIMIT 200"));
         query.bindValue(QStringLiteral(":phone"), QStringLiteral("%") + request.payload.value(QStringLiteral("phone")).toString() + QStringLiteral("%"));
-        if (!query.exec()) return error(request, QStringLiteral("DATABASE_ERROR"), query.lastError().text());
+        if (!query.exec()) return storageError(request, QStringLiteral("数据查询"), query.lastError().text());
         QJsonArray array;
         while (query.next()) array.append(QJsonObject {{QStringLiteral("id"), query.value("id").toLongLong()},
             {QStringLiteral("phone"), query.value("phone").toString()}, {QStringLiteral("nickname"), query.value("nickname").toString()},
@@ -478,7 +532,7 @@ Message RequestRouter::route(const Message& request)
             "CASE WHEN o.started_at IS NULL THEN 0 ELSE CAST((julianday(COALESCE(o.ended_at,'now'))-julianday(o.started_at))*86400 AS INTEGER) END "
             "FROM charging_orders o JOIN users u ON u.id=o.user_id JOIN charging_piles p ON p.id=o.pile_id "
             "JOIN charging_stations s ON s.id=p.station_id ORDER BY o.id DESC LIMIT 500"));
-        if (!query.exec()) return error(request,QStringLiteral("DATABASE_ERROR"),query.lastError().text());
+        if (!query.exec()) return storageError(request, QStringLiteral("数据查询"), query.lastError().text());
         QJsonArray array; while(query.next()) array.append(QJsonObject{{QStringLiteral("id"),query.value(0).toLongLong()},
             {QStringLiteral("order_no"),QStringLiteral("#%1").arg(query.value(0).toLongLong(),6,10,QLatin1Char('0'))},
             {QStringLiteral("phone"),query.value(1).toString()},{QStringLiteral("station_name"),query.value(2).toString()},
@@ -538,7 +592,7 @@ Message RequestRouter::route(const Message& request)
         }
         const auto user = users.findById(*authenticatedUserId_, &repositoryError);
         return user ? success(request, {{QStringLiteral("user"), userJson(*user)}})
-                    : error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+                    : storageError(request, QStringLiteral("用户资料"), repositoryError);
     }
 
     if (request.type == QStringLiteral("wallet.recharge")) {
@@ -580,7 +634,7 @@ Message RequestRouter::route(const Message& request)
             array.append(item);
         }
         if (!repositoryError.isEmpty()) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
         return success(request, {{QStringLiteral("orders"), array}});
     }
@@ -597,10 +651,7 @@ Message RequestRouter::route(const Message& request)
     query.bindValue(QStringLiteral(":user_id"), *authenticatedUserId_);
 
     if (!query.exec()) {
-        return error(
-            request,
-            QStringLiteral("DATABASE_ERROR"),
-            query.lastError().text());
+        return storageError(request, QStringLiteral("历史订单查询"), query.lastError().text());
     }
 
     while (query.next()) {
@@ -661,6 +712,13 @@ Message RequestRouter::route(const Message& request)
         }
 
         if (request.type == QStringLiteral("order.start")) {
+            // 预约若已因超时被系统自动取消,给出可读的超时提示而不是笼统失败
+            if (existing->status == QStringLiteral("cancelled")
+                && reservationExpiredByTimeout(database_, *existing)) {
+                return error(request, QStringLiteral("ORDER_START_FAILED"),
+                             QStringLiteral("预约已超时自动取消(超过 %1 分钟未开始),请重新预约")
+                                 .arg(kReservationTimeoutMinutes));
+            }
             if (!orders.startCharging(*orderId, &repositoryError)) {
                 return error(request, QStringLiteral("ORDER_START_FAILED"), repositoryError);
             }
@@ -688,10 +746,21 @@ Message RequestRouter::route(const Message& request)
                 return error(request, QStringLiteral("ORDER_STOP_FAILED"), repositoryError);
             }
         } else if (request.type == QStringLiteral("order.settle")) {
+            // 重复结算给出明确结果,且不会重复扣款(事务内状态条件保证)
+            if (existing->status == QStringLiteral("completed")) {
+                return error(request, QStringLiteral("ORDER_SETTLE_FAILED"),
+                             QStringLiteral("订单已完成结算,请勿重复操作"));
+            }
             if (!orders.settle(*orderId, &repositoryError)) {
                 return error(request, QStringLiteral("ORDER_SETTLE_FAILED"), repositoryError);
             }
         } else if (request.type == QStringLiteral("order.cancel")) {
+            if (existing->status == QStringLiteral("cancelled")
+                && reservationExpiredByTimeout(database_, *existing)) {
+                return error(request, QStringLiteral("ORDER_CANCEL_FAILED"),
+                             QStringLiteral("预约已超时自动取消(超过 %1 分钟未开始),无需再次取消")
+                                 .arg(kReservationTimeoutMinutes));
+            }
             if (!orders.cancel(*orderId, &repositoryError)) {
                 return error(request, QStringLiteral("ORDER_CANCEL_FAILED"), repositoryError);
             }
@@ -713,10 +782,12 @@ Message RequestRouter::route(const Message& request)
         PileRepository piles(database_);
         QJsonArray array;
         for (const auto& station : stations.list(&repositoryError)) {
+            // 逻辑停用的电站对用户端不可见
+            if (station.status == QStringLiteral("disabled")) continue;
             array.append(stationJson(station, piles.listByStation(station.id, &repositoryError)));
         }
         if (!repositoryError.isEmpty()) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
         return success(request, {{QStringLiteral("stations"), array}});
     }
@@ -729,7 +800,8 @@ Message RequestRouter::route(const Message& request)
         StationRepository stations(database_);
         PileRepository piles(database_);
         const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
+        // 逻辑停用的电站对用户端不可见
+        if (!station || station->status == QStringLiteral("disabled")) {
             return error(request, QStringLiteral("STATION_NOT_FOUND"),
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }
@@ -766,7 +838,7 @@ Message RequestRouter::route(const Message& request)
         const auto currentPrice =
             pricing.pricePerKwhAt(*stationId, QDateTime::currentDateTime(), &repositoryError);
         if (!currentPrice) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
 
         QJsonObject payload {{QStringLiteral("station_id"), *stationId},
@@ -789,7 +861,7 @@ Message RequestRouter::route(const Message& request)
             array.append(pileJson(pile));
         }
         if (!repositoryError.isEmpty()) {
-            return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
         }
         return success(request, {{QStringLiteral("piles"), array}});
     }

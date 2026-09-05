@@ -40,6 +40,7 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionStatus READ predictionStatus NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionUpdatedAt READ predictionUpdatedAt NOTIFY predictionChanged)
     Q_PROPERTY(bool mustChangePassword READ mustChangePassword NOTIFY mustChangePasswordChanged)
+    Q_PROPERTY(bool loadFailed READ loadFailed NOTIFY loadFailedChanged)
     // 真实预测聚合值(全部站点合计);演示模式为 "—"
     Q_PROPERTY(QString predictionLoad1 READ predictionLoad1 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad6 READ predictionLoad6 NOTIFY predictionChanged)
@@ -79,6 +80,7 @@ public:
     QString predictionLoad24() const { return predictionLoad24_; }
     QString predictionConfidence() const { return predictionConfidence_; }
     bool mustChangePassword() const { return mustChangePassword_; }
+    bool loadFailed() const { return loadFailed_; }
 
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
@@ -108,6 +110,8 @@ public:
     Q_INVOKABLE QVariantMap pileAt(int row) const { return piles_.get(row); }
     Q_INVOKABLE QVariantMap orderAt(int row) const { return orders_.get(row); }
     Q_INVOKABLE QVariantMap userAt(int row) const { return users_.get(row); }
+    // 电站详情抽屉:按站名过滤电桩列表
+    Q_INVOKABLE QVariantList pilesOfStation(const QString& stationName) const;
 
     void setTheme(const QString& value);
     void setSidebarExpanded(bool value);
@@ -126,6 +130,7 @@ signals:
     void dashboardChanged();
     void predictionChanged();
     void mustChangePasswordChanged();
+    void loadFailedChanged();
     void passwordChangeResult(bool success);
 
 private:
@@ -166,6 +171,7 @@ private:
     QString predictionLoad1_ = QStringLiteral("—"), predictionLoad6_ = QStringLiteral("—"),
             predictionLoad24_ = QStringLiteral("—"), predictionConfidence_ = QStringLiteral("—");
     bool mustChangePassword_ = false;
+    bool loadFailed_ = false;
 };
 
 } // namespace charging::admin

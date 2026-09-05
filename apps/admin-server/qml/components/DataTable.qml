@@ -47,9 +47,9 @@ PanelCard {
                     MouseArea{id:mouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:{root.selectedRow=index;root.rowActivated(index,record)}}
                     Behavior on color{ColorAnimation{duration:Theme.durationFast}}
                 }
-                EmptyState{anchors.fill:parent;visible:list.count===0;message:adminController.busy?"正在加载数据…":"暂无符合条件的数据"}
+                EmptyState{anchors.fill:parent;visible:list.count===0;message:adminController.busy?"正在加载数据…":adminController.loadFailed?"加载失败,请检查服务连接后点击刷新重试":"暂无符合条件的数据"}
             }
         }
     }
-    function statusLabel(s){return s==="idle"?"空闲":s==="charging"?"充电中":s==="reserved"?"已预约":s==="awaiting_payment"?"待支付":s==="completed"?"已完成":s==="cancelled"?"已取消":s==="fault"?"故障":s==="offline"?"离线":s==="active"?"正常":s==="frozen"?"已冻结":s}
+    function statusLabel(s){return s==="idle"?"空闲":s==="charging"?"充电中":s==="reserved"?"已预约":s==="awaiting_payment"?"待支付":s==="completed"?"已完成":s==="cancelled"?"已取消":s==="fault"?"故障":s==="offline"?"离线":s==="active"?"正常":s==="frozen"?"已冻结":s==="disabled"?"已停用":s}
 }

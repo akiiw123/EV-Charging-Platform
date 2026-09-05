@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS charging_stations (
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     price_per_kwh REAL NOT NULL CHECK(price_per_kwh >= 0),
+    -- 营业状态:active 正常营业 / disabled 逻辑停用(用户端不可见、不可预约)
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -104,3 +106,4 @@ INSERT OR IGNORE INTO schema_versions(version) VALUES (1);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (2);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (3);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (4);
+INSERT OR IGNORE INTO schema_versions(version) VALUES (5);

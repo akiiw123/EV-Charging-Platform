@@ -20,7 +20,7 @@ export CHARGING_SERVER_PORT=45454
 ## 已实现请求
 
 - `auth.phone_login`：`payload.phone` 为 11 位手机号；不存在时自动注册。
-- `station.list`：返回所有电站、总桩数和空闲桩数。
+- `station.list`：返回所有**营业中**电站、总桩数和空闲桩数;逻辑停用(disabled)的电站对用户端不可见。
 - `station.detail`：`payload.station_id` 为电站 ID；返回电站及电桩明细。
 - `station.pricing`：`payload.station_id` 为电站 ID；只读返回该站收费数据，
   `payload.pricing` 含 `fixed_price_per_kwh`（`charging_stations.price_per_kwh`）、
@@ -39,6 +39,29 @@ export CHARGING_SERVER_PORT=45454
 
 用户相关接口绑定当前 TCP 连接的登录身份，不接受客户端提交任意用户 ID。连接重建后必须重新登录。
 
+### 预约占用策略(第一阶段)
+
+- 不引入电桩 `reserved` 状态;预约占用由**订单唯一约束**实现:数据库部分唯一索引保证
+  每用户/每电桩同时仅一个活动订单(`reserved/charging/awaiting_payment`)。
+- 预约超 **15 分钟** 未开始充电,系统在任意请求入口自动取消该预约并释放电桩
+  (超时时长为服务端常量 `kReservationTimeoutMinutes`)。
+- 对已取消的预约发起 `order.start` / `order.cancel`,会返回明确的超时提示
+  (如"预约已超时自动取消(超过 15 分钟未开始),请重新预约")。
+
+### 冻结对在途订单的处理
+
+- 冻结立即禁止登录,并踢出已建立的会话(见下);**不自动取消/结算其进行中订单**。
+- 充电中订单:踢出后服务端不再收到该用户的停止请求,订单保持 `charging`;
+  管理员可通过"编辑/切换状态受限"知悉,解冻后用户可重新登录继续操作。
+- 待结算订单:保留至解冻后由用户自行结算;期间该用户与对应电桩仍被唯一约束占用。
+- 以上口径保证不会产生"无人可结算"的孤儿订单(订单始终归属可恢复的账号)。
+
+### 重复请求保护(第一阶段)
+
+- 客户端:请求期间全局 busy 遮罩/按钮禁用,防止双击重复提交。
+- 服务端:关键操作依赖状态条件(重复 `order.settle` 返回"订单已完成结算,请勿重复操作";
+  重复 `order.reserve` 返回 `ORDER_ACTIVE_EXISTS`),不引入完整幂等表。
+
 被冻结的用户会话会被服务端主动断开：用户发出下一个鉴权请求时立即拒绝
 （`AUTH_USER_FROZEN`）并断开；即使不发请求，服务端约每 5 秒轮询一次，
 发送 `server.session.closed` 后断开。客户端可自动重连，但重新登录仍会被拒。
@@ -46,8 +69,11 @@ export CHARGING_SERVER_PORT=45454
 ## 管理接口
 
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
-- `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势；`payload.days` 可选 7/30 指定趋势区间。
-- `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
+- `admin.dashboard`：今日/本月/累计营收、已完成订单数(今日/累计)、平均订单金额、注册用户数、电桩状态分布、在线率、近7/30日营收趋势(缺数据日期补0,日期连续);`payload.days` 可选 7/30 指定趋势区间。营收与订单数口径均只统计 `completed` 订单。
+- `admin.station.list` / `admin.station.create`：电站查询(含已停用,带营业状态)和新增，并可批量初始化电桩。
+- `admin.station.update`：编辑电站资料;可选 `payload.status`(`active`/`disabled`)实现**逻辑停用/恢复营业**——
+  停用后用户端不再展示该电站、其电桩不可预约(服务端在 `order.reserve` 兜底校验);
+  历史订单与数据保留,可随时恢复。删除接口仍保留,有活动订单时拒绝。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
 - `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
   编号全局唯一，重复返回 `PILE_CREATE_FAILED`。

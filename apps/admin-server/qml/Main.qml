@@ -55,6 +55,7 @@ ApplicationWindow {
                 }
                 AppButton {
                     Layout.fillWidth: true
+                    enabled: !adminController.busy
                     text: "确认修改"
                     onClicked: {
                         cpError.text = ""

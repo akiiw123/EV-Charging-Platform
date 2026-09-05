@@ -196,3 +196,27 @@ refreshPredictions()
   database-robustness)已重新注册进 CMake 并全部通过(现共 6 套件)。
   **提醒:请勿用"上传文件"方式提交整目录覆盖,务必走 git 提交,避免再次覆盖
   他人功能。**
+- 2026-09-05 余欣悦(feature/admin-client)第一阶段任务完成:
+  ①总览补齐 已完成订单数(今日/累计,只统计 completed)与平均订单金额;
+  ②营收趋势连续日期补0,折线图增加日期轴标签与空数据提示;
+  ③电站详情抽屉展示站内电桩逐桩列表;④删除确认文案保持关联订单提示;
+  ⑤电桩管理确认(此前 C2 已覆盖);⑥冻结确认补充"强制下线"影响,确认按钮
+  busy 期间禁用;⑦首登改密成功后退出到登录页,需用新密码重登;
+  ⑧DataTable 增加加载失败态。协议文档同步更新。
+- 2026-09-05 龙云部分(充电业务与服务端规则,feature/charging-flow)由余欣悦代完成:
+  ①预约超时时长集中为 business_rules.h 的 kReservationTimeoutMinutes(消灭硬编码 SQL);
+  ②对已超时自动取消的预约,start/cancel 返回明确超时提示(不再笼统失败);
+  ③order.settle 对已完成订单返回"订单已完成结算,请勿重复操作",事务保证不重复扣款;
+  ④新增 storageError 统一出口:数据库原始错误只写服务端日志(qWarning),客户端
+  仅收到"操作失败,请稍后重试",全文件 19 处 DATABASE_ERROR 返回点已收口;
+  ⑤电站详情页注明预约占用由订单唯一约束保证;protocol.md 补充预约占用策略、
+  冻结对在途订单的处理、重复请求保护策略三个章节;
+  ⑥新增 3 个集成测试:结算语义与越权停止、超时预约明确提示。17/17 通过。
+- 2026-09-05 电站逻辑停用落地(矩阵 NO.44 △→○,NO.49 营业状态字段补齐):
+  charging_stations 新增 status(active/disabled),DatabaseManager::initialize 增加
+  幂等列迁移(schema → migrate → seed 顺序),老库自动补列;admin.station.update
+  支持可选 status 字段;用户端 station.list/detail 过滤停用电站,
+  order.reserve 兜底校验所属电站营业状态;管理端电站表新增营业状态列与
+  停用/恢复按钮(二次确认);seed 将 900014 演示为停用态。
+  新增集成测试 stationDisableLifecycle。**注意:合入 main 时应一并合入本分支
+  (含分时电价恢复),避免再次出现功能覆盖。**
