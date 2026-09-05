@@ -158,7 +158,7 @@ static const char* kPresetCityKeys[] = {
     "北京", "上海", "广州", "深圳", "沈阳", "杭州"
 };
 static const double kPresetCityCoords[][3] = {
-    {39.9042, 116.4074},   // 北京
+    {39.7296, 116.1710},   // 北京：北理工良乡校区。
     {31.2304, 121.4737},   // 上海
     {23.1291, 113.2644},   // 广州
     {22.5431, 114.0579},   // 深圳
@@ -175,9 +175,14 @@ void UserAppController::locate(const QString& address)
     }
     // 1) 命中内置城市:即时定位,不依赖网络
     for (int i = 0; i < 6; ++i) {
-        if (text.contains(QString::fromUtf8(kPresetCityKeys[i]))) {
-            applyLocation(QString::fromUtf8(kPresetCityKeys[i]) + QStringLiteral("市"),
-                          kPresetCityCoords[i][0], kPresetCityCoords[i][1]);
+        const QString city = QString::fromUtf8(kPresetCityKeys[i]);
+        if (text == city || text == city + QStringLiteral("市")) {
+            QString displayName = city + QStringLiteral("市");
+            // 北京快捷定位用于课程演示,定位到北京理工大学良乡校区
+            if (city == QStringLiteral("北京")) {
+                displayName = QStringLiteral("北京理工大学良乡校区");
+            }
+            applyLocation(displayName, kPresetCityCoords[i][0], kPresetCityCoords[i][1]);
             return;
         }
     }
@@ -417,8 +422,34 @@ double UserAppController::distanceKm(
 void UserAppController::rebuildStations()
 {
     QVariantList filtered;
+    QString currentCity;
+
+if (locationName_.contains(QStringLiteral("北京")))
+    currentCity = QStringLiteral("北京");
+else if (locationName_.contains(QStringLiteral("上海")))
+    currentCity = QStringLiteral("上海");
+else if (locationName_.contains(QStringLiteral("广州")))
+    currentCity = QStringLiteral("广州");
+else if (locationName_.contains(QStringLiteral("深圳")))
+    currentCity = QStringLiteral("深圳");
+else if (locationName_.contains(QStringLiteral("沈阳")))
+    currentCity = QStringLiteral("沈阳");
+else if (locationName_.contains(QStringLiteral("杭州")))
+    currentCity = QStringLiteral("杭州");
     for (const QVariant& value : rawStations_) {
         QVariantMap station = value.toMap();
+        // 根据当前定位城市过滤充电站，避免深圳站出现在北京列表中
+if (!currentCity.isEmpty()) {
+    const QString stationAddress =
+        station.value(QStringLiteral("address")).toString();
+    const QString stationName =
+        station.value(QStringLiteral("name")).toString();
+
+    if (!stationAddress.contains(currentCity)
+        && !stationName.contains(currentCity)) {
+        continue;
+    }
+}
         if (!searchQuery_.isEmpty()
             && !station.value(QStringLiteral("name")).toString().contains(
                 searchQuery_, Qt::CaseInsensitive)
