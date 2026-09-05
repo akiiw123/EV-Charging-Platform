@@ -16,6 +16,6 @@ Item{id:root;property var selected:({});Component.onCompleted:adminController.re
         Text{text:"历史订单  "+String(root.selected.order_count||0)+" 单";color:Theme.textSecondary}Text{text:"累计消费  ¥"+Number(root.selected.total_spent||0).toFixed(2);color:Theme.textSecondary}Text{text:"注册时间  "+String(root.selected.created_at||"—");color:Theme.textSecondary}Item{Layout.fillHeight:true}
         AppButton{Layout.fillWidth:true;text:root.selected.status==="active"?"冻结用户":"解除冻结";variant:root.selected.status==="active"?"danger":"secondary";onClicked:statusConfirm.open()}
     }}
-    ConfirmDialog{id:statusConfirm;heading:root.selected.status==="active"?"冻结用户":"解除冻结";message:(root.selected.status==="active"?"冻结后用户将无法登录。":"确认恢复该用户的登录与充电权限。")+"\n用户："+root.masked(root.selected.phone);confirmText:root.selected.status==="active"?"确认冻结":"确认解冻";dangerous:root.selected.status==="active";onAcceptedAction:{drawer.close();adminController.setUserStatus(Number(root.selected.id),root.selected.status==="active"?"frozen":"active")}}
+    ConfirmDialog{id:statusConfirm;heading:root.selected.status==="active"?"冻结用户":"解除冻结";message:(root.selected.status==="active"?"冻结后该用户将无法登录,已在线的会话也会被强制下线,且不能发起新的预约。":"确认恢复该用户的登录与充电权限。")+"\n用户："+root.masked(root.selected.phone);confirmText:root.selected.status==="active"?"确认冻结":"确认解冻";dangerous:root.selected.status==="active";onAcceptedAction:{drawer.close();adminController.setUserStatus(Number(root.selected.id),root.selected.status==="active"?"frozen":"active")}}
 }
 

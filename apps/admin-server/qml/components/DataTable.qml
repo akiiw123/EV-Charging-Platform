@@ -47,7 +47,7 @@ PanelCard {
                     MouseArea{id:mouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:{root.selectedRow=index;root.rowActivated(index,record)}}
                     Behavior on color{ColorAnimation{duration:Theme.durationFast}}
                 }
-                EmptyState{anchors.fill:parent;visible:list.count===0;message:adminController.busy?"正在加载数据…":"暂无符合条件的数据"}
+                EmptyState{anchors.fill:parent;visible:list.count===0;message:adminController.busy?"正在加载数据…":adminController.loadFailed?"加载失败,请检查服务连接后点击刷新重试":"暂无符合条件的数据"}
             }
         }
     }
