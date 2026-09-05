@@ -131,9 +131,9 @@ private:
     QVariantList piles_;
     QVariantList history_;
     QVariantList rechargeHistory_;
-    QString locationName_ = QStringLiteral("北京理工大学良乡校区");
-    double latitude_ = 39.7296;
-    double longitude_ = 116.1710;
+    QString locationName_ = QStringLiteral("深圳市");
+    double latitude_ = 22.543096;
+    double longitude_ = 114.057865;
     QString searchQuery_;
     qint64 chargingSeconds_ = 0;
     double selectedPowerKw_ = 0.0;

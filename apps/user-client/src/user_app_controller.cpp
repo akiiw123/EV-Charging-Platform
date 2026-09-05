@@ -158,7 +158,7 @@ static const char* kPresetCityKeys[] = {
     "北京", "上海", "广州", "深圳", "沈阳", "杭州"
 };
 static const double kPresetCityCoords[][3] = {
-    {39.7296, 116.1710},   // 北京：北理工良乡校区。
+    {39.7296, 116.1710},   // 北京:北理工良乡校区(课程演示)
     {31.2304, 121.4737},   // 上海
     {23.1291, 113.2644},   // 广州
     {22.5431, 114.0579},   // 深圳
@@ -422,34 +422,8 @@ double UserAppController::distanceKm(
 void UserAppController::rebuildStations()
 {
     QVariantList filtered;
-    QString currentCity;
-
-if (locationName_.contains(QStringLiteral("北京")))
-    currentCity = QStringLiteral("北京");
-else if (locationName_.contains(QStringLiteral("上海")))
-    currentCity = QStringLiteral("上海");
-else if (locationName_.contains(QStringLiteral("广州")))
-    currentCity = QStringLiteral("广州");
-else if (locationName_.contains(QStringLiteral("深圳")))
-    currentCity = QStringLiteral("深圳");
-else if (locationName_.contains(QStringLiteral("沈阳")))
-    currentCity = QStringLiteral("沈阳");
-else if (locationName_.contains(QStringLiteral("杭州")))
-    currentCity = QStringLiteral("杭州");
     for (const QVariant& value : rawStations_) {
         QVariantMap station = value.toMap();
-        // 根据当前定位城市过滤充电站，避免深圳站出现在北京列表中
-if (!currentCity.isEmpty()) {
-    const QString stationAddress =
-        station.value(QStringLiteral("address")).toString();
-    const QString stationName =
-        station.value(QStringLiteral("name")).toString();
-
-    if (!stationAddress.contains(currentCity)
-        && !stationName.contains(currentCity)) {
-        continue;
-    }
-}
         if (!searchQuery_.isEmpty()
             && !station.value(QStringLiteral("name")).toString().contains(
                 searchQuery_, Qt::CaseInsensitive)
