@@ -46,7 +46,7 @@ export CHARGING_SERVER_PORT=45454
 ## 管理接口
 
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
-- `admin.dashboard`：今日、本月、累计营收，电桩状态分布和近30日营收趋势；`payload.days` 可选 7/30 指定趋势区间。
+- `admin.dashboard`：今日/本月/累计营收、已完成订单数(今日/累计)、平均订单金额、注册用户数、电桩状态分布、在线率、近7/30日营收趋势(缺数据日期补0,日期连续);`payload.days` 可选 7/30 指定趋势区间。营收与订单数口径均只统计 `completed` 订单。
 - `admin.station.list` / `admin.station.create`：电站查询和新增，并可批量初始化电桩。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
 - `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
