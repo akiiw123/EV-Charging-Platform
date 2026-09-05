@@ -1,0 +1,170 @@
+#pragma once
+
+#include "charging/core/api_client.h"
+
+#include <QNetworkAccessManager>
+#include <QObject>
+#include <QTimer>
+#include <QHash>
+#include <QJsonObject>
+#include <QUrl>
+#include <QVariantList>
+#include <QVariantMap>
+
+namespace charging::user {
+
+class UserAppController final : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
+    Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY loggedInChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool locating READ locating NOTIFY locatingChanged)
+    Q_PROPERTY(QVariantMap filters READ filters NOTIFY stationsChanged)
+    Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
+    Q_PROPERTY(QString noticeKind READ noticeKind NOTIFY noticeChanged)
+    Q_PROPERTY(QString lastPhone READ lastPhone CONSTANT)
+    Q_PROPERTY(QVariantMap user READ user NOTIFY userChanged)
+    Q_PROPERTY(QVariantMap activeOrder READ activeOrder NOTIFY activeOrderChanged)
+    Q_PROPERTY(QVariantMap selectedStation READ selectedStation NOTIFY selectedStationChanged)
+    Q_PROPERTY(QVariantList stations READ stations NOTIFY stationsChanged)
+    Q_PROPERTY(QVariantList piles READ piles NOTIFY pilesChanged)
+    Q_PROPERTY(QVariantList history READ history NOTIFY historyChanged)
+    Q_PROPERTY(QVariantList rechargeHistory READ rechargeHistory NOTIFY rechargeHistoryChanged)
+    Q_PROPERTY(QString locationName READ locationName NOTIFY locationChanged)
+    Q_PROPERTY(double latitude READ latitude NOTIFY locationChanged)
+    Q_PROPERTY(double longitude READ longitude NOTIFY locationChanged)
+    // 是否配置了腾讯地图 Key:决定能否对任意地址做真实地理编码
+    Q_PROPERTY(bool mapKeyConfigured READ mapKeyConfigured NOTIFY locationChanged)
+    Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged)
+    Q_PROPERTY(QString chargingEstimate READ chargingEstimate NOTIFY chargingEstimateChanged)
+    Q_PROPERTY(QUrl mapUrl READ mapUrl NOTIFY mapChanged)
+    Q_PROPERTY(QString mapTitle READ mapTitle NOTIFY mapChanged)
+
+public:
+    explicit UserAppController(QObject* parent = nullptr);
+
+    bool connected() const;
+    bool loggedIn() const;
+    bool busy() const;
+    bool locating() const { return locating_; }
+    QVariantMap filters() const;
+    QString notice() const;
+    QString noticeKind() const;
+    QString lastPhone() const;
+    QVariantMap user() const;
+    QVariantMap activeOrder() const;
+    QVariantMap selectedStation() const;
+    QVariantList stations() const;
+    QVariantList piles() const;
+    QVariantList history() const;
+    QVariantList rechargeHistory() const;
+    QString locationName() const;
+    bool mapKeyConfigured() const { return !qEnvironmentVariableIsEmpty("TENCENT_MAP_KEY"); }
+    double latitude() const;
+    double longitude() const;
+    QString searchQuery() const;
+    void setSearchQuery(const QString& value);
+    QString chargingEstimate() const;
+    QUrl mapUrl() const;
+    QString mapTitle() const;
+
+    Q_INVOKABLE void setFilters(double minDistance, double maxDistance, double minPrice, double maxPrice, const QString& type, bool idleOnly);
+    Q_INVOKABLE QString orderStatusText(const QString& status) const;
+    Q_INVOKABLE void login(const QString& phone);
+    Q_INVOKABLE void logout();
+    Q_INVOKABLE void refreshStations();
+    Q_INVOKABLE void locate(const QString& address);
+    Q_INVOKABLE QVariantList presetCities() const { return presetCities_; }
+    Q_INVOKABLE void selectStation(const QVariantMap& station);
+    Q_INVOKABLE void reserve(qint64 pileId, double powerKw);
+    Q_INVOKABLE void orderAction(const QString& action);
+    Q_INVOKABLE void refreshProfile();
+    Q_INVOKABLE void updateNickname(const QString& nickname);
+    // 头像:打开系统文件选择器,校验后裁成圆形 PNG 存到应用数据目录并上传路径
+    Q_INVOKABLE void pickAvatar();
+    Q_INVOKABLE void recharge(double amount);
+    Q_INVOKABLE void openNavigation(const QString& mode);
+    Q_INVOKABLE void clearNotice();
+
+signals:
+    void connectedChanged();
+    void loggedInChanged();
+    void busyChanged();
+    void locatingChanged();
+    void noticeChanged();
+    void userChanged();
+    void activeOrderChanged();
+    void selectedStationChanged();
+    void stationsChanged();
+    void pilesChanged();
+    void historyChanged();
+    void rechargeHistoryChanged();
+    void locationChanged();
+    void searchQueryChanged();
+    void chargingEstimateChanged();
+    void mapChanged();
+    void loginSucceeded();
+    void rechargeRequired();
+    void rechargeSucceeded();
+    void authenticationRejected();
+    void reservationSucceeded();
+
+private:
+    QString sendRequest(const QString& type, const QJsonObject& payload = {});
+    void clearSession();
+    void loadNextFilterPiles();
+    QHash<QString, QString> pending_;
+    QHash<qint64, QVariantList> stationPiles_;
+    QList<qint64> filterQueue_;
+    qint64 loadingStation_ = 0;
+    QTimer requestTimer_;
+    bool locating_ = false;
+    quint64 session_ = 0;
+    double minDistance_ = 0, maxDistance_ = -1, minPrice_ = 0, maxPrice_ = -1;
+    QString pileType_;
+    bool idleOnly_ = false;
+    void handleResponse(const charging::core::Message& message);
+    void setBusy(bool value);
+    void showNotice(const QString& text, const QString& kind = QStringLiteral("info"));
+    void updateUser(const QVariantMap& value);
+    void updateOrder(const QVariant& value);
+    void rebuildStations();
+    void loadPiles(qint64 stationId);
+    void updateChargingEstimate();
+    void applyLocation(const QString& name, double latitude, double longitude);
+    void geocodeAddress(const QString& address);
+    QNetworkAccessManager network_;
+    QVariantList presetCities_{
+        QStringLiteral("北京"), QStringLiteral("上海"), QStringLiteral("广州"),
+        QStringLiteral("深圳"), QStringLiteral("沈阳"), QStringLiteral("杭州")};
+    static double distanceKm(double lat1, double lon1, double lat2, double lon2);
+
+    charging::core::ApiClient api_;
+    QTimer chargingTimer_;
+    QTimer noticeTimer_;
+    bool connected_ = false;
+    bool loggedIn_ = false;
+    bool busy_ = false;
+    QString notice_;
+    QString noticeKind_ = QStringLiteral("info");
+    QVariantMap user_;
+    QVariantMap activeOrder_;
+    QVariantMap selectedStation_;
+    QVariantList rawStations_;
+    QVariantList stations_;
+    QVariantList piles_;
+    QVariantList history_;
+    QVariantList rechargeHistory_;
+    QString locationName_ = QStringLiteral("北京理工大学良乡校区");
+    double latitude_ = 39.7296;
+    double longitude_ = 116.1710;
+    QString searchQuery_;
+    qint64 chargingSeconds_ = 0;
+    double selectedPowerKw_ = 0.0;
+    double selectedPrice_ = 0.0;
+    QString chargingEstimate_;
+    QUrl mapUrl_;
+    QString mapTitle_;
+};
+
+} // namespace charging::user
