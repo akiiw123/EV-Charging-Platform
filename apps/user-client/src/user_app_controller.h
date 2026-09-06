@@ -5,6 +5,8 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QTimer>
+#include <QHash>
+#include <QJsonObject>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
@@ -13,9 +15,12 @@ namespace charging::user {
 
 class UserAppController final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY loggedInChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool locating READ locating NOTIFY locatingChanged)
+    Q_PROPERTY(QVariantMap filters READ filters NOTIFY stationsChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString noticeKind READ noticeKind NOTIFY noticeChanged)
     Q_PROPERTY(QString lastPhone READ lastPhone CONSTANT)
@@ -39,9 +44,14 @@ class UserAppController final : public QObject {
 public:
     explicit UserAppController(QObject* parent = nullptr);
 
+    QString theme() const { return theme_; }
+    void setTheme(const QString& value);
+    Q_INVOKABLE QString displayTime(const QString& value) const;
     bool connected() const;
     bool loggedIn() const;
     bool busy() const;
+    bool locating() const { return locating_; }
+    QVariantMap filters() const;
     QString notice() const;
     QString noticeKind() const;
     QString lastPhone() const;
@@ -62,6 +72,8 @@ public:
     QUrl mapUrl() const;
     QString mapTitle() const;
 
+    Q_INVOKABLE void setFilters(double minDistance, double maxDistance, double minPrice, double maxPrice, const QString& type, bool idleOnly);
+    Q_INVOKABLE QString orderStatusText(const QString& status) const;
     Q_INVOKABLE void login(const QString& phone);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshStations();
@@ -79,9 +91,11 @@ public:
     Q_INVOKABLE void clearNotice();
 
 signals:
+    void themeChanged();
     void connectedChanged();
     void loggedInChanged();
     void busyChanged();
+    void locatingChanged();
     void noticeChanged();
     void userChanged();
     void activeOrderChanged();
@@ -95,10 +109,25 @@ signals:
     void chargingEstimateChanged();
     void mapChanged();
     void loginSucceeded();
+    void rechargeRequired();
+    void rechargeSucceeded();
     void authenticationRejected();
     void reservationSucceeded();
 
 private:
+    QString sendRequest(const QString& type, const QJsonObject& payload = {});
+    void clearSession();
+    void loadNextFilterPiles();
+    QHash<QString, QString> pending_;
+    QHash<qint64, QVariantList> stationPiles_;
+    QList<qint64> filterQueue_;
+    qint64 loadingStation_ = 0;
+    QTimer requestTimer_;
+    bool locating_ = false;
+    quint64 session_ = 0;
+    double minDistance_ = 0, maxDistance_ = -1, minPrice_ = 0, maxPrice_ = -1;
+    QString pileType_;
+    bool idleOnly_ = false;
     void handleResponse(const charging::core::Message& message);
     void setBusy(bool value);
     void showNotice(const QString& text, const QString& kind = QStringLiteral("info"));
@@ -116,6 +145,8 @@ private:
     static double distanceKm(double lat1, double lon1, double lat2, double lon2);
 
     charging::core::ApiClient api_;
+    QTimer refreshTimer_;
+    QString theme_ = QStringLiteral("default");
     QTimer chargingTimer_;
     QTimer noticeTimer_;
     bool connected_ = false;

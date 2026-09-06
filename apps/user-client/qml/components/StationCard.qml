@@ -13,9 +13,9 @@ AppCard {
         anchors.margins: 18
         spacing: 7
         RowLayout {
-            Layout.fillWidth: true
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             Text {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 text: station.name || ""
                 color: Theme.text
                 font.pixelSize: 18
@@ -30,15 +30,15 @@ AppCard {
             }
         }
         Text {
-            Layout.fillWidth: true
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             text: station.address || ""
             color: Theme.textMuted
             font.pixelSize: 13
             elide: Text.ElideRight
         }
-        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+        Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
         RowLayout {
-            Layout.fillWidth: true
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             spacing: 10
             Text {
                 text: "￥" + Number(station.price_per_kwh || 0).toFixed(2)
@@ -47,7 +47,7 @@ AppCard {
                 font.bold: true
             }
             Text { text: "/度"; color: Theme.textMuted; font.pixelSize: 12 }
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
             Rectangle {
                 implicitWidth: availability.implicitWidth + 18
                 implicitHeight: 30

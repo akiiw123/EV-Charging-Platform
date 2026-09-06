@@ -14,6 +14,8 @@ Item {
     }
 
     Flickable {
+        id: loginScroll
+        WheelArea { flickable: loginScroll }
         anchors.fill: parent
         contentHeight: content.implicitHeight + 80
         clip: true
@@ -51,7 +53,7 @@ Item {
             }
 
             AppCard {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.topMargin: 18
                 implicitHeight: 178
                 ColumnLayout {
@@ -59,9 +61,9 @@ Item {
                     anchors.margins: 20
                     spacing: 12
                     Text { text: "手机号登录"; color: Theme.text; font.pixelSize: 16; font.bold: true }
-                    TextField {
+                    AppField {
                         id: phoneInput
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
                         implicitHeight: 50
                         placeholderText: "请输入 11 位手机号"
                         text: appController.lastPhone
@@ -77,7 +79,7 @@ Item {
                         onAccepted: appController.login(text)
                     }
                     AppButton {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
                         text: appController.busy ? "登录中…" : "登录"
                         enabled: appController.connected && !appController.busy
                         onClicked: appController.login(phoneInput.text)
@@ -86,14 +88,14 @@ Item {
             }
 
             RowLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.topMargin: 8
-                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+                Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
                 Text { text: "演示账号"; color: Theme.textMuted; font.pixelSize: 12 }
-                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+                Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
             }
             GridLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 columns: 2
                 columnSpacing: 10
                 rowSpacing: 10
@@ -105,7 +107,7 @@ Item {
                         { label: "已冻结", phone: "18800000004", color: "#FDEBEC" }
                     ]
                     delegate: Rectangle {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
                         implicitHeight: 58
                         radius: 12
                         color: modelData.color

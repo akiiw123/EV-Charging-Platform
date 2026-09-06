@@ -12,7 +12,7 @@ Item {
         appController.refreshProfile()
     }
 
-    ScrollView {
+    AppScrollView {
         anchors.fill: parent
         clip: true
 
@@ -21,13 +21,13 @@ Item {
             spacing: 14
 
             Item {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 height: 8
             }
 
             // 页面标题
             RowLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.leftMargin: 18
                 Layout.rightMargin: 18
 
@@ -49,7 +49,7 @@ Item {
                 }
 
                 Item {
-                    Layout.fillWidth: true
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
                 }
 
                 Text {
@@ -59,13 +59,15 @@ Item {
                 }
             }
 
+            Label { Layout.leftMargin: 18; visible: !appController.activeOrder.id; text: "暂无当前订单"; color: Theme.textMuted }
+
             // 当前进行中的订单
             AppCard {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.leftMargin: 18
                 Layout.rightMargin: 18
                 visible: Object.keys(appController.activeOrder).length > 0
-                implicitHeight: 180
+                implicitHeight: 240
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -73,7 +75,7 @@ Item {
                     spacing: 8
 
                     RowLayout {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
 
                         Text {
                             text: "当前订单"
@@ -83,11 +85,11 @@ Item {
                         }
 
                         Item {
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; Layout.minimumWidth: 0
                         }
 
                         StatusBadge {
-                            status: appController.activeOrder.status
+                            status: appController.activeOrder.status || ""
                         }
                     }
 
@@ -98,7 +100,7 @@ Item {
                     }
 
                     Text {
-                        text: (appController.activeOrder.station_name || "当前充电站")
+                        Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: (appController.activeOrder.station_name || "当前充电站")
                               + " · "
                               + (appController.activeOrder.pile_code || "当前电桩")
                         color: Theme.text
@@ -107,13 +109,13 @@ Item {
                     }
 
                     Rectangle {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
                         height: 1
                         color: Theme.border
                     }
 
                     RowLayout {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
 
                         ColumnLayout {
                             Text {
@@ -132,7 +134,7 @@ Item {
                         }
 
                         Item {
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; Layout.minimumWidth: 0
                         }
 
                         ColumnLayout {
@@ -155,7 +157,7 @@ Item {
                     }
 
                     AppButton {
-                        Layout.fillWidth: true
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
                         text: appController.activeOrder.status === "awaiting_payment"
                               ? "去结算"
                               : "查看充电详情"
@@ -183,7 +185,7 @@ Item {
                 model: appController.history
 
                 delegate: AppCard {
-                    Layout.fillWidth: true
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
                     Layout.leftMargin: 18
                     Layout.rightMargin: 18
                     implicitHeight: 155
@@ -194,10 +196,10 @@ Item {
                         spacing: 6
 
                         RowLayout {
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; Layout.minimumWidth: 0
 
                             Text {
-                                Layout.fillWidth: true
+                                Layout.fillWidth: true; Layout.minimumWidth: 0
                                 text: "订单 #" + modelData.id
                                 color: Theme.text
                                 font.pixelSize: 15
@@ -210,7 +212,7 @@ Item {
                         }
 
                         Text {
-                            text: (modelData.station_name || "充电站")
+                            Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: (modelData.station_name || "充电站")
                                   + " · "
                                   + (modelData.pile_code || "电桩")
                             color: Theme.textMuted
@@ -219,11 +221,11 @@ Item {
 
                         Text {
                             text: "开始时间："
-                                  + String(
+                                  + appController.displayTime(
                                       modelData.started_at
                                       || modelData.created_at
                                       || "--"
-                                  ).replace("T", " ").slice(0, 19)
+                                  )
                             color: Theme.textMuted
                             font.pixelSize: 11
                         }
@@ -232,21 +234,19 @@ Item {
                             visible: modelData.ended_at !== undefined
                                      && modelData.ended_at !== ""
                             text: "结束时间："
-                                  + String(modelData.ended_at || "--")
-                                    .replace("T", " ")
-                                    .slice(0, 19)
+                                  + appController.displayTime(modelData.ended_at || "--")
                             color: Theme.textMuted
                             font.pixelSize: 11
                         }
 
                         Rectangle {
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; Layout.minimumWidth: 0
                             height: 1
                             color: Theme.border
                         }
 
                         RowLayout {
-                            Layout.fillWidth: true
+                            Layout.fillWidth: true; Layout.minimumWidth: 0
 
                             Text {
                                 text: Number(modelData.energy_kwh || 0).toFixed(3)
@@ -256,7 +256,7 @@ Item {
                             }
 
                             Item {
-                                Layout.fillWidth: true
+                                Layout.fillWidth: true; Layout.minimumWidth: 0
                             }
 
                             Text {
@@ -272,7 +272,7 @@ Item {
 
             // 没有历史订单时显示
             ColumnLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.topMargin: 30
                 visible: appController.history.length === 0
                 spacing: 8
@@ -300,7 +300,7 @@ Item {
             }
 
             Item {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 height: 24
             }
         }

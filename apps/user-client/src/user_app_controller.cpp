@@ -1,8 +1,10 @@
+#include "charging/core/display_time.h"
 #include "user_app_controller.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -22,6 +24,20 @@ namespace charging::user {
 
 UserAppController::UserAppController(QObject* parent) : QObject(parent)
 {
+    QSettings preferences;
+    theme_ = preferences.value(QStringLiteral("appearance/theme"), QStringLiteral("default")).toString();
+    refreshTimer_.setInterval(5000);
+    connect(&refreshTimer_, &QTimer::timeout, this, [this] {
+        if (!loggedIn_ || !connected_ || busy_ || !pending_.isEmpty() || loadingStation_) return;
+        refreshProfile(); refreshStations();
+    });
+    refreshTimer_.start();
+    requestTimer_.setSingleShot(true);
+    requestTimer_.setInterval(15000);
+    connect(&requestTimer_, &QTimer::timeout, this, [this] {
+        clearSession();
+        showNotice(QStringLiteral("请求超时，请重新登录核对结果后再操作"), QStringLiteral("error"));
+    });
     chargingTimer_.setInterval(1000);
     connect(&chargingTimer_, &QTimer::timeout, this, [this] {
         ++chargingSeconds_;
@@ -33,19 +49,22 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
     connect(&api_, &charging::core::ApiClient::connected, this, [this] {
         connected_ = true;
         emit connectedChanged();
-        showNotice(QStringLiteral("已连接充电服务"), QStringLiteral("success"));
+        clearNotice();
     });
     connect(&api_, &charging::core::ApiClient::disconnected, this, [this] {
         connected_ = false;
         emit connectedChanged();
-        showNotice(QStringLiteral("连接已断开，正在自动重连"), QStringLiteral("warning"));
+        clearSession();
+        showNotice(QStringLiteral("连接已断开，请重新登录；若账号被冻结请联系管理员"), QStringLiteral("warning"));
     });
     connect(&api_, &charging::core::ApiClient::clientError, this,
-            [this](const QString& error) { showNotice(error, QStringLiteral("error")); });
+            [this](const QString& error) {
+                if (connected_) showNotice(error, QStringLiteral("error"));
+            });
     connect(&api_, &charging::core::ApiClient::responseReceived,
             this, &UserAppController::handleResponse);
     // 过期响应不更新界面,仅复位 busy
-    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { setBusy(false); });
+    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message& message) { pending_.remove(message.id); if (pending_.isEmpty()) requestTimer_.stop(); });
 
     const QString host = qEnvironmentVariable(
         "CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1"));
@@ -55,6 +74,13 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
     api_.connectToServer(
         host, portOk && configuredPort > 0 ? quint16(configuredPort) : quint16(45454));
     updateChargingEstimate();
+}
+
+QString UserAppController::displayTime(const QString& value) const { return charging::core::beijingTime(value); }
+void UserAppController::setTheme(const QString& value) {
+    if (value != QStringLiteral("default") && value != QStringLiteral("porcelain") && value != QStringLiteral("emerald")) return;
+    if (theme_ == value) return;
+    theme_ = value; QSettings settings; settings.setValue(QStringLiteral("appearance/theme"), value); emit themeChanged();
 }
 
 bool UserAppController::connected() const { return connected_; }
@@ -117,6 +143,7 @@ void UserAppController::clearNotice()
 
 void UserAppController::login(const QString& phone)
 {
+    if (busy_) return;
     static const QRegularExpression pattern(QStringLiteral("^1[3-9]\\d{9}$"));
     if (!pattern.match(phone.trimmed()).hasMatch()) {
         showNotice(QStringLiteral("请输入正确的 11 位手机号"), QStringLiteral("error"));
@@ -128,29 +155,88 @@ void UserAppController::login(const QString& phone)
         return;
     }
     setBusy(true);
-    api_.send(QStringLiteral("auth.phone_login"),
+    sendRequest(QStringLiteral("auth.phone_login"),
               {{QStringLiteral("phone"), phone.trimmed()}});
+}
+
+void UserAppController::clearSession()
+{
+    ++session_;
+    pending_.clear(); requestTimer_.stop(); locating_ = false; emit locatingChanged();
+    loggedIn_ = false;
+    user_.clear(); activeOrder_.clear(); selectedStation_.clear();
+    rawStations_.clear(); stations_.clear(); piles_.clear(); history_.clear(); rechargeHistory_.clear();
+    stationPiles_.clear(); filterQueue_.clear(); loadingStation_ = 0;
+    mapUrl_ = QUrl(); mapTitle_.clear(); searchQuery_.clear();
+    minDistance_ = minPrice_ = 0; maxDistance_ = maxPrice_ = -1; pileType_.clear(); idleOnly_ = false;
+    chargingTimer_.stop(); chargingSeconds_ = 0; selectedPowerKw_ = selectedPrice_ = 0;
+    locationName_ = QStringLiteral("北京理工大学良乡校区"); latitude_ = 39.7296; longitude_ = 116.1710;
+    setBusy(false); updateChargingEstimate();
+    emit loggedInChanged(); emit userChanged(); emit activeOrderChanged(); emit selectedStationChanged();
+    emit stationsChanged(); emit pilesChanged(); emit historyChanged(); emit rechargeHistoryChanged();
+    emit mapChanged(); emit searchQueryChanged(); emit locationChanged();
 }
 
 void UserAppController::logout()
 {
-    loggedIn_ = false;
-    user_.clear();
-    activeOrder_.clear();
-    piles_.clear();
-    history_.clear();
-    chargingTimer_.stop();
-    emit loggedInChanged();
-    emit userChanged();
-    emit activeOrderChanged();
-    emit pilesChanged();
-    emit historyChanged();
+    clearSession();
     showNotice(QStringLiteral("已安全退出"), QStringLiteral("success"));
+}
+
+QString UserAppController::sendRequest(const QString& type, const QJsonObject& payload)
+{
+    if (!connected_ || (!loggedIn_ && type != QStringLiteral("auth.phone_login"))) {
+        setBusy(false);
+        showNotice(QStringLiteral("请连接服务并登录后重试"), QStringLiteral("error"));
+        return {};
+    }
+    if (pending_.values().contains(type)) return {};
+    const QString id = api_.send(type, payload);
+    if (!id.isEmpty()) { pending_.insert(id, type); if (!requestTimer_.isActive()) requestTimer_.start(); }
+    else setBusy(false);
+    return id;
+}
+
+QString UserAppController::orderStatusText(const QString& status) const
+{
+    if (status == QStringLiteral("reserved")) return QStringLiteral("已预约");
+    if (status == QStringLiteral("charging")) return QStringLiteral("充电中");
+    if (status == QStringLiteral("awaiting_payment")) return QStringLiteral("待结算");
+    if (status == QStringLiteral("completed")) return QStringLiteral("已完成");
+    if (status == QStringLiteral("cancelled")) return QStringLiteral("已取消");
+    return QStringLiteral("未知状态");
+}
+
+void UserAppController::setFilters(double minDistance, double maxDistance, double minPrice, double maxPrice, const QString& type, bool idleOnly)
+{
+    if (!qIsFinite(minDistance) || !qIsFinite(maxDistance) || !qIsFinite(minPrice) || !qIsFinite(maxPrice)
+        || minDistance < 0 || minPrice < 0 || (maxDistance != -1 && maxDistance < minDistance)
+        || (maxPrice != -1 && maxPrice < minPrice)
+        || (!type.isEmpty() && type != QStringLiteral("fast") && type != QStringLiteral("slow"))) {
+        showNotice(QStringLiteral("筛选范围无效：上限不能小于下限"), QStringLiteral("error")); return;
+    }
+    minDistance_ = minDistance; maxDistance_ = maxDistance;
+    minPrice_ = minPrice; maxPrice_ = maxPrice; pileType_ = type; idleOnly_ = idleOnly;
+    rebuildStations();
+}
+
+QVariantMap UserAppController::filters() const
+{
+    return {{QStringLiteral("minDistance"), minDistance_}, {QStringLiteral("maxDistance"), maxDistance_},
+        {QStringLiteral("minPrice"), minPrice_}, {QStringLiteral("maxPrice"), maxPrice_},
+        {QStringLiteral("type"), pileType_}, {QStringLiteral("idleOnly"), idleOnly_}};
+}
+
+void UserAppController::loadNextFilterPiles()
+{
+    if (loadingStation_ || filterQueue_.isEmpty()) return;
+    loadingStation_ = filterQueue_.takeFirst();
+    sendRequest(QStringLiteral("pile.list"), {{QStringLiteral("station_id"), loadingStation_}});
 }
 
 void UserAppController::refreshStations()
 {
-    if (loggedIn_) api_.send(QStringLiteral("station.list"));
+    if (loggedIn_) sendRequest(QStringLiteral("station.list"));
 }
 
 // 内置城市坐标表:相当于"模拟 GPS/区域选择",离线可用
@@ -168,6 +254,7 @@ static const double kPresetCityCoords[][3] = {
 
 void UserAppController::locate(const QString& address)
 {
+    if (locating_) return;
     const QString text = address.trimmed();
     if (text.isEmpty()) {
         showNotice(QStringLiteral("请输入城市或地址"), QStringLiteral("error"));
@@ -221,17 +308,23 @@ void UserAppController::geocodeAddress(const QString& address)
     url.setQuery(query);
     QNetworkRequest request(url);
     request.setTransferTimeout(5000);
+    locating_ = true;
+    emit locatingChanged();
+    const quint64 generation = session_;
     auto* reply = network_.get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, address] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, address, generation] {
         const auto data = reply->readAll();
         const bool ok = reply->error() == QNetworkReply::NoError;
         reply->deleteLater();
+        if (generation != session_) return;
+        locating_ = false;
+        emit locatingChanged();
         if (!ok) {
             showNotice(QStringLiteral("定位服务不可达,保持当前定位"), QStringLiteral("error"));
             return;
         }
         const auto result = QJsonDocument::fromJson(data).object();
-        if (result.value(QStringLiteral("status")).toInt() != 0) {
+        if (!result.value(QStringLiteral("status")).isDouble() || result.value(QStringLiteral("status")).toInt() != 0) {
             showNotice(QStringLiteral("地址解析失败: %1")
                            .arg(result.value(QStringLiteral("message")).toString()),
                        QStringLiteral("error"));
@@ -239,6 +332,13 @@ void UserAppController::geocodeAddress(const QString& address)
         }
         const auto location = result.value(QStringLiteral("result")).toObject()
                                   .value(QStringLiteral("location")).toObject();
+        const auto lat = location.value(QStringLiteral("lat"));
+        const auto lng = location.value(QStringLiteral("lng"));
+        if (!lat.isDouble() || !lng.isDouble() || !qIsFinite(lat.toDouble()) || !qIsFinite(lng.toDouble())
+            || qAbs(lat.toDouble()) > 90 || qAbs(lng.toDouble()) > 180) {
+            showNotice(QStringLiteral("地址解析失败，保持原输入和原定位"), QStringLiteral("error"));
+            return;
+        }
         applyLocation(address, location.value(QStringLiteral("lat")).toDouble(),
                       location.value(QStringLiteral("lng")).toDouble());
     });
@@ -256,50 +356,60 @@ void UserAppController::selectStation(const QVariantMap& station)
 
 void UserAppController::loadPiles(qint64 stationId)
 {
-    if (stationId > 0)
-        api_.send(QStringLiteral("pile.list"),
-                  {{QStringLiteral("station_id"), stationId}});
+    if (stationId <= 0) return;
+    if (stationPiles_.contains(stationId)) { piles_ = stationPiles_.value(stationId); emit pilesChanged(); }
+    if (loadingStation_ != stationId && !filterQueue_.contains(stationId)) filterQueue_.prepend(stationId);
+    loadNextFilterPiles();
 }
 
 void UserAppController::reserve(qint64 pileId, double powerKw)
 {
+    if (busy_) return;
     if (!activeOrder_.isEmpty()) {
         showNotice(QStringLiteral("请先处理当前订单"), QStringLiteral("warning"));
         return;
     }
     selectedPowerKw_ = powerKw;
     setBusy(true);
-    api_.send(QStringLiteral("order.reserve"),
+    sendRequest(QStringLiteral("order.reserve"),
               {{QStringLiteral("pile_id"), pileId}});
 }
 
 void UserAppController::orderAction(const QString& action)
 {
+    if (busy_) return;
     const qint64 orderId = activeOrder_.value(QStringLiteral("id")).toLongLong();
-    if (orderId <= 0) return;
+    const QString status = activeOrder_.value(QStringLiteral("status")).toString();
+    if (orderId <= 0 || !((status == QStringLiteral("reserved") && (action == QStringLiteral("order.start") || action == QStringLiteral("order.cancel")))
+        || (status == QStringLiteral("charging") && action == QStringLiteral("order.stop"))
+        || (status == QStringLiteral("awaiting_payment") && action == QStringLiteral("order.settle")))) {
+        showNotice(QStringLiteral("当前订单状态不支持此操作，请刷新后重试"), QStringLiteral("error")); return;
+    }
     setBusy(true);
-    api_.send(action, {{QStringLiteral("order_id"), orderId}});
+    sendRequest(action, {{QStringLiteral("order_id"), orderId}});
 }
 
 void UserAppController::refreshProfile()
 {
-    if (!loggedIn_) return;
+    if (!loggedIn_ || busy_) return;
 
-    api_.send(QStringLiteral("user.profile"));
-    api_.send(QStringLiteral("order.active"));
-    api_.send(QStringLiteral("order.history"));
+    sendRequest(QStringLiteral("user.profile"));
+    sendRequest(QStringLiteral("order.active"));
+    sendRequest(QStringLiteral("order.history"));
 
     // 查询当前用户充值记录
-    api_.send(QStringLiteral("recharge.history"));
+    sendRequest(QStringLiteral("recharge.history"));
 }
 
 void UserAppController::updateNickname(const QString& nickname)
 {
-    if (nickname.trimmed().isEmpty()) {
-        showNotice(QStringLiteral("昵称不能为空"), QStringLiteral("error"));
+    if (busy_) return;
+    if (nickname.trimmed().isEmpty() || nickname.trimmed().toUcs4().size() > 30) {
+        showNotice(QStringLiteral("昵称须为 1 至 30 字"), QStringLiteral("error"));
         return;
     }
-    api_.send(QStringLiteral("user.profile.update"),
+    setBusy(true);
+    sendRequest(QStringLiteral("user.profile.update"),
               {{QStringLiteral("nickname"), nickname.trimmed()}});
 }
 
@@ -308,6 +418,7 @@ void UserAppController::updateNickname(const QString& nickname)
 // 服务端仅保存路径字符串;本客户端读取本地文件渲染,预览即时生效。
 void UserAppController::pickAvatar()
 {
+    if (busy_) return;
     const QString source = QFileDialog::getOpenFileName(
         nullptr, QStringLiteral("选择头像图片"), QString(),
         QStringLiteral("图片文件 (*.png *.jpg *.jpeg *.bmp)"));
@@ -361,20 +472,21 @@ void UserAppController::pickAvatar()
     }
 
     // 乐观更新界面(立即预览);user.profile.update.ok 返回后 user 会再次刷新
-    user_.insert(QStringLiteral("avatar_path"), avatarPath);
-    emit userChanged();
-    api_.send(QStringLiteral("user.profile.update"),
+
+    setBusy(true);
+    sendRequest(QStringLiteral("user.profile.update"),
               {{QStringLiteral("avatar_path"), avatarPath}});
 }
 
 void UserAppController::recharge(double amount)
 {
-    if (amount <= 0.0) {
+    if (busy_) return;
+    if (!qIsFinite(amount) || amount <= 0.0) {
         showNotice(QStringLiteral("充值金额必须大于 0"), QStringLiteral("error"));
         return;
     }
     setBusy(true);
-    api_.send(QStringLiteral("wallet.recharge"),
+    sendRequest(QStringLiteral("wallet.recharge"),
               {{QStringLiteral("amount"), amount}});
 }
 
@@ -463,29 +575,48 @@ if (!currentCity.isEmpty()) {
                 latitude_, longitude_,
                 station.value(QStringLiteral("latitude")).toDouble(),
                 station.value(QStringLiteral("longitude")).toDouble()));
+        const double distance = station.value(QStringLiteral("distance_km")).toDouble();
+        const double price = station.value(QStringLiteral("price_per_kwh")).toDouble();
+        if (distance < minDistance_ || (maxDistance_ >= 0 && distance > maxDistance_)
+            || price < minPrice_ || (maxPrice_ >= 0 && price > maxPrice_)) continue;
+        if (!pileType_.isEmpty()) {
+            bool match = false;
+            for (const QVariant& item : stationPiles_.value(station.value(QStringLiteral("id")).toLongLong())) {
+                const auto pile = item.toMap();
+                if (pile.value(QStringLiteral("type")).toString() == pileType_
+                    && (!idleOnly_ || pile.value(QStringLiteral("status")).toString() == QStringLiteral("idle"))) match = true;
+            }
+            if (!match) continue;
+        } else if (idleOnly_ && station.value(QStringLiteral("idle_pile_count")).toInt() <= 0) continue;
         filtered.append(station);
     }
     std::sort(filtered.begin(), filtered.end(), [](const QVariant& left, const QVariant& right) {
         return left.toMap().value(QStringLiteral("distance_km")).toDouble()
             < right.toMap().value(QStringLiteral("distance_km")).toDouble();
     });
+    if (stations_ == filtered) return;
     stations_ = filtered;
     emit stationsChanged();
 }
 
 void UserAppController::updateUser(const QVariantMap& value)
 {
+    if (user_ == value) return;
     user_ = value;
+    const QString avatar = user_.value(QStringLiteral("avatar_path")).toString();
+    if (!avatar.isEmpty() && QImage(avatar).isNull()) user_.insert(QStringLiteral("avatar_path"), QString());
     emit userChanged();
 }
 
 void UserAppController::updateOrder(const QVariant& value)
 {
     activeOrder_ = value.toMap();
+    if (activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("completed")
+        || activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("cancelled")) activeOrder_.clear();
     const QString status = activeOrder_.value(QStringLiteral("status")).toString();
     if (status == QStringLiteral("charging")) {
-        const QDateTime started = QDateTime::fromString(
-            activeOrder_.value(QStringLiteral("started_at")).toString(), Qt::ISODate);
+        const QDateTime started = charging::core::parseTimestamp(
+            activeOrder_.value(QStringLiteral("started_at")).toString());
         chargingSeconds_ = started.isValid()
             ? qMax<qint64>(0, started.secsTo(QDateTime::currentDateTime()))
             : 0;
@@ -512,16 +643,29 @@ void UserAppController::updateChargingEstimate()
 
 void UserAppController::handleResponse(const charging::core::Message& message)
 {
-    setBusy(false);
+    if (message.payload.value(QStringLiteral("code")).toString() == QStringLiteral("AUTH_USER_FROZEN")) {
+        clearSession(); showNotice(QStringLiteral("账号已被冻结，请联系管理员"), QStringLiteral("error")); return;
+    }
+    if (!pending_.contains(message.id)) return; // Ignore responses from previous sessions.
+    const QString requestType = pending_.take(message.id);
+    if (pending_.isEmpty()) requestTimer_.stop();
+    const bool mutation = requestType == QStringLiteral("auth.phone_login") || requestType == QStringLiteral("wallet.recharge")
+        || requestType == QStringLiteral("user.profile.update") || requestType == QStringLiteral("order.reserve")
+        || requestType == QStringLiteral("order.start") || requestType == QStringLiteral("order.cancel")
+        || requestType == QStringLiteral("order.stop") || requestType == QStringLiteral("order.settle");
+    if (mutation) setBusy(false);
     if (message.type.endsWith(QStringLiteral(".error"))) {
         const QString text =
             message.payload.value(QStringLiteral("message")).toString();
-        showNotice(text, QStringLiteral("error"));
+        showNotice(text.isEmpty() ? QStringLiteral("操作失败，请稍后重试") : text, QStringLiteral("error"));
+        if (requestType == QStringLiteral("pile.list")) { loadingStation_ = 0; loadNextFilterPiles(); }
+        if (requestType == QStringLiteral("order.settle") && (text.contains(QStringLiteral("余额"))
+            || message.payload.value(QStringLiteral("code")).toString().contains(QStringLiteral("INSUFFICIENT")))) emit rechargeRequired();
         if (message.type == QStringLiteral("auth.phone_login.error"))
             emit authenticationRejected();
         if (message.payload.value(QStringLiteral("code")).toString()
             == QStringLiteral("ORDER_ACTIVE_EXISTS")) {
-            api_.send(QStringLiteral("order.active"));
+            sendRequest(QStringLiteral("order.active"));
         }
         return;
     }
@@ -542,11 +686,30 @@ void UserAppController::handleResponse(const charging::core::Message& message)
     }
     if (message.type == QStringLiteral("station.list.ok")) {
         rawStations_ = payload.value(QStringLiteral("stations")).toList();
+        if (!selectedStation_.isEmpty()) {
+            const qint64 selectedId = selectedStation_.value(QStringLiteral("id")).toLongLong();
+            QVariantMap fresh;
+            for (const QVariant& item : rawStations_) if (item.toMap().value(QStringLiteral("id")).toLongLong() == selectedId) fresh = item.toMap();
+            selectedStation_ = fresh;
+            if (fresh.isEmpty()) { piles_.clear(); emit pilesChanged(); }
+            emit selectedStationChanged();
+        }
+        filterQueue_.clear();
+        for (const QVariant& value : rawStations_) {
+            const qint64 id = value.toMap().value(QStringLiteral("id")).toLongLong();
+            if (id != loadingStation_) filterQueue_.append(id);
+        }
+        loadNextFilterPiles();
         rebuildStations();
         return;
     }
     if (message.type == QStringLiteral("pile.list.ok")) {
-        piles_ = payload.value(QStringLiteral("piles")).toList();
+        const auto receivedPiles = payload.value(QStringLiteral("piles")).toList();
+        stationPiles_.insert(loadingStation_, receivedPiles);
+        const bool selected = selectedStation_.value(QStringLiteral("id")).toLongLong() == loadingStation_;
+        loadingStation_ = 0; loadNextFilterPiles(); rebuildStations();
+        if (!selected) return;
+        piles_ = receivedPiles;
         int offline = 0;
         for (const QVariant& pile : piles_)
             if (pile.toMap().value(QStringLiteral("status")).toString()
@@ -565,10 +728,11 @@ void UserAppController::handleResponse(const charging::core::Message& message)
     // 如果是充值成功，立即重新获取充值记录，
     // 这样“我的”页面可以实时显示最新充值记录
     if (message.type == QStringLiteral("wallet.recharge.ok")) {
-        api_.send(QStringLiteral("recharge.history"));
+        sendRequest(QStringLiteral("recharge.history"));
+        emit rechargeSucceeded();
     }
 
-    showNotice(
+    if (message.type != QStringLiteral("user.profile.ok")) showNotice(
         message.type == QStringLiteral("wallet.recharge.ok")
             ? QStringLiteral("充值成功")
             : QStringLiteral("资料已更新"),
@@ -581,13 +745,24 @@ void UserAppController::handleResponse(const charging::core::Message& message)
         return;
     }
     if (message.type == QStringLiteral("order.history.ok")) {
-        history_ = payload.value(QStringLiteral("orders")).toList();
-        emit historyChanged();
+        const QVariantList previousHistory = history_;
+        history_.clear();
+        for (const QVariant& item : payload.value(QStringLiteral("orders")).toList()) {
+            const QString status = item.toMap().value(QStringLiteral("status")).toString();
+            if (status == QStringLiteral("completed") || status == QStringLiteral("cancelled")) history_.append(item);
+        }
+        std::sort(history_.begin(), history_.end(), [](const QVariant& a, const QVariant& b) {
+            const auto left = a.toMap(), right = b.toMap();
+            const auto lt = QDateTime::fromString(left.value(QStringLiteral("created_at")).toString(), Qt::ISODate);
+            const auto rt = QDateTime::fromString(right.value(QStringLiteral("created_at")).toString(), Qt::ISODate);
+            return lt == rt ? left.value(QStringLiteral("id")).toLongLong() > right.value(QStringLiteral("id")).toLongLong() : lt > rt;
+        });
+        if (history_ != previousHistory) emit historyChanged();
         return;
     }
     if (message.type == QStringLiteral("recharge.history.ok")) {
-    rechargeHistory_ = payload.value(QStringLiteral("records")).toList();
-    emit rechargeHistoryChanged();
+    const auto records = payload.value(QStringLiteral("records")).toList();
+    if (records != rechargeHistory_) { rechargeHistory_ = records; emit rechargeHistoryChanged(); }
     return;
 }
     if (message.type.startsWith(QStringLiteral("order."))) {
@@ -603,7 +778,7 @@ void UserAppController::handleResponse(const charging::core::Message& message)
         if (message.type == QStringLiteral("order.reserve.ok"))
             emit reservationSucceeded();
         showNotice(QStringLiteral("订单状态已更新"), QStringLiteral("success"));
-        api_.send(QStringLiteral("order.history"));
+        sendRequest(QStringLiteral("order.history"));
         refreshStations();
         if (!selectedStation_.isEmpty())
             loadPiles(selectedStation_.value(QStringLiteral("id")).toLongLong());

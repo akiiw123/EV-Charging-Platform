@@ -5,12 +5,13 @@ Rectangle {
     id: badge
     property string status: "idle"
     property string label: status === "idle" ? "闲置"
-                           : status === "charging" ? "使用中"
+                           : status === "charging" ? "充电中"
                            : status === "fault" ? "故障"
                            : status === "offline" ? "离线"
                            : status === "reserved" ? "已预约"
                            : status === "awaiting_payment" ? "待结算"
-                           : status === "completed" ? "已结算" : status
+                           : status === "completed" ? "已完成"
+                           : status === "cancelled" ? "已取消" : "未知状态"
     implicitWidth: textItem.implicitWidth + 20
     implicitHeight: 28
     radius: 14
