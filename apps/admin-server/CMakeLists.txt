@@ -22,6 +22,8 @@ qt_add_qml_module(charging-admin
         qml/components/ConfirmDialog.qml
         qml/components/DetailDrawer.qml
         qml/components/ThemePreviewCard.qml
+        qml/components/AppScrollView.qml
+        qml/components/WheelArea.qml
         qml/pages/LoginPage.qml
         qml/pages/DashboardPage.qml
         qml/pages/StationsPage.qml
