@@ -19,9 +19,10 @@ public:
     QHash<int,QByteArray> roleNames() const override { return {{RecordRole, "record"}}; }
     Q_INVOKABLE QVariantMap get(int row) const { return row >= 0 && row < rows_.size() ? rows_.at(row) : QVariantMap{}; }
     void setJson(const QJsonArray& values) {
-        beginResetModel(); rows_.clear();
-        for (const auto& value : values) rows_.append(value.toObject().toVariantMap());
-        endResetModel();
+        QList<QVariantMap> next;
+        for (const auto& value : values) next.append(value.toObject().toVariantMap());
+        if (next == rows_) return;
+        beginResetModel(); rows_ = std::move(next); endResetModel();
     }
     void setRows(QList<QVariantMap> values) { beginResetModel(); rows_ = std::move(values); endResetModel(); }
 private:

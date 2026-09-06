@@ -17,6 +17,46 @@ class TcpIntegrationTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void multipleClientsStayResponsive()
+    {
+        Fixture fixture;
+        // Keep several sockets alive, including an admin-style extra connection.
+        // On a two-core VM the old pool left the third connection queued forever.
+        QList<QTcpSocket*> clients;
+        for (int i = 0; i < 8; ++i) {
+            auto* socket = new QTcpSocket(this);
+            clients.append(socket);
+            socket->connectToHost(QHostAddress::LocalHost, fixture.port());
+            QVERIFY(socket->waitForConnected(3000));
+            QVERIFY(fixture.acceptConnection());
+            QCOMPARE(exchange(*socket, {QString::number(i), QStringLiteral("auth.phone_login"),
+                {{QStringLiteral("phone"), QStringLiteral("139000000%1").arg(i, 2, 10, QLatin1Char('0'))}}}).type,
+                QStringLiteral("auth.phone_login.ok"));
+        }
+        const auto first = exchange(*clients[0], {QStringLiteral("reserve-a"), QStringLiteral("order.reserve"), {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(first.type, QStringLiteral("order.reserve.ok"));
+        const auto second = exchange(*clients[1], {QStringLiteral("reserve-b"), QStringLiteral("order.reserve"), {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(second.type, QStringLiteral("order.reserve.error"));
+        for (auto* socket : clients) {
+            QCOMPARE(exchange(*socket, {QStringLiteral("alive"), QStringLiteral("user.profile"), {}}).type, QStringLiteral("user.profile.ok"));
+            socket->abort(); delete socket;
+        }
+    }
+
+    void reconnectAfterInitialRefusal()
+    {
+        QTcpServer portProbe;
+        QVERIFY(portProbe.listen(QHostAddress::LocalHost, 0));
+        const quint16 port = portProbe.serverPort(); portProbe.close();
+        charging::core::ApiClient client;
+        QSignalSpy errors(&client, &charging::core::ApiClient::clientError);
+        QSignalSpy connected(&client, &charging::core::ApiClient::connected);
+        client.connectToServer(QStringLiteral("127.0.0.1"), port);
+        QTRY_VERIFY_WITH_TIMEOUT(!errors.isEmpty(), 3000);
+        QVERIFY(portProbe.listen(QHostAddress::LocalHost, port));
+        QTRY_VERIFY_WITH_TIMEOUT(!connected.isEmpty(), 5000);
+    }
+
     void loginAndListStations()
     {
         Fixture fixture;

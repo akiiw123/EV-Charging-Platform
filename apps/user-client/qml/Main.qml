@@ -16,6 +16,8 @@ ApplicationWindow {
     color: Theme.background
     font.family: Theme.fontFamily
 
+    Binding { target: Theme; property: "currentTheme"; value: appController.theme }
+
     property string currentPage: "home"
     property int currentTab: currentPage === "home" ? 0
                          : currentPage === "charging" ? 1
@@ -26,9 +28,7 @@ ApplicationWindow {
 
     // 活动订单状态的中文描述,供引导弹窗展示
     function orderStatusText(status) {
-        if (status === "charging") return "充电中"
-        if (status === "awaiting_payment") return "待结算"
-        return "预约待开始"
+        return appController.orderStatusText(status)
     }
 
     function showHome() { currentPage = "home" }
@@ -98,11 +98,14 @@ ApplicationWindow {
                         AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: "white"; width: 22; height: 22 }
                     }
                 Text { text: "充电客户端"; color: "white"; font.pixelSize: 18; font.bold: true }
-                Item { Layout.fillWidth: true }
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                 Column {
-                    Layout.maximumWidth: 155
+                    Layout.preferredWidth: Math.min(120, app.width * 0.28)
+                    clip: true
                     Text {
                         anchors.right: parent.right
+                        width: parent.width
+                        horizontalAlignment: Text.AlignRight
                         text: appController.user.nickname || "用户"
                         color: "white"
                         font.pixelSize: 13
@@ -125,6 +128,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: bottomNav.visible ? bottomNav.top : parent.bottom
+            active: appController.loggedIn
             sourceComponent: app.currentPage === "home" ? homeComponent
                : app.currentPage === "station" ? stationComponent
                : app.currentPage === "charging" ? chargingComponent
@@ -163,7 +167,8 @@ ApplicationWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         y: appController.notice.length > 0 ? 18 : -80
         width: Math.min(parent.width - 32, noticeText.implicitWidth + 46)
-        height: 48
+        height: noticeText.implicitHeight + 28
+        visible: appController.notice.length > 0
         radius: 14
         z: 100
         color: appController.noticeKind === "error" ? "#FFF0F0"
@@ -176,6 +181,8 @@ ApplicationWindow {
         Text {
             id: noticeText
             anchors.centerIn: parent
+            width: parent.width - 32
+            wrapMode: Text.Wrap
             text: appController.notice
             color: appController.noticeKind === "error" ? Theme.danger
                    : appController.noticeKind === "warning" ? "#A15C00"
@@ -210,7 +217,7 @@ ApplicationWindow {
             activeOrderDialog.open()
         }
         function onLoggedInChanged() {
-            if (!appController.loggedIn) app.orderPromptShown = false
+            if (!appController.loggedIn) { app.orderPromptShown = false; activeOrderDialog.close(); app.currentPage = "home" }
         }
     }
 
@@ -231,7 +238,7 @@ ApplicationWindow {
                 color: Theme.text
             }
             Text {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 wrapMode: Text.WordWrap
                 font.pixelSize: 14
                 color: Theme.textMuted
@@ -241,7 +248,7 @@ ApplicationWindow {
                       : "检测到您有未完成的充电订单,请先处理后再发起新的预约。"
             }
             AppButton {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.topMargin: 6
                 text: "去处理"
                 onClicked: {

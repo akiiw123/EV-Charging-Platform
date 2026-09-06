@@ -10,13 +10,13 @@ PanelCard {
     property int totalWidth: { var n=0;for(var i=0;i<columns.length;i++)n+=columns[i].width;return n }
     signal rowActivated(int row, var record)
     clip:true
-    ScrollView{anchors.fill:parent;anchors.margins:1;contentWidth:Math.max(root.width-2,root.totalWidth);ScrollBar.horizontal.policy:ScrollBar.AsNeeded
+    ScrollView{id:tableScroll;anchors.fill:parent;anchors.margins:1;contentWidth:Math.max(root.width-2,root.totalWidth);ScrollBar.horizontal.policy:ScrollBar.AsNeeded
         Column{width:Math.max(root.width-2,root.totalWidth)
             Rectangle{width:parent.width;height:42;color:Theme.backgroundSecondary
                 Row{anchors.fill:parent;Repeater{model:root.columns;delegate:Item{required property var modelData;width:modelData.width;height:42
                     Text{anchors.fill:parent;anchors.leftMargin:12;anchors.rightMargin:12;text:modelData.title;color:Theme.textMuted;font.pixelSize:Theme.fontCaption;font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter;horizontalAlignment:modelData.align==="right"?Text.AlignRight:modelData.align==="center"?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideRight}}}}
             }
-            ListView{id:list;width:parent.width;height:root.height-44;clip:true;model:root.tableModel;boundsBehavior:Flickable.StopAtBounds
+            ListView{id:list;objectName:"tableRows";ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; parent: root; anchors.right: parent.right; anchors.top: parent.top; anchors.topMargin: 42; anchors.bottom: parent.bottom } WheelArea { flickable: list } width:parent.width;height:root.height-44;clip:true;model:root.tableModel;boundsBehavior:Flickable.StopAtBounds
                 delegate:Rectangle{required property var record;required property int index;width:list.width;height:Theme.rowHeight;color:root.selectedRow===index?Theme.surfaceSelected:mouse.containsMouse?Theme.surfaceHover:(index%2?Qt.rgba(Theme.backgroundSecondary.r,Theme.backgroundSecondary.g,Theme.backgroundSecondary.b,.28):"transparent")
                     Rectangle{anchors.bottom:parent.bottom;width:parent.width;height:1;color:Theme.borderSubtle}
                     Row{anchors.fill:parent;Repeater{model:root.columns;delegate:Item{required property var modelData;width:modelData.width;height:Theme.rowHeight
@@ -31,6 +31,7 @@ PanelCard {
                             anchors.rightMargin: 12
                             text: {
                                 var value = cellRecord[cellColumn.role]
+                                if (/_at$/.test(cellColumn.role) || cellColumn.role === "last_activity") return adminController.displayTime(String(value || ""))
                                 if (cellColumn.format)
                                     return cellColumn.format(value, cellRecord)
                                 return value === undefined || value === null ? "—" : value

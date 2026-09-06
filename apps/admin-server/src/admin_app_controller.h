@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QTimer>
+#include <QHash>
 
 namespace charging::admin {
 
@@ -82,6 +83,8 @@ public:
     bool mustChangePassword() const { return mustChangePassword_; }
     bool loadFailed() const { return loadFailed_; }
 
+    Q_INVOKABLE QString displayTime(const QString& value) const;
+    Q_INVOKABLE void setStationRegion(const QString& value);
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshAll();
@@ -146,7 +149,11 @@ private:
     charging::core::ApiClient api_;
     QNetworkAccessManager network_;
     QSettings settings_;
-    QTimer clock_;
+    QTimer clock_, refreshTimer_, noticeTimer_, requestTimer_;
+    QHash<QString, QString> pending_;
+    bool connectionNotice_ = false;
+    QString stationRegion_;
+    int dashboardDays_ = 30;
     bool databaseReady_ = true;
     bool connected_ = false;
     bool loggedIn_ = false;
