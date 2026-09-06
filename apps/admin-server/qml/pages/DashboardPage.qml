@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import Charging.UI
 import "../components"
 
-ScrollView{id:root;contentWidth:availableWidth;clip:true
+AppScrollView{id:root;contentWidth:availableWidth;clip:true
     Component.onCompleted:adminController.refreshDashboard()
     ColumnLayout{x:24;width:root.availableWidth-48;spacing:16
         PageHeader{Layout.fillWidth:true;title:"运营数据总览";subtitle:"营收、订单与设备状态汇总"}

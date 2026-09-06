@@ -1,3 +1,4 @@
+#include "charging/core/display_time.h"
 #include "admin_app_controller.h"
 
 #include <QDateTime>
@@ -26,15 +27,28 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     animationsEnabled_ = settings_.value(QStringLiteral("appearance/animations"), true).toBool();
     fontScale_ = settings_.value(QStringLiteral("appearance/fontScale"), 1.0).toDouble();
     pageSize_ = settings_.value(QStringLiteral("table/pageSize"), 20).toInt();
+    noticeTimer_.setSingleShot(true); noticeTimer_.setInterval(5000);
+    connect(&noticeTimer_, &QTimer::timeout, this, &AdminAppController::clearNotice);
+    requestTimer_.setSingleShot(true); requestTimer_.setInterval(15000);
+    connect(&requestTimer_, &QTimer::timeout, this, [this] {
+        pending_.clear(); busyCount_ = 0; emit busyChanged();
+        logout(); showNotice(QStringLiteral("请求超时，请重新登录核对操作结果"), QStringLiteral("error"));
+    });
+    refreshTimer_.setInterval(5000);
+    connect(&refreshTimer_, &QTimer::timeout, this, [this] { if (loggedIn_ && connected_ && !mustChangePassword_ && pending_.isEmpty()) refreshAll(); });
+    refreshTimer_.start();
     clock_.setInterval(1000);
-    connect(&clock_, &QTimer::timeout, this, [this] { currentTime_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss")); emit currentTimeChanged(); });
-    currentTime_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss"));
+    connect(&clock_, &QTimer::timeout, this, [this] { currentTime_ = QDateTime::currentDateTimeUtc().toOffsetFromUtc(8 * 3600).toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss")); emit currentTimeChanged(); });
+    currentTime_ = QDateTime::currentDateTimeUtc().toOffsetFromUtc(8 * 3600).toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss"));
     clock_.start();
-    connect(&api_, &charging::core::ApiClient::connected, this, [this] { connected_ = true; emit connectionChanged(); });
-    connect(&api_, &charging::core::ApiClient::disconnected, this, [this] { connected_ = false; loggedIn_ = false; busyCount_ = 0; emit connectionChanged(); emit loggedInChanged(); emit busyChanged(); });
-    connect(&api_, &charging::core::ApiClient::clientError, this, [this](const QString& text) { busyCount_ = 0; if(!loadFailed_){loadFailed_=true;emit loadFailedChanged();} emit busyChanged(); showNotice(text, QStringLiteral("error")); });
+    connect(&api_, &charging::core::ApiClient::connected, this, [this] { connected_ = true; if (connectionNotice_) clearNotice(); connectionNotice_ = false; emit connectionChanged(); });
+    connect(&api_, &charging::core::ApiClient::disconnected, this, [this] { connected_ = false; loggedIn_ = false; pending_.clear(); requestTimer_.stop(); busyCount_ = 0; connectionNotice_ = true; showNotice(QStringLiteral("连接已断开，正在重连，请稍后重新登录"), QStringLiteral("warning")); emit connectionChanged(); emit loggedInChanged(); emit busyChanged(); });
+    connect(&api_, &charging::core::ApiClient::clientError, this, [this](const QString& text) {
+        if (!connected_) return; // Startup/reconnect progress is shown by the connection indicator.
+        showNotice(text, QStringLiteral("error"));
+    });
     // 过期响应不更新界面,仅归还 busy 计数
-    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message&) { if (busyCount_ > 0) --busyCount_; emit busyChanged(); });
+    connect(&api_, &charging::core::ApiClient::staleResponseReceived, this, [this](const charging::core::Message& m) { pending_.remove(m.id); busyCount_ = pending_.size(); if (pending_.isEmpty()) requestTimer_.stop(); emit busyChanged(); });
     connect(&api_, &charging::core::ApiClient::responseReceived, this, &AdminAppController::handleResponse);
     bool ok=false; const int port=qEnvironmentVariableIntValue("CHARGING_SERVER_PORT",&ok);
     api_.connectToServer(qEnvironmentVariable("CHARGING_SERVER_HOST", QStringLiteral("127.0.0.1")), ok && port>0 ? quint16(port) : quint16(45454));
@@ -44,24 +58,36 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     }
 }
 
-void AdminAppController::request(const QString& type, const QJsonObject& payload) { if (!api_.isConnected()) { showNotice(QStringLiteral("服务未连接，请稍后重试"), QStringLiteral("error")); return; } if(loadFailed_){loadFailed_=false;emit loadFailedChanged();} ++busyCount_; emit busyChanged(); api_.send(type,payload); }
+QString AdminAppController::displayTime(const QString& value) const { return charging::core::beijingTime(value); }
+void AdminAppController::setStationRegion(const QString& value) { stationRegion_ = value; applyClientFilters(); }
+void AdminAppController::request(const QString& type, const QJsonObject& payload) {
+    if (!api_.isConnected()) { connectionNotice_ = true; showNotice(QStringLiteral("正在连接服务，请稍后重试"), QStringLiteral("info")); return; }
+    if (!loggedIn_ && type != QStringLiteral("admin.login")) return;
+    if (pending_.values().contains(type)) return;
+    const QString id = api_.send(type, payload);
+    if (id.isEmpty()) return;
+    pending_.insert(id, type); busyCount_ = pending_.size(); emit busyChanged();
+    if (!requestTimer_.isActive()) requestTimer_.start();
+}
+
 void AdminAppController::login(const QString& username,const QString& password,bool remember) { errorMessage_.clear(); if(username.trimmed().isEmpty()||password.isEmpty()){errorMessage_=QStringLiteral("请输入管理员账号和密码");emit noticeChanged();return;} settings_.setValue(QStringLiteral("login/username"),remember?username:QString()); request(QStringLiteral("admin.login"),{{"username",username},{"password",password}}); }
-void AdminAppController::logout(){ loggedIn_=false; administrator_.clear(); if(mustChangePassword_){mustChangePassword_=false;emit mustChangePasswordChanged();} emit loggedInChanged(); }
+void AdminAppController::logout(){ pending_.clear(); requestTimer_.stop(); busyCount_=0; emit busyChanged(); loggedIn_=false; administrator_.clear(); if(mustChangePassword_){mustChangePassword_=false;emit mustChangePasswordChanged();} emit loggedInChanged(); }
 void AdminAppController::changePassword(const QString& oldPassword,const QString& newPassword)
 {
     // 前端先行做强度/一致性检查,服务端仍会二次校验(PBKDF2 验证旧密码)
     if (newPassword.size() < 8) { showNotice(QStringLiteral("新密码至少需要 8 位"), QStringLiteral("error")); emit passwordChangeResult(false); return; }
     request(QStringLiteral("admin.password.change"),{{QStringLiteral("old_password"),oldPassword},{QStringLiteral("new_password"),newPassword}});
 }
-void AdminAppController::refreshAll(){ refreshDashboard(); request(QStringLiteral("admin.station.list")); request(QStringLiteral("admin.pile.list")); request(QStringLiteral("admin.order.list")); request(QStringLiteral("admin.user.list"),{{"phone",QString()}}); }
+void AdminAppController::refreshAll(){ if (!loggedIn_) return; refreshDashboard(dashboardDays_); request(QStringLiteral("admin.station.list")); request(QStringLiteral("admin.pile.list")); request(QStringLiteral("admin.order.list")); request(QStringLiteral("admin.user.list"),{{"phone",userQuery_}}); }
 void AdminAppController::refreshDashboard(int days)
 {
+    dashboardDays_ = days == 7 ? 7 : 30;
     // 请求指定区间的运营总览,服务端按 days(7/30)返回营收趋势
     request(QStringLiteral("admin.dashboard"), {{QStringLiteral("days"), days}});
 }
-void AdminAppController::refreshStations(const QString& q){ stationQuery_=q; applyClientFilters(); if(rawStations_.isEmpty())request(QStringLiteral("admin.station.list")); }
-void AdminAppController::refreshPiles(const QString& q,const QString& station,const QString& type,const QString& status){pileQuery_=q;pileStation_=station;pileType_=type;pileState_=status;applyClientFilters();if(rawPiles_.isEmpty())request(QStringLiteral("admin.pile.list"));}
-void AdminAppController::refreshOrders(const QString& q,const QString& status){orderQuery_=q;orderState_=status;applyClientFilters();if(rawOrders_.isEmpty())request(QStringLiteral("admin.order.list"));}
+void AdminAppController::refreshStations(const QString& q){ stationQuery_=q; applyClientFilters(); request(QStringLiteral("admin.station.list")); }
+void AdminAppController::refreshPiles(const QString& q,const QString& station,const QString& type,const QString& status){pileQuery_=q;pileStation_=station;pileType_=type;pileState_=status;applyClientFilters();request(QStringLiteral("admin.pile.list"));}
+void AdminAppController::refreshOrders(const QString& q,const QString& status){orderQuery_=q;orderState_=status;applyClientFilters();request(QStringLiteral("admin.order.list"));}
 void AdminAppController::refreshUsers(const QString& q,const QString& status){userQuery_=q;userState_=status;request(QStringLiteral("admin.user.list"),{{"phone",q}});}
 void AdminAppController::createStation(const QVariantMap& f){request(QStringLiteral("admin.station.create"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::updateStation(const QVariantMap& f){request(QStringLiteral("admin.station.update"),QJsonObject::fromVariantMap(f));}
@@ -88,17 +114,19 @@ QStringList AdminAppController::stationNames() const
     return names;
 }
 void AdminAppController::setUserStatus(qint64 id,const QString& status){request(QStringLiteral("admin.user.status"),{{"user_id",id},{"status",status}});}
-void AdminAppController::clearNotice(){notice_.clear();noticeKind_.clear();emit noticeChanged();}
+void AdminAppController::clearNotice(){noticeTimer_.stop(); errorMessage_.clear(); notice_.clear();noticeKind_.clear();emit noticeChanged();}
 QString AdminAppController::savedUsername() const{return settings_.value(QStringLiteral("login/username")).toString();}
 void AdminAppController::setTheme(const QString& v){if(theme_==v)return;theme_=v;settings_.setValue("appearance/theme",v);emit themeChanged();}
 void AdminAppController::setSidebarExpanded(bool v){if(sidebarExpanded_==v)return;sidebarExpanded_=v;settings_.setValue("appearance/sidebarExpanded",v);emit settingsChanged();}
 void AdminAppController::setAnimationsEnabled(bool v){if(animationsEnabled_==v)return;animationsEnabled_=v;settings_.setValue("appearance/animations",v);emit settingsChanged();}
 void AdminAppController::setFontScale(double v){v=qBound(.85,v,1.3);if(qFuzzyCompare(fontScale_,v))return;fontScale_=v;settings_.setValue("appearance/fontScale",v);emit settingsChanged();}
 void AdminAppController::setPageSize(int v){v=qBound(10,v,100);if(pageSize_==v)return;pageSize_=v;settings_.setValue("table/pageSize",v);emit settingsChanged();}
-void AdminAppController::showNotice(const QString&t,const QString&k){notice_=t;noticeKind_=k;if(k=="error")errorMessage_=t;emit noticeChanged();}
+void AdminAppController::showNotice(const QString&t,const QString&k){notice_=t;noticeKind_=k;if(k=="error")errorMessage_=t;else errorMessage_.clear();noticeTimer_.start();emit noticeChanged();}
 
-void AdminAppController::handleResponse(const charging::core::Message& m){ if(busyCount_>0)--busyCount_;emit busyChanged(); if(m.type.endsWith(".error")){showNotice(m.payload.value("message").toString(),"error");if(m.type==QStringLiteral("admin.password.change.error"))emit passwordChangeResult(false);return;}
-    if(m.type=="admin.login.ok"){loggedIn_=true;administrator_=m.payload.value("administrator").toObject().value("username").toString();const bool mustChange=m.payload.value("administrator").toObject().value("must_change_password").toBool();if(mustChange!=mustChangePassword_){mustChangePassword_=mustChange;emit mustChangePasswordChanged();}errorMessage_.clear();emit loggedInChanged();emit noticeChanged();refreshAll();return;}
+void AdminAppController::handleResponse(const charging::core::Message& m){
+    if (!pending_.contains(m.id)) return;
+    pending_.remove(m.id); busyCount_ = pending_.size(); if (pending_.isEmpty()) requestTimer_.stop(); emit busyChanged(); if(m.type.endsWith(".error")){showNotice(m.payload.value("message").toString(),"error");if(m.type==QStringLiteral("admin.password.change.error"))emit passwordChangeResult(false);return;}
+    if(m.type=="admin.login.ok"){clearNotice();loggedIn_=true;administrator_=m.payload.value("administrator").toObject().value("username").toString();const bool mustChange=m.payload.value("administrator").toObject().value("must_change_password").toBool();if(mustChange!=mustChangePassword_){mustChangePassword_=mustChange;emit mustChangePasswordChanged();}errorMessage_.clear();emit loggedInChanged();emit noticeChanged();refreshAll();return;}
     if(m.type=="admin.password.change.ok"){mustChangePassword_=false;emit mustChangePasswordChanged();showNotice(QStringLiteral("密码已更新，请使用新密码重新登录"));emit passwordChangeResult(true);logout();return;}
     if(m.type=="admin.dashboard.ok"){dashboard_=m.payload.value("metrics").toObject().toVariantMap();pileStatus_=m.payload.value("pile_status").toObject().toVariantMap();revenueTrend_=m.payload.value("revenue_trend").toArray().toVariantList();stationEnergy_=m.payload.value("station_energy").toArray().toVariantList();emit dashboardChanged();return;}
     if(m.type=="admin.station.list.ok")rawStations_=m.payload.value("stations").toArray();
@@ -115,10 +143,10 @@ void AdminAppController::handleResponse(const charging::core::Message& m){ if(bu
 }
 
 void AdminAppController::applyClientFilters(){QJsonArray out;
-    for(const auto&v:rawStations_){auto o=v.toObject();if(containsCI(o,{"name","address"},stationQuery_))out.append(o);}stations_.setJson(out);out={};
+    for(const auto&v:rawStations_){auto o=v.toObject();if(containsCI(o,{"name","address"},stationQuery_) && containsCI(o,{"address","name"},stationRegion_))out.append(o);}stations_.setJson(out);out={};
     for(const auto&v:rawPiles_){auto o=v.toObject();if(!containsCI(o,{"code"},pileQuery_))continue;if(!pileStation_.isEmpty()&&o.value("station_name").toString()!=pileStation_)continue;if(!pileType_.isEmpty()&&o.value("type").toString()!=pileType_)continue;if(!pileState_.isEmpty()&&o.value("status").toString()!=pileState_)continue;out.append(o);}piles_.setJson(out);out={};
     for(const auto&v:rawOrders_){auto o=v.toObject();if(!containsCI(o,{"order_no","phone","pile_code","station_name"},orderQuery_))continue;if(!orderState_.isEmpty()&&o.value("status").toString()!=orderState_)continue;out.append(o);}orders_.setJson(out);out={};
-    for(const auto&v:rawUsers_){auto o=v.toObject();if(!userState_.isEmpty()&&o.value("status").toString()!=userState_)continue;out.append(o);}users_.setJson(out);
+    for(const auto&v:rawUsers_){auto o=v.toObject();if(!containsCI(o,{"phone"},userQuery_))continue;if(!userState_.isEmpty()&&o.value("status").toString()!=userState_)continue;out.append(o);}users_.setJson(out);
 }
 
 void AdminAppController::refreshPredictions(){ predictionStatus_=QStringLiteral("正在连接预测服务…");emit predictionChanged(); QNetworkRequest req(QUrl(qEnvironmentVariable("CHARGING_ML_URL",QStringLiteral("http://127.0.0.1:8090"))+QStringLiteral("/stations")));req.setTransferTimeout(4000);auto* reply=network_.get(req);connect(reply,&QNetworkReply::finished,this,[this,reply]{auto data=reply->readAll();if(reply->error()!=QNetworkReply::NoError){QString why=reply->errorString();reply->deleteLater();usePredictionDemo(why);return;}auto list=QJsonDocument::fromJson(data).object().value("stations").toArray();reply->deleteLater();if(list.isEmpty()){usePredictionDemo(QStringLiteral("预测服务没有可用站点"));return;}requestStationForecasts(list);});}

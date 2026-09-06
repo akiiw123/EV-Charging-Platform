@@ -21,3 +21,7 @@ add_test(NAME database-maintenance-tests COMMAND database-maintenance-tests)
 add_executable(database-robustness-tests test_database_robustness.cpp)
 target_link_libraries(database-robustness-tests PRIVATE charging-core Qt6::Test Qt6::Sql)
 add_test(NAME database-robustness-tests COMMAND database-robustness-tests)
+
+add_executable(display-time-tests test_display_time.cpp)
+target_link_libraries(display-time-tests PRIVATE charging-core Qt6::Test)
+add_test(NAME display-time-tests COMMAND display-time-tests)

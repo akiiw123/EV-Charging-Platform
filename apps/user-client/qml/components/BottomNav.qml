@@ -24,7 +24,7 @@ Rectangle {
                 { icon: "person", text: "我的" }
             ]
             delegate: Rectangle {
-                Layout.fillWidth: true
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.fillHeight: true
                 Layout.margins: 7
                 radius: 14

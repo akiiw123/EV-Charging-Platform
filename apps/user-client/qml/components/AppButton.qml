@@ -11,6 +11,7 @@ Button {
     leftPadding: 18
     rightPadding: 18
     contentItem: Text {
+        elide: Text.ElideRight
         text: control.text
         font: control.font
         color: control.variant === "primary" ? "white"

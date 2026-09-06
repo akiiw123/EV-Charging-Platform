@@ -12,7 +12,7 @@ Item {
         anchors.fill: parent
         spacing: 0
         Rectangle {
-            Layout.fillWidth: true
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             implicitHeight: 62
             color: Theme.surface
             RowLayout {
@@ -25,7 +25,7 @@ Item {
                     MouseArea { anchors.fill: parent; onClicked: page.back(); cursorShape: Qt.PointingHandCursor }
                 }
                 Text {
-                    Layout.fillWidth: true
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
                     text: appController.mapTitle || "地图导航"
                     color: Theme.text
                     font.pixelSize: 17
@@ -35,7 +35,7 @@ Item {
             }
         }
         WebEngineView {
-            Layout.fillWidth: true
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             Layout.fillHeight: true
             url: appController.mapUrl
         }

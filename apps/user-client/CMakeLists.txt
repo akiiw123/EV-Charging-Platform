@@ -10,9 +10,13 @@ qt_add_qml_module(charging-user
     URI ChargingUser
     VERSION 1.0
     QML_FILES
+        qml/components/WheelArea.qml
+        qml/components/AppScrollView.qml
         qml/Main.qml
         qml/Theme.qml
         qml/components/AppButton.qml
+        qml/components/AppField.qml
+        qml/components/AppDialog.qml
         qml/components/AppCard.qml
         qml/components/AppIcon.qml
         qml/components/BottomNav.qml
