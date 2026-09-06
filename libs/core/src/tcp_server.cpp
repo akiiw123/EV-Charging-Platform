@@ -115,7 +115,9 @@ TcpServer::TcpServer(QString databasePath, QObject* parent)
     : QTcpServer(parent), databasePath_(std::move(databasePath)),
       stopping_(std::make_shared<std::atomic_bool>(false))
 {
-    pool_.setMaxThreadCount(qMax(2, QThread::idealThreadCount()));
+   // TCP 客户端为长连接，每个连接会持续占用一个工作线程。
+// 至少保留 16 个线程，保证管理端和多个用户端可以同时在线。
+    pool_.setMaxThreadCount(qMax(16, QThread::idealThreadCount() * 2));
     pool_.setExpiryTimeout(30000);
 }
 
