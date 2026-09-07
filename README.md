@@ -87,4 +87,4 @@ python3 ml/service.py --data-dir ml/data --artifacts ml/artifacts --port 8090
 
 预测服务默认地址为 `http://127.0.0.1:8090`，可通过 `CHARGING_ML_URL` 覆盖。缺少模型或数据时，管理端会明确显示演示数据或服务不可用状态。
 
-更多说明见 [用户端运行与验收](docs/user-client.md)、[QML 管理端](docs/admin-qml.md)、[手动测试指南](docs/manual-testing.md)、[协议](docs/protocol.md)和[架构](docs/architecture.md)。
+更多说明见 [中期答辩进度说明](docs/midterm-defense-progress.md)、[用户端运行与验收](docs/user-client.md)、[QML 管理端](docs/admin-qml.md)、[手动测试指南](docs/manual-testing.md)、[协议](docs/protocol.md)和[架构](docs/architecture.md)。
