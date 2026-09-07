@@ -38,19 +38,21 @@ cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ```
 
+完整 Ubuntu 依赖（包括用户端地图所需的 Qt WebEngine 辅助进程）见仓库根目录 `README.md`。
+
 ## 启动
 
 在 VMware 的 Ubuntu 图形桌面终端运行：
 
 ```bash
 cd /home/bit/charging-platform
-./build/admin-qml2/apps/admin-server/charging-admin
+bash scripts/run-desktop.sh admin
 ```
 
 管理端进程会同时初始化 SQLite 数据库并启动 TCP 服务。随后可在另一个终端启动用户端：
 
 ```bash
-./build/admin-qml2/apps/user-client/charging-user
+bash scripts/run-desktop.sh user
 ```
 
 VS Code Remote SSH 终端通常没有图形显示连接。如果 `/tmp/.X11-unix/X0` 存在，可先设置 `DISPLAY=:0`；否则应在 VMware 桌面终端启动，不要使用 `offscreen` 做人工演示。
@@ -71,6 +73,8 @@ python3 service.py --data-dir ./data --artifacts ./artifacts --port 8090
 ```bash
 ctest --test-dir build/admin-qml2 --output-on-failure
 ```
+
+截至 2026-09-07，全量构建通过；7 个 CTest 程序中 6 个通过。`tcp-integration-tests` 的 `reconnectAfterInitialRefusal` 用例仍失败，表示首次连接被拒后的自动重连尚需修复；其余 TCP 集成用例通过。
 
 无图形环境可验证 QML 加载：
 

@@ -7,7 +7,7 @@ case "$kind" in
   admin) executable="apps/admin-server/charging-admin" ;;
   *) echo "用法: bash scripts/run-desktop.sh user|admin [构建目录]"; exit 2 ;;
 esac
-build_dir="${2:-$project_dir/build}"
+build_dir="${2:-$project_dir/build/admin-qml2}"
 if [[ -z "${QT_IM_MODULE:-}" ]]; then
   plugins="$(qtpaths6 --query QT_INSTALL_PLUGINS 2>/dev/null || true)"
   if [[ -n "$plugins" ]]; then

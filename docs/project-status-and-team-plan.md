@@ -5,6 +5,8 @@
 > 唯一开发目录：`/home/bit/charging-platform`  
 > 远程仓库：<https://github.com/QLang423/charging-platform>
 
+> **历史快照提示（2026-09-07）**：本文的功能盘点和分工以 `e97cf50` 为基线，不代表当前 `9053811` 的完成状态。当前代码已经采用 Qt Quick/QML 用户端和管理端，并已加入地图导航、预测服务、数据库维护、计价与更多测试。当前构建、启动和测试结论以根目录 `README.md`、`docs/user-client.md`、`docs/admin-qml.md` 和 `docs/manual-testing.md` 为准。
+
 ## 1. 文档目的
 
 本文依据《东软电动汽车充电桩应用管理平台》项目说明书和当前仓库代码，对项目完成度进行可验证的盘点，并给出后续 5 人小组分工。文中状态定义如下：

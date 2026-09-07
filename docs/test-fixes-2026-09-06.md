@@ -1,6 +1,6 @@
 # 第21组人工测试问题修复交付
 
-基于用户提供的 EV-Charging-Platform-main (2).zip，处理人工测试报告11项问题。代码改动已完成，当前只通过界面及控件层验证，完整C++构建和真实服务端回归尚未通过环境验证。
+基于用户提供的 EV-Charging-Platform-main (2).zip，处理人工测试报告11项问题。下文保留 2026-09-06 交付时的原始验证记录；2026-09-07 已在 Ubuntu 22.04 / Qt 6.2.4 环境补充执行全量构建和 CTest，结果见文末“Ubuntu 补充验证”。
 
 ## 首先修正了上传目录
 
@@ -60,3 +60,11 @@ bash scripts/run-desktop.sh user
 此次改动不仅是用户端，还包括 apps/admin-server、libs/core、libs/ui、tests、scripts、docs。请以本包为基础检查PR差异，不要只上传user-client。apps根目录的错放重复文件已删除；网页上传不会自动删除远程多余文件，需要另外确认这些重复项的清理，或用Git提交完整差异。
 
 无远程提交或推送。ZIP排除了build、运行数据库、环境文件、密钥及测试依赖。改动明细见同目录 changed-files.txt。
+
+## Ubuntu 补充验证（2026-09-07）
+
+- 使用 `build/admin-qml2` 完成 CMake 配置和全量构建，用户端、管理端及全部测试目标编译成功。
+- CTest 共 7 个测试程序，6 个通过。
+- `tcp-integration-tests` 中 19 个用例通过，`reconnectAfterInitialRefusal` 失败；单独复跑仍失败，属于可复现的待修复问题，不是偶发波动。
+- 用户端地图首次实际运行发现 Ubuntu 缺少 `libqt6webenginecore6-bin`；安装后 `/usr/lib/qt6/libexec/QtWebEngineProcess` 可用，驾车/步行导航不再因缺失辅助进程而中止。
+- `scripts/run-desktop.sh` 已转换为 Linux LF 换行，并将默认构建目录统一为 `build/admin-qml2`。

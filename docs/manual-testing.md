@@ -1,6 +1,6 @@
 # 手动测试指南
 
-> 适用分支:`glm` · 更新日期:2026-09-03
+> 适用分支：`codex/qml-mobile-redesign` · 更新日期：2026-09-07
 > 覆盖:用户端、管理端(内嵌 TCP 服务)、Web 大屏、预测服务、异常与边界用例。
 > 自动化测试见文末"附录 A";每个用例的"预期"都对应已实现行为,若不符即为缺陷。
 
@@ -9,21 +9,22 @@
 ### 1.1 构建
 
 ```bash
-cd ~/EV-Charging-Platform
-cmake --preset dev          # 首次或 CMakeLists 变更后
-cmake --build build/dev -j4
+cd /home/bit/charging-platform
+cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/admin-qml2 -j2
+ctest --test-dir build/admin-qml2 --output-on-failure
 ```
 
-产物:`build/dev/apps/admin-server/charging-admin`、`build/dev/apps/user-client/charging-user`。
+产物：`build/admin-qml2/apps/admin-server/charging-admin`、`build/admin-qml2/apps/user-client/charging-user`。
 
-也可用 Qt Creator 打开根目录 `CMakeLists.txt`,选 Desktop Qt 6.4.2 套件构建。
+也可用 Qt Creator 打开根目录 `CMakeLists.txt`，选择 Qt 6.2 兼容的 Desktop Kit 构建。
 
 ### 1.2 启动顺序与端口
 
 | 程序 | 启动命令 | 端口 |
 |---|---|---|
-| 管理端+TCP 服务 | `./build/dev/apps/admin-server/charging-admin` | 45454(监听所有网卡) |
-| 用户端 | `./build/dev/apps/user-client/charging-user` | —(连接 127.0.0.1:45454) |
+| 管理端+TCP 服务 | `bash scripts/run-desktop.sh admin` | 45454(监听所有网卡) |
+| 用户端 | `bash scripts/run-desktop.sh user` | —(连接 127.0.0.1:45454) |
 | Web 大屏 | `python3 web/dashboard/server.py`(在 web/dashboard 下) | 8080 |
 | 预测服务(可选) | `python3 ml/service.py ...` 或 `python3 /tmp/mock_ml.py` | 8090 |
 
@@ -36,13 +37,23 @@ cmake --build build/dev -j4
 
 ```bash
 # 方案 A:一次性安装(需 sudo 密码)
-sudo apt install qml6-module-qtquick-templates qml6-module-qtquick-window qml6-module-qtwebengine
+sudo apt install qml6-module-qtquick-templates qml6-module-qtquick-window \
+  qml6-module-qtwebengine libqt6webenginecore6-bin
 # 方案 B:使用已解包目录
 export QML_IMPORT_PATH=/home/bit/qt-extra-qml/usr/lib/x86_64-linux-gnu/qt6/qml
 ```
 
 方案 B 时从**同一个终端**启动程序(子进程继承环境变量);Qt Creator 需在
 Projects → Run → Environment 里给两个运行配置各加一次该变量。
+
+地图页面还依赖 Qt 6 `QtWebEngineProcess`。若点击导航后提示 `Could not find QtWebEngineProcess` 并退出，执行：
+
+```bash
+sudo apt install libqt6webenginecore6-bin
+find /usr/lib/qt6 -name QtWebEngineProcess
+```
+
+预期找到 `/usr/lib/qt6/libexec/QtWebEngineProcess`。Qt 5 同名文件不能混用。`Ignoring WAYLAND_DISPLAY` 警告通常不影响运行。
 
 ### 1.4 演示账号与数据重置
 
@@ -193,9 +204,9 @@ Projects → Run → Environment 里给两个运行配置各加一次该变量�
 ## 附录 A:自动化测试
 
 ```bash
-cd ~/EV-Charging-Platform/build/dev
-QT_QPA_PLATFORM=offscreen ctest          # 3 套件:协议/仓储/TCP 集成
-./tests/tcp-integration-tests            # 10 个用例,含改密/头像/预约超时
+cd /home/bit/charging-platform
+ctest --test-dir build/admin-qml2 --output-on-failure
+./build/admin-qml2/tests/tcp-integration-tests
 ```
 
-当前基线:3/3 套件、10/10 用例全部通过。
+2026-09-07 实测基线：全量构建通过；7 个 CTest 程序中 6 个通过。TCP 集成程序中 19 个用例通过，`reconnectAfterInitialRefusal` 可稳定复现失败，待修复首次拒绝后的自动重连。

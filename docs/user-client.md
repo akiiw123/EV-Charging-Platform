@@ -9,13 +9,14 @@ Ubuntu 22.04 / Qt 6.2 需要以下开发和 QML 运行模块：
 ~~~bash
 sudo apt install \
   qt6-base-dev qt6-declarative-dev qt6-webengine-dev qt6-webengine-dev-tools \
+  libqt6webenginecore6-bin \
   qml6-module-qtquick qml6-module-qtquick-controls \
   qml6-module-qtquick-layouts qml6-module-qtquick-window \
   qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
   qml6-module-qtwebengine qml6-module-qtwebengine-controlsdelegates
 ~~~
 
-这些依赖均使用 Ubuntu 仓库中的 Qt 6.2.4，不需要升级现有 Qt 环境。
+这些依赖均使用 Ubuntu 仓库中的 Qt 6.2.4，不需要升级现有 Qt 环境。`libqt6webenginecore6-bin` 提供地图页面运行所需的 `/usr/lib/qt6/libexec/QtWebEngineProcess`；只安装开发库并不一定会自动安装这个运行时包。
 
 ## 构建
 
@@ -23,11 +24,11 @@ sudo apt install \
 
 ~~~bash
 cd /home/bit/charging-platform
-cmake -S . -B build/qml -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/qml -j2
+cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/admin-qml2 -j2
 ~~~
 
-`build/qml` 与旧的 `build/dev` 分离，不会覆盖原构建目录。
+仓库统一使用 `build/admin-qml2`，避免不同文档和脚本指向多个构建目录。
 
 ## 运行
 
@@ -35,17 +36,17 @@ cmake --build build/qml -j2
 
 ~~~bash
 cd /home/bit/charging-platform
-./build/qml/apps/admin-server/charging-admin
+bash scripts/run-desktop.sh admin
 ~~~
 
-再打开一个 VS Code 远程终端启动用户端：
+再打开一个 Ubuntu 图形桌面终端启动用户端：
 
 ~~~bash
 cd /home/bit/charging-platform
 export CHARGING_SERVER_HOST=127.0.0.1
 export CHARGING_SERVER_PORT=45454
 export TENCENT_MAP_KEY=你的腾讯地图Key
-./build/qml/apps/user-client/charging-user
+bash scripts/run-desktop.sh user
 ~~~
 
 `TENCENT_MAP_KEY` 不写入仓库。腾讯 URI 路线规划在部分环境下可以不传 Key；建议演示时配置已授权的 Key。
@@ -95,7 +96,7 @@ export TENCENT_MAP_KEY=你的腾讯地图Key
 ## 自动验证
 
 ~~~bash
-ctest --test-dir build/qml --output-on-failure
+ctest --test-dir build/admin-qml2 --output-on-failure
 ~~~
 
 在无图形桌面的环境中可做启动冒烟测试：
@@ -105,7 +106,27 @@ timeout 12s env \
   QT_QPA_PLATFORM=offscreen \
   QT_QUICK_BACKEND=software \
   QTWEBENGINE_DISABLE_SANDBOX=1 \
-  ./build/qml/apps/user-client/charging-user
+  ./build/admin-qml2/apps/user-client/charging-user
 ~~~
 
 进程持续运行到 `timeout`（退出码 124）且没有 QML 报错，即表示应用窗口和所有声明式页面成功加载。
+
+## 地图与 WebEngine 排错
+
+开头出现 `Warning: Ignoring WAYLAND_DISPLAY on Gnome` 通常只是 Qt 选择 X11/xcb 后端的提示，不是地图闪退原因。
+
+如果点击“驾车导航”或“步行导航”后出现以下日志并退出：
+
+~~~text
+Could not find QtWebEngineProcess
+已中止 (核心已转储)
+~~~
+
+安装缺失的 Qt 6 WebEngine 二进制包并重新启动：
+
+~~~bash
+sudo apt install libqt6webenginecore6-bin
+find /usr/lib/qt6 -name QtWebEngineProcess
+~~~
+
+预期路径为 `/usr/lib/qt6/libexec/QtWebEngineProcess`。系统中的 `/usr/lib/x86_64-linux-gnu/qt5/libexec/QtWebEngineProcess` 属于 Qt 5，不能用于当前 Qt 6 应用。
