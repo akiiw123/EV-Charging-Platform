@@ -1,3 +1,6 @@
+// 管理端 ViewModel：维护页面状态、列表模型、筛选条件并异步调用服务端接口。
+// TCP 请求负责运营数据和管理动作，QNetworkAccessManager 只负责独立 ML HTTP 服务。
+// 列表先保留 raw JSON，再经筛选写入 JsonListModel；QML 表格只消费模型角色。
 #include "charging/core/display_time.h"
 #include "admin_app_controller.h"
 

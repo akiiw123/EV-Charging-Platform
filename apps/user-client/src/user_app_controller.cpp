@@ -1,3 +1,6 @@
+// 用户端 ViewModel：编排登录、电站浏览、预约充电、结算、定位和地图导航。
+// Q_INVOKABLE 方法接收 QML 操作，sendRequest() 记录请求上下文，handleResponse() 统一更新页面状态。
+// 页面不直接改订单结果；预约、充电、停止和结算均以服务端响应为事实来源。
 #include "charging/core/display_time.h"
 #include "user_app_controller.h"
 

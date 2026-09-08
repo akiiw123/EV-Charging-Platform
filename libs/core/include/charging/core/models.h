@@ -1,3 +1,4 @@
+// 声明核心业务实体的数据结构，连接数据库记录、仓储层和协议层。
 #pragma once
 
 #include <QDateTime>

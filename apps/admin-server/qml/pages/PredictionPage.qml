@@ -1,3 +1,4 @@
+// 调用独立 ML 服务并展示负荷预测、置信信息和失败状态。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

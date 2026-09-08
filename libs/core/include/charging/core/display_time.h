@@ -1,3 +1,4 @@
+// 统一把数据库 UTC 时间转换为界面显示时间，避免重复偏移和跨日错误。
 #pragma once
 #include <QDateTime>
 #include <QRegularExpression>

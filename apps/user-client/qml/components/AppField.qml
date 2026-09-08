@@ -1,3 +1,4 @@
+// 用户端统一输入框，处理焦点、中文输入和剪贴板操作。
 import QtQuick
 import QtQuick.Controls
 import ChargingUser

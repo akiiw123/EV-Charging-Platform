@@ -1,3 +1,4 @@
+// 主题、连接信息及管理端偏好设置。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

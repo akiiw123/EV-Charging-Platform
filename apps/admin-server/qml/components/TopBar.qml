@@ -1,3 +1,4 @@
+// 管理端顶部连接状态、时间和用户操作栏。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

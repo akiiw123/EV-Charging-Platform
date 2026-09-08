@@ -1,3 +1,4 @@
+// 统一卡片容器的背景、边框与圆角。
 import QtQuick
 import ChargingUser
 

@@ -1,3 +1,4 @@
+// 自动化回归测试，验证 database robustness 相关的正常流程、错误边界和关键约束。
 #include "charging/core/database_maintenance.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/repositories.h"

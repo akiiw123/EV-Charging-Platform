@@ -1,3 +1,4 @@
+// 集中提供颜色、字号、间距、圆角和动画等语义设计令牌。
 pragma Singleton
 import QtQuick
 

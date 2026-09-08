@@ -1,3 +1,4 @@
+// 管理端展示关键运营指标的卡片。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

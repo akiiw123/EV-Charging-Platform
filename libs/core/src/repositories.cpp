@@ -1,3 +1,6 @@
+// 封装用户、电站、电桩、订单和计价规则的 SQL 与事务操作。
+// 按 User/Administrator/Station/Pile/Order/Pricing 六组 Repository 阅读，每组只处理自己的表和事务。
+// 订单与钱包的多步写入必须同成同败，数据库约束是并发竞争下的最后一道保护。
 #include "charging/core/repositories.h"
 
 #include <QRegularExpression>

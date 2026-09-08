@@ -1,3 +1,4 @@
+// 把鼠标滚轮和触控板增量转换为可控滚动距离。
 import QtQuick
 
 MouseArea {

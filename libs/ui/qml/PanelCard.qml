@@ -1,3 +1,4 @@
+// 共享面板卡片容器。
 import QtQuick
 
 Rectangle {

@@ -1,3 +1,5 @@
+// 应用界面总装与页面导航，连接控制器状态和各业务页面。
+// 登录成功后进入 AppShell；侧栏只切换页面，所有运营数据和动作统一调用 admin 控制器。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

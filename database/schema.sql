@@ -1,3 +1,4 @@
+-- 数据库事实来源：定义核心表、约束、索引、计价配置和兼容迁移。
 CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

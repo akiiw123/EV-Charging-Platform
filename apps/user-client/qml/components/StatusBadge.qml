@@ -1,3 +1,4 @@
+// 将协议状态映射为带文字和颜色的状态标签。
 import QtQuick
 import ChargingUser
 

@@ -1,3 +1,4 @@
+// 自动化回归测试，验证 tcp integration 相关的正常流程、错误边界和关键约束。
 #include "charging/core/api_client.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/message_protocol.h"
