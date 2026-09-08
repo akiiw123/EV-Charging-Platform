@@ -21,6 +21,13 @@
 #include <algorithm>
 
 namespace charging::user {
+namespace {
+
+// 单点登录:账号在其他客户端登录后,本设备被服务端接管下线时的统一提示
+const QString kSessionTakenOverNotice =
+    QStringLiteral("账号已在其他设备登录，当前设备已下线");
+
+} // namespace
 
 UserAppController::UserAppController(QObject* parent) : QObject(parent)
 {
@@ -49,12 +56,24 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
     connect(&api_, &charging::core::ApiClient::connected, this, [this] {
         connected_ = true;
         emit connectedChanged();
+        if (sessionTakenOver_) {
+            // 被他端接管下线后会自动重连(约 2 秒):不清提示而是重新计时,
+            // 否则用户看不到下线原因;重连完成后恢复常规断线提示逻辑
+            sessionTakenOver_ = false;
+            showNotice(kSessionTakenOverNotice, QStringLiteral("warning"));
+            return;
+        }
         clearNotice();
     });
     connect(&api_, &charging::core::ApiClient::disconnected, this, [this] {
         connected_ = false;
         emit connectedChanged();
         clearSession();
+        // 被其他设备接管导致的断开:保留明确原因,不覆盖为通用断线提示
+        if (sessionTakenOver_) {
+            showNotice(kSessionTakenOverNotice, QStringLiteral("warning"));
+            return;
+        }
         showNotice(QStringLiteral("连接已断开，请重新登录；若账号被冻结请联系管理员"), QStringLiteral("warning"));
     });
     connect(&api_, &charging::core::ApiClient::clientError, this,
@@ -155,6 +174,8 @@ void UserAppController::login(const QString& phone)
         return;
     }
     setBusy(true);
+    // 用户主动重试登录:清除上一次被接管下线的提示保留标志
+    sessionTakenOver_ = false;
     sendRequest(QStringLiteral("auth.phone_login"),
               {{QStringLiteral("phone"), phone.trimmed()}});
 }
@@ -643,8 +664,15 @@ void UserAppController::updateChargingEstimate()
 
 void UserAppController::handleResponse(const charging::core::Message& message)
 {
-    if (message.payload.value(QStringLiteral("code")).toString() == QStringLiteral("AUTH_USER_FROZEN")) {
+    const QString code = message.payload.value(QStringLiteral("code")).toString();
+    if (code == QStringLiteral("AUTH_USER_FROZEN")) {
         clearSession(); showNotice(QStringLiteral("账号已被冻结，请联系管理员"), QStringLiteral("error")); return;
+    }
+    // 单点登录:账号已在其他客户端登录,服务端接管会话并即将断开本连接。
+    // 请求级拒绝(<type>.error)与空闲轮询主动关闭(server.session.closed)均走此分支
+    if (code == QStringLiteral("AUTH_SESSION_TAKEOVER")) {
+        sessionTakenOver_ = true;
+        clearSession(); showNotice(kSessionTakenOverNotice, QStringLiteral("warning")); return;
     }
     if (!pending_.contains(message.id)) return; // Ignore responses from previous sessions.
     const QString requestType = pending_.take(message.id);
