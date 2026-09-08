@@ -1,3 +1,4 @@
+// 用户资料、余额充值、头像和主题设置。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

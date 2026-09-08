@@ -1,3 +1,4 @@
+// 管理端可复用数据表格，负责表头、行代理和滚动。
 import QtQuick
 import QtQuick.Controls
 import Charging.UI

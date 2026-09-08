@@ -1,3 +1,4 @@
+# 声明本目录构建目标、源码/QML 清单、Qt 依赖和目标链接关系。
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_executable(charging-user

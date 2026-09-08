@@ -1,3 +1,4 @@
+// 使用 Qt WebEngine 承载腾讯地图并展示步行/驾车路线。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

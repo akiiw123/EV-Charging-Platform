@@ -1,3 +1,4 @@
+// 用户端 ViewModel：编排登录、电站浏览、预约充电、结算、定位和地图导航。
 #pragma once
 
 #include "charging/core/api_client.h"

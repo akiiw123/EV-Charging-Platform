@@ -74,7 +74,7 @@ python3 service.py --data-dir ./data --artifacts ./artifacts --port 8090
 ctest --test-dir build/admin-qml2 --output-on-failure
 ```
 
-截至 2026-09-07，全量构建通过；7 个 CTest 程序中 6 个通过。`tcp-integration-tests` 的 `reconnectAfterInitialRefusal` 用例仍失败，表示首次连接被拒后的自动重连尚需修复；其余 TCP 集成用例通过。
+截至 2026-09-08，全量构建通过；7 个 CTest 程序中 6 个通过。`tcp-integration-tests` 的 `reconnectAfterInitialRefusal` 用例仍失败，表示首次连接被拒后的自动重连尚需修复；其余 TCP 集成用例通过。
 
 无图形环境可验证 QML 加载：
 

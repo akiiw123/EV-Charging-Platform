@@ -1,3 +1,4 @@
+// 记录已登录用户与 TCP 连接的对应关系，实现同账号单会话和强制下线。
 #include "charging/core/session_registry.h"
 
 #include <QMutexLocker>

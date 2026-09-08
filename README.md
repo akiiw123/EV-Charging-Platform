@@ -47,7 +47,7 @@ cmake --build build/admin-qml2 -j2
 ctest --test-dir build/admin-qml2 --output-on-failure
 ```
 
-截至 2026-09-07，Qt 6.2.4 全量构建通过；7 个 CTest 程序中 6 个通过。`tcp-integration-tests` 的 `reconnectAfterInitialRefusal` 用例可稳定复现失败，其余 TCP 集成场景通过。不要将这一已知失败描述为全量测试通过。
+截至 2026-09-08，Qt 6.2.4 全量构建通过；7 个 CTest 程序中 6 个通过。`tcp-integration-tests` 的 `reconnectAfterInitialRefusal` 用例可稳定复现失败，其余 TCP 集成场景通过。不要将这一已知失败描述为全量测试通过。
 
 ## 桌面运行
 
@@ -87,4 +87,4 @@ python3 ml/service.py --data-dir ml/data --artifacts ml/artifacts --port 8090
 
 预测服务默认地址为 `http://127.0.0.1:8090`，可通过 `CHARGING_ML_URL` 覆盖。缺少模型或数据时，管理端会明确显示演示数据或服务不可用状态。
 
-更多说明见 [中期答辩进度说明](docs/midterm-defense-progress.md)、[用户端运行与验收](docs/user-client.md)、[QML 管理端](docs/admin-qml.md)、[手动测试指南](docs/manual-testing.md)、[协议](docs/protocol.md)和[架构](docs/architecture.md)。
+更多说明见 [最终答辩指南](docs/final-defense-guide.md)、[代码阅读导览](docs/code-reading-guide.md)、[用户端运行与验收](docs/user-client.md)、[QML 管理端](docs/admin-qml.md)、[手动测试指南](docs/manual-testing.md)、[协议](docs/protocol.md)和[架构](docs/architecture.md)。

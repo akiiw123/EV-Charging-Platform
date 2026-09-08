@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Web 运营大屏的只读 HTTP 服务，查询 SQLite 并提供统计 JSON。
 """Read-only HTTP API and static server for the operations dashboard."""
 
 import argparse

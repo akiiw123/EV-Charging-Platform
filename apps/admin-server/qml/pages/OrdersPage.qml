@@ -1,3 +1,4 @@
+// 展示历史订单、筛选和订单详情。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

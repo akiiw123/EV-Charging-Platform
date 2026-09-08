@@ -1,3 +1,4 @@
+// 封装用户、电站、电桩、订单和计价规则的 SQL 与事务操作。
 #pragma once
 
 #include "charging/core/models.h"

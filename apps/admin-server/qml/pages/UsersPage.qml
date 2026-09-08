@@ -1,3 +1,4 @@
+// 用户查询、脱敏显示和冻结/解冻管理页面。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

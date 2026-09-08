@@ -1,3 +1,4 @@
+// 用户端底部三标签导航。
 import QtQuick
 import QtQuick.Layouts
 import ChargingUser

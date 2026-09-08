@@ -1,6 +1,6 @@
 # 手动测试指南
 
-> 适用分支：`codex/qml-mobile-redesign` · 更新日期：2026-09-07
+> 适用分支：`codex/qml-mobile-redesign` · 更新日期：2026-09-08
 > 覆盖:用户端、管理端(内嵌 TCP 服务)、Web 大屏、预测服务、异常与边界用例。
 > 自动化测试见文末"附录 A";每个用例的"预期"都对应已实现行为,若不符即为缺陷。
 
@@ -26,7 +26,7 @@ ctest --test-dir build/admin-qml2 --output-on-failure
 | 管理端+TCP 服务 | `bash scripts/run-desktop.sh admin` | 45454(监听所有网卡) |
 | 用户端 | `bash scripts/run-desktop.sh user` | —(连接 127.0.0.1:45454) |
 | Web 大屏 | `python3 web/dashboard/server.py`(在 web/dashboard 下) | 8080 |
-| 预测服务(可选) | `python3 ml/service.py ...` 或 `python3 /tmp/mock_ml.py` | 8090 |
+| 预测服务（可选） | python3 ml/service.py ... | 8090 |
 
 **必须先启动管理端**(SQLite 数据库随它初始化),再启动用户端。
 用户端可用环境变量指定服务地址:`CHARGING_SERVER_HOST` / `CHARGING_SERVER_PORT`。

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 在 Ubuntu 图形桌面启动用户端或管理端，并自动选择可用中文输入法插件。
 set -euo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 kind="${1:-user}"

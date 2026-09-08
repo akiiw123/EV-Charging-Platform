@@ -1,3 +1,4 @@
+# 读取并清洗脱敏历史订单，将原始记录转换为模型可用特征。
 """UrbanEV 数据集加载与特征工程（仅依赖 numpy/pandas）。
 
 数据集: https://github.com/IntelligentSystemsLab/UrbanEV

@@ -1,3 +1,4 @@
+// 把 JSON 数组适配为 QAbstractListModel，供 QML 列表和表格按角色读取。
 #pragma once
 
 #include <QAbstractListModel>

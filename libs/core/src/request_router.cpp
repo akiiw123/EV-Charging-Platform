@@ -1,3 +1,6 @@
+// 校验会话和参数并把协议请求路由到仓储及业务规则，是服务端业务编排中心。
+// 先搜索 route() 中的请求类型分支，再进入对应 Repository；登录身份保存在本连接对象中。
+// 所有管理操作先鉴权，订单状态迁移由服务端决定，存储错误不会把 SQL 细节暴露给客户端。
 #include "charging/core/request_router.h"
 
 #include "charging/core/business_rules.h"

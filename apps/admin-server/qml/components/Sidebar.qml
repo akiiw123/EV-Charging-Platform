@@ -1,3 +1,4 @@
+// 管理端模块导航侧栏。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

@@ -1,3 +1,4 @@
+// 管理端筛选下拉框。
 import QtQuick
 import QtQuick.Controls
 import Charging.UI

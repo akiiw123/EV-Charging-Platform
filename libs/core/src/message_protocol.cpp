@@ -1,3 +1,4 @@
+// 实现一行一条 JSON 消息的编码、解码、请求 ID 和结构化错误响应。
 #include "charging/core/message_protocol.h"
 
 #include <QJsonDocument>

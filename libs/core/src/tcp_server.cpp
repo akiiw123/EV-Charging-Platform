@@ -1,3 +1,6 @@
+// 管理监听端口、客户端连接、线程池和消息收发，并把请求交给路由器。
+// start() 建立监听；incomingConnection() 检查容量；连接任务逐行解码消息并调用 RequestRouter。
+// 每个工作线程创建自己的 SQLite 连接，连接结束后释放会话和容量计数。
 #include "charging/core/tcp_server.h"
 
 #include "charging/core/database_manager.h"

@@ -1,3 +1,4 @@
+// 早期界面原型文件，当前根 CMake 不参与构建；保留用于理解 QML 迁移历史。
 import QtQuick
 import QtQuick.Controls
 import ChargingUser
