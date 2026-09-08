@@ -575,6 +575,170 @@ private slots:
         admin.waitForDisconnected(1000);
     }
 
+    // 单点登录:同一车主账号在第二个客户端登录后,旧连接被服务端接管并踢下线
+    void secondLoginTakesOverFirstSession()
+    {
+        Fixture fixture;
+        const QJsonObject login {{QStringLiteral("phone"), QStringLiteral("13600136000")}};
+
+        QTcpSocket first;
+        first.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(first.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(first, {QStringLiteral("login-1"), QStringLiteral("auth.phone_login"), login}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        QTcpSocket second;
+        second.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(second.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        // 后登录优先:第二个客户端登录成功并接管该账号
+        QCOMPARE(exchange(second, {QStringLiteral("login-2"), QStringLiteral("auth.phone_login"), login}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 旧连接下线有两条路径:请求级拒绝(user.profile.error)与
+        // 空闲轮询主动关闭(server.session.closed,周期 250ms),不对时序做假设,
+        // 只要求两者都携带接管错误码
+        first.write(charging::core::MessageProtocol::encode(
+            {QStringLiteral("profile-1"), QStringLiteral("user.profile"), {}}));
+        first.waitForBytesWritten(1000);
+        QTRY_VERIFY_WITH_TIMEOUT(first.canReadLine(), 3000);
+        charging::core::Message kicked;
+        QString parseError;
+        QVERIFY(charging::core::MessageProtocol::decodeLine(first.readLine(), &kicked, &parseError));
+        QCOMPARE(kicked.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("AUTH_SESSION_TAKEOVER"));
+        QVERIFY(kicked.type == QStringLiteral("user.profile.error")
+                || kicked.type == QStringLiteral("server.session.closed"));
+        QTRY_COMPARE_WITH_TIMEOUT(first.state(), QAbstractSocket::UnconnectedState, 3000);
+
+        // 旧连接析构时释放占用不得误删接管者:第二个客户端仍可正常鉴权操作
+        QCOMPARE(exchange(second, {QStringLiteral("profile-2"), QStringLiteral("user.profile"), {}}).type,
+                 QStringLiteral("user.profile.ok"));
+        QCOMPARE(second.state(), QAbstractSocket::ConnectedState);
+        second.disconnectFromHost();
+        second.waitForDisconnected(1000);
+    }
+
+    // 单点登录:被踢下线的客户端重新登录后可反向接管,不会因残留占用而锁死账号
+    void kickedClientCanTakeAccountBack()
+    {
+        Fixture fixture;
+        const QJsonObject login {{QStringLiteral("phone"), QStringLiteral("13600136000")}};
+
+        QTcpSocket first;
+        first.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(first.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(first, {QStringLiteral("login-1"), QStringLiteral("auth.phone_login"), login}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        QTcpSocket second;
+        second.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(second.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(second, {QStringLiteral("login-2"), QStringLiteral("auth.phone_login"), login}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        // first 被接管后保持空闲,由服务端 250ms 轮询主动下发关闭通知并断开
+        QTRY_VERIFY_WITH_TIMEOUT(first.canReadLine(), 3000);
+        charging::core::Message notice;
+        QString noticeError;
+        QVERIFY(charging::core::MessageProtocol::decodeLine(first.readLine(), &notice, &noticeError));
+        QCOMPARE(notice.type, QStringLiteral("server.session.closed"));
+        QCOMPARE(notice.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("AUTH_SESSION_TAKEOVER"));
+        QTRY_COMPARE_WITH_TIMEOUT(first.state(), QAbstractSocket::UnconnectedState, 3000);
+
+        // 用全新 socket 重连登录(不复用 first,避免残留缓冲干扰后续读取):
+        // 应登录成功并反过来接管 second
+        QTcpSocket comeback;
+        comeback.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(comeback.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(comeback, {QStringLiteral("login-3"), QStringLiteral("auth.phone_login"), login}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+        QTRY_VERIFY_WITH_TIMEOUT(second.canReadLine(), 3000);
+        charging::core::Message kicked;
+        QString parseError;
+        QVERIFY(charging::core::MessageProtocol::decodeLine(second.readLine(), &kicked, &parseError));
+        QCOMPARE(kicked.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("AUTH_SESSION_TAKEOVER"));
+        // 接管者保持在线
+        QCOMPARE(exchange(comeback, {QStringLiteral("profile"), QStringLiteral("user.profile"), {}}).type,
+                 QStringLiteral("user.profile.ok"));
+        comeback.disconnectFromHost();
+        comeback.waitForDisconnected(1000);
+    }
+
+    // 单点登录只约束车主账号:同一管理员账号可在两个管理端同时在线
+    void administratorSessionsAreNotRestricted()
+    {
+        Fixture fixture;
+        const QJsonObject login {{QStringLiteral("username"), QStringLiteral("admin")},
+                                 {QStringLiteral("password"), QStringLiteral("123456")}};
+
+        QTcpSocket first;
+        first.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(first.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(first, {QStringLiteral("login-1"), QStringLiteral("admin.login"), login}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        QTcpSocket second;
+        second.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(second.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(second, {QStringLiteral("login-2"), QStringLiteral("admin.login"), login}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        // 两个管理端都能继续调用鉴权接口,且都保持连接
+        QCOMPARE(exchange(first, {QStringLiteral("dash-1"), QStringLiteral("admin.dashboard"), {}}).type,
+                 QStringLiteral("admin.dashboard.ok"));
+        QCOMPARE(exchange(second, {QStringLiteral("dash-2"), QStringLiteral("admin.dashboard"), {}}).type,
+                 QStringLiteral("admin.dashboard.ok"));
+        QCOMPARE(first.state(), QAbstractSocket::ConnectedState);
+        QCOMPARE(second.state(), QAbstractSocket::ConnectedState);
+        first.disconnectFromHost();
+        first.waitForDisconnected(1000);
+        second.disconnectFromHost();
+        second.waitForDisconnected(1000);
+    }
+
+    // 单点登录按账号隔离:不同车主账号互不影响,均可同时保持登录态
+    void distinctAccountsStayLoggedInSimultaneously()
+    {
+        Fixture fixture;
+        QTcpSocket first;
+        first.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(first.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(first, {QStringLiteral("login-a"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13600136000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        QTcpSocket second;
+        second.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(second.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(second, {QStringLiteral("login-b"), QStringLiteral("auth.phone_login"),
+                                   {{QStringLiteral("phone"), QStringLiteral("13500135000")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 轮流发起鉴权请求,双方都不应被对方登录挤下线
+        for (int round = 0; round < 3; ++round) {
+            QCOMPARE(exchange(first, {QStringLiteral("a-%1").arg(round), QStringLiteral("user.profile"), {}}).type,
+                     QStringLiteral("user.profile.ok"));
+            QCOMPARE(exchange(second, {QStringLiteral("b-%1").arg(round), QStringLiteral("user.profile"), {}}).type,
+                     QStringLiteral("user.profile.ok"));
+        }
+        QCOMPARE(first.state(), QAbstractSocket::ConnectedState);
+        QCOMPARE(second.state(), QAbstractSocket::ConnectedState);
+        first.disconnectFromHost();
+        first.waitForDisconnected(1000);
+        second.disconnectFromHost();
+        second.waitForDisconnected(1000);
+    }
+
     // 逻辑停用生命周期:停用后用户端不可见/不可约,恢复后一切照旧
     void stationDisableLifecycle()
     {

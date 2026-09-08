@@ -104,7 +104,29 @@ QJsonObject pricingRuleJson(const PricingRule& rule)
 
 } // namespace
 
-RequestRouter::RequestRouter(QSqlDatabase database) : database_(std::move(database)) {}
+RequestRouter::RequestRouter(QSqlDatabase database,
+                             std::shared_ptr<SessionRegistry> sessions)
+    : database_(std::move(database)), sessions_(std::move(sessions)) {}
+
+// 连接结束(客户端断开、服务停止或被踢下线)时释放本连接对账号的占用。
+// 若账号已被其他连接接管,release 会因令牌不匹配而自动忽略,不会误踢接管者。
+RequestRouter::~RequestRouter()
+{
+    if (sessions_ && authenticatedUserId_ && sessionToken_) {
+        sessions_->release(*authenticatedUserId_, *sessionToken_);
+    }
+}
+
+// 结束会话:登记关闭原因供连接层选择错误码,并立即释放账号占用。
+void RequestRouter::closeSession(SessionCloseReason reason)
+{
+    sessionCloseReason_ = reason;
+    if (sessions_ && authenticatedUserId_ && sessionToken_) {
+        sessions_->release(*authenticatedUserId_, *sessionToken_);
+    }
+    sessionToken_.reset();
+    authenticatedUserId_.reset();
+}
 
 // 预约超 15 分钟仍未开始充电则自动取消,释放用户与电桩的活动订单占用,
 // 避免长期未开始的预约一直占住"每用户/每电桩仅一个活动订单"的唯一配额。
@@ -142,7 +164,7 @@ bool reservationExpiredByTimeout(const QSqlDatabase& database, const ChargingOrd
 // 仅在已认证且未关闭时查询,普通浏览请求开销可忽略。
 bool RequestRouter::refreshSession()
 {
-    if (sessionClosed_ || !authenticatedUserId_) {
+    if (sessionClosed() || !authenticatedUserId_) {
         return false;
     }
     QSqlQuery query(database_);
@@ -152,11 +174,25 @@ bool RequestRouter::refreshSession()
         return false;   // 查询失败按在线处理,避免误踢
     }
     if (query.value(0).toString() == QStringLiteral("frozen")) {
-        authenticatedUserId_.reset();
-        sessionClosed_ = true;
+        closeSession(SessionCloseReason::UserFrozen);
         return true;
     }
     return false;
+}
+
+// 单点登录复查(轮询入口):账号被其他客户端接管后,本连接持有的令牌即失效。
+// 只读内存中的令牌表,不触发数据库查询,因此可由连接层每个空闲周期调用,
+// 让被接管的旧连接在 250ms 内下线。
+bool RequestRouter::checkSessionOwnership()
+{
+    if (sessionClosed() || !sessions_ || !authenticatedUserId_ || !sessionToken_) {
+        return false;
+    }
+    if (sessions_->isCurrent(*authenticatedUserId_, *sessionToken_)) {
+        return false;
+    }
+    closeSession(SessionCloseReason::TakenOver);
+    return true;
 }
 
 // 数据库错误统一出口:原始错误只进服务端日志(qWarning),
@@ -171,6 +207,16 @@ Message RequestRouter::storageError(const Message& request, const QString& conte
 
 Message RequestRouter::route(const Message& request)
 {
+    // 会话已被服务端关闭(冻结或被其他客户端接管):同一次读取中缓冲的
+    // 后续请求一律拒绝,避免已下线的连接继续以旧身份操作或重新占用账号
+    if (sessionClosed()) {
+        return sessionCloseReason_ == SessionCloseReason::TakenOver
+            ? error(request, QStringLiteral("AUTH_SESSION_TAKEOVER"),
+                    QStringLiteral("账号已在其他设备登录,本连接已下线"))
+            : error(request, QStringLiteral("AUTH_USER_FROZEN"),
+                    QStringLiteral("账号已被冻结,连接即将断开"));
+    }
+
     // 每次请求前先清理超时预约,保证后续查询/预约看到的是最新状态
     expireStaleReservations();
 
@@ -186,7 +232,16 @@ Message RequestRouter::route(const Message& request)
         if (user->status == QStringLiteral("frozen")) {
             return error(request, QStringLiteral("AUTH_USER_FROZEN"), QStringLiteral("用户已被冻结"));
         }
+        // 单点登录:同一连接切换账号时先释放上一个账号的占用
+        if (sessions_ && authenticatedUserId_ && sessionToken_) {
+            sessions_->release(*authenticatedUserId_, *sessionToken_);
+            sessionToken_.reset();
+        }
         authenticatedUserId_ = user->id;
+        // 后登录优先:本连接接管该账号,此前登录的客户端令牌随即失效并被踢下线
+        if (sessions_) {
+            sessionToken_ = sessions_->claim(user->id);
+        }
         return success(request, {{QStringLiteral("user"), userJson(*user)}});
     }
 
@@ -557,6 +612,11 @@ Message RequestRouter::route(const Message& request)
         || request.type.startsWith(QStringLiteral("order."));
     if (requiresAuthentication && !authenticatedUserId_) {
         return error(request, QStringLiteral("AUTH_REQUIRED"), QStringLiteral("请先登录"));
+    }
+    // 单点登录:账号已被其他客户端接管,下一个鉴权请求立即拒绝并关闭会话
+    if (requiresAuthentication && checkSessionOwnership()) {
+        return error(request, QStringLiteral("AUTH_SESSION_TAKEOVER"),
+                     QStringLiteral("账号已在其他设备登录,连接即将断开"));
     }
     // C4:已登录用户被冻结后,下一个请求立即拒绝并关闭会话
     if (requiresAuthentication && refreshSession()) {

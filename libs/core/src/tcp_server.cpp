@@ -14,12 +14,25 @@ namespace {
 
 constexpr qsizetype kMaximumMessageBytes = 1024 * 1024;
 
+// 会话被服务端关闭时主动下发的通知:根据关闭原因选择错误码与文案
+Message sessionClosedMessage(RequestRouter::SessionCloseReason reason)
+{
+    const bool takenOver = reason == RequestRouter::SessionCloseReason::TakenOver;
+    return {QStringLiteral("server"), QStringLiteral("server.session.closed"),
+            {{QStringLiteral("code"), takenOver ? QStringLiteral("AUTH_SESSION_TAKEOVER")
+                                                : QStringLiteral("AUTH_USER_FROZEN")},
+             {QStringLiteral("message"), takenOver
+                  ? QStringLiteral("账号已在其他设备登录,本连接已下线")
+                  : QStringLiteral("账号已被冻结,连接已断开")}}};
+}
+
 class ConnectionTask final : public QRunnable {
 public:
     ConnectionTask(qintptr socketDescriptor, QString databasePath,
-                   std::shared_ptr<std::atomic_bool> stopping)
+                   std::shared_ptr<std::atomic_bool> stopping,
+                   std::shared_ptr<SessionRegistry> sessions)
         : socketDescriptor_(socketDescriptor), databasePath_(std::move(databasePath)),
-          stopping_(std::move(stopping))
+          stopping_(std::move(stopping)), sessions_(std::move(sessions))
     {
         setAutoDelete(true);
     }
@@ -40,20 +53,22 @@ public:
             return;
         }
 
-        RequestRouter router(database.database());
+        RequestRouter router(database.database(), sessions_);
         QByteArray buffer;
         int idleCycles = 0;   // 250ms/次,20 次 ≈ 5 秒做一次冻结复查
         while (!stopping_->load() && socket.state() == QAbstractSocket::ConnectedState) {
             if (!socket.waitForReadyRead(250)) {
+                // 单点登录:令牌复查只读内存,每个空闲周期(250ms)都做一次,
+                // 让被其他客户端接管的旧连接尽快下线
+                if (router.checkSessionOwnership()) {
+                    write(&socket, sessionClosedMessage(router.sessionCloseReason()));
+                    break;
+                }
                 // C4:空闲时也定期复查登录用户是否被冻结,被冻结则断开
                 if (++idleCycles >= 20) {
                     idleCycles = 0;
                     if (router.refreshSession()) {
-                        write(&socket, {QStringLiteral("server"),
-                                        QStringLiteral("server.session.closed"),
-                                        {{QStringLiteral("code"), QStringLiteral("AUTH_USER_FROZEN")},
-                                         {QStringLiteral("message"),
-                                          QStringLiteral("账号已被冻结,连接已断开")}}});
+                        write(&socket, sessionClosedMessage(router.sessionCloseReason()));
                         break;
                     }
                 }
@@ -81,7 +96,12 @@ public:
                 }
                 write(&socket, router.route(request));
             }
-            // 会话被关闭(冻结踢出)时,发完错误响应即断开连接
+            // 处理完本批请求后再复查一次:即使旧客户端持续发送无需鉴权的请求,
+            // 被接管的连接也能在一个来回内收到通知并下线
+            if (router.checkSessionOwnership()) {
+                write(&socket, sessionClosedMessage(router.sessionCloseReason()));
+            }
+            // 会话被关闭(冻结踢出或被其他客户端接管)时,发完响应即断开连接
             if (router.sessionClosed()) {
                 break;
             }
@@ -107,13 +127,15 @@ private:
     qintptr socketDescriptor_;
     QString databasePath_;
     std::shared_ptr<std::atomic_bool> stopping_;
+    std::shared_ptr<SessionRegistry> sessions_;
 };
 
 } // namespace
 
 TcpServer::TcpServer(QString databasePath, QObject* parent)
     : QTcpServer(parent), databasePath_(std::move(databasePath)),
-      stopping_(std::make_shared<std::atomic_bool>(false))
+      stopping_(std::make_shared<std::atomic_bool>(false)),
+      sessions_(std::make_shared<SessionRegistry>())
 {
    // TCP 客户端为长连接，每个连接会持续占用一个工作线程。
 // 至少保留 16 个线程，保证管理端和多个用户端可以同时在线。
@@ -142,7 +164,7 @@ bool TcpServer::start(const QHostAddress& address, quint16 port, QString* errorM
 
 void TcpServer::incomingConnection(qintptr socketDescriptor)
 {
-    pool_.start(new ConnectionTask(socketDescriptor, databasePath_, stopping_));
+    pool_.start(new ConnectionTask(socketDescriptor, databasePath_, stopping_, sessions_));
 }
 
 } // namespace charging::core

@@ -152,6 +152,9 @@ private:
     bool connected_ = false;
     bool loggedIn_ = false;
     bool busy_ = false;
+    // 本连接因账号在其他客户端登录而被服务端接管下线,
+    // 用于在随后的断线回调中保留明确原因,不被通用断线提示覆盖
+    bool sessionTakenOver_ = false;
     QString notice_;
     QString noticeKind_ = QStringLiteral("info");
     QVariantMap user_;
