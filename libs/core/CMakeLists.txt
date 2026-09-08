@@ -2,6 +2,7 @@ add_library(charging-core STATIC
     include/charging/core/api_client.h
     include/charging/core/database_maintenance.h
     include/charging/core/password_security.h
+    include/charging/core/session_registry.h
     include/charging/core/tcp_server.h
     src/api_client.cpp
     src/database_maintenance.cpp
@@ -10,6 +11,7 @@ add_library(charging-core STATIC
     src/password_security.cpp
     src/repositories.cpp
     src/request_router.cpp
+    src/session_registry.cpp
     src/tcp_server.cpp
 )
 
