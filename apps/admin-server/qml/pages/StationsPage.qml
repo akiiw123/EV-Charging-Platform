@@ -1,4 +1,3 @@
-// 充电站查询、新增、编辑、停用和详情管理页面。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

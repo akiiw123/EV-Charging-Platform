@@ -1,4 +1,3 @@
-// 旧版 Widgets 窗口骨架；当前 QML 构建未引用，仅保留迁移历史。
 #include "main_window.h"
 #include "views/charging_view.h"
 #include "views/home_view.h"

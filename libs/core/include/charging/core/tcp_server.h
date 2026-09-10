@@ -1,4 +1,3 @@
-// 管理监听端口、客户端连接、线程池和消息收发，并把请求交给路由器。
 #pragma once
 
 #include "charging/core/session_registry.h"

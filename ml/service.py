@@ -1,4 +1,3 @@
-# 提供独立 JSON HTTP 预测服务，供管理端异步调用而不阻塞 GUI。
 """负荷预测 JSON API 服务（独立只读推理服务）。
 
 按 ml/README.md 约定: 独立 Python 服务、稳定 JSON API，与 Qt GUI 解耦；

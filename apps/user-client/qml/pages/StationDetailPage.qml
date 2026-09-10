@@ -1,4 +1,3 @@
-// 展示电站及电桩详情，并发起预约或导航。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

@@ -1,4 +1,3 @@
-// 统一按钮的视觉状态、尺寸和点击交互。
 import QtQuick
 
 FocusScope {

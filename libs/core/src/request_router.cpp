@@ -1,12 +1,10 @@
-// 校验会话和参数并把协议请求路由到仓储及业务规则，是服务端业务编排中心。
-// 先搜索 route() 中的请求类型分支，再进入对应 Repository；登录身份保存在本连接对象中。
-// 所有管理操作先鉴权，订单状态迁移由服务端决定，存储错误不会把 SQL 细节暴露给客户端。
 #include "charging/core/request_router.h"
 
 #include "charging/core/business_rules.h"
 #include "charging/core/repositories.h"
 #include "charging/core/password_security.h"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QDate>
 #include <QDateTime>
@@ -39,6 +37,37 @@ QJsonObject pileJson(const ChargingPile& pile)
             {QStringLiteral("status"), pile.status},
             {QStringLiteral("charge_count"), pile.chargeCount},
             {QStringLiteral("total_charge_minutes"), pile.totalChargeMinutes}};
+}
+
+// charging_piles.status 记录设备本身状态，预约和待结算阶段设备可能仍为 idle。
+// 用户端是否允许预约还要看活动订单；这里生成只用于展示的“有效状态”，
+// 不修改数据库中的设备状态，也不影响管理端查看真实设备状态。
+bool applyActiveOrderStatuses(QSqlDatabase database, qint64 stationId,
+                              QList<ChargingPile>* piles, QString* errorMessage)
+{
+    if (!piles) return false;
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT o.pile_id,o.status FROM charging_orders o "
+        "JOIN charging_piles p ON p.id=o.pile_id "
+        "WHERE p.station_id=:station "
+        "AND o.status IN ('reserved','charging','awaiting_payment')"));
+    query.bindValue(QStringLiteral(":station"), stationId);
+    if (!query.exec()) {
+        if (errorMessage) *errorMessage = query.lastError().text();
+        return false;
+    }
+
+    QHash<qint64, QString> activeStatusByPile;
+    while (query.next())
+        activeStatusByPile.insert(query.value(0).toLongLong(), query.value(1).toString());
+
+    for (auto& pile : *piles) {
+        // 故障或离线等设备状态优先；只有数据库仍为 idle 时才补充订单占用状态。
+        if (pile.status == QStringLiteral("idle") && activeStatusByPile.contains(pile.id))
+            pile.status = activeStatusByPile.value(pile.id);
+    }
+    return true;
 }
 
 QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile>& piles)
@@ -74,6 +103,44 @@ QJsonObject orderJson(const ChargingOrder& order)
             {QStringLiteral("energy_kwh"), order.energyKwh},
             {QStringLiteral("amount"), order.amount},
             {QStringLiteral("created_at"), order.createdAt.toString(Qt::ISODate)}};
+}
+
+// 活跃订单额外携带电桩功率、站点单价和持续时长。
+// charging 状态下直接按服务端时间计算实时电量/金额，避免客户端 5 秒轮询后
+// 因时间基准或数据库中尚未落盘的 0 值而出现“计时/金额清零”。
+// awaiting_payment 状态继续返回停止充电时已经写入数据库的最终值。
+QJsonObject activeOrderJson(QSqlDatabase database, const ChargingOrder& order)
+{
+    QJsonObject result = orderJson(order);
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "SELECT p.power_kw,s.price_per_kwh FROM charging_piles p "
+        "JOIN charging_stations s ON s.id=p.station_id WHERE p.id=:pile"));
+    query.bindValue(QStringLiteral(":pile"), order.pileId);
+    if (query.exec() && query.next()) {
+        const double powerKw = query.value(0).toDouble();
+        const double pricePerKwh = query.value(1).toDouble();
+        result.insert(QStringLiteral("power_kw"), powerKw);
+        result.insert(QStringLiteral("price_per_kwh"), pricePerKwh);
+
+        qint64 durationSeconds = 0;
+        if (order.startedAt.isValid()) {
+            const QDateTime endTime =
+                order.status == QStringLiteral("charging")
+                    ? QDateTime::currentDateTime()
+                    : (order.endedAt.isValid() ? order.endedAt : QDateTime::currentDateTime());
+            durationSeconds = qMax<qint64>(0, order.startedAt.secsTo(endTime));
+        }
+        result.insert(QStringLiteral("duration_seconds"), durationSeconds);
+
+        if (order.status == QStringLiteral("charging")) {
+            const double energy = qMax(0.0, powerKw * durationSeconds / 3600.0);
+            const double amount = qMax(0.0, energy * pricePerKwh);
+            result.insert(QStringLiteral("energy_kwh"), energy);
+            result.insert(QStringLiteral("amount"), amount);
+        }
+    }
+    return result;
 }
 
 std::optional<qint64> positiveId(const QJsonObject& payload, const QString& name)
@@ -677,7 +744,7 @@ Message RequestRouter::route(const Message& request)
         OrderRepository orders(database_);
         const auto order = orders.findActiveByUser(*authenticatedUserId_, &repositoryError);
         return success(request, {{QStringLiteral("order"),
-                                  order ? QJsonValue(orderJson(*order)) : QJsonValue(QJsonValue::Null)}});
+                                  order ? QJsonValue(activeOrderJson(database_, *order)) : QJsonValue(QJsonValue::Null)}});
     }
 
     if (request.type == QStringLiteral("order.history")) {
@@ -759,7 +826,7 @@ Message RequestRouter::route(const Message& request)
                          QStringLiteral("您有未完成的充电订单，请先处理"));
         }
         const auto order = orders.createReservation(*authenticatedUserId_, *pileId, &repositoryError);
-        return order ? success(request, {{QStringLiteral("order"), orderJson(*order)}})
+        return order ? success(request, {{QStringLiteral("order"), activeOrderJson(database_, *order)}})
                      : error(request, QStringLiteral("RESERVATION_FAILED"), repositoryError);
     }
 
@@ -832,7 +899,7 @@ Message RequestRouter::route(const Message& request)
         }
 
         const auto updated = orders.findById(*orderId, &repositoryError);
-        QJsonObject payload {{QStringLiteral("order"), orderJson(*updated)}};
+        QJsonObject payload {{QStringLiteral("order"), activeOrderJson(database_, *updated)}};
         if (request.type == QStringLiteral("order.settle")) {
             UserRepository users(database_);
             payload.insert(QStringLiteral("user"), userJson(*users.findById(*authenticatedUserId_)));
@@ -845,9 +912,15 @@ Message RequestRouter::route(const Message& request)
         PileRepository piles(database_);
         QJsonArray array;
         for (const auto& station : stations.list(&repositoryError)) {
-            // 逻辑停用的电站对用户端不可见
+            // 逻辑停用的电站对用户端不可见。
             if (station.status == QStringLiteral("disabled")) continue;
-            array.append(stationJson(station, piles.listByStation(station.id, &repositoryError)));
+            auto stationPiles = piles.listByStation(station.id, &repositoryError);
+            if (!repositoryError.isEmpty()
+                || !applyActiveOrderStatuses(database_, station.id, &stationPiles,
+                                             &repositoryError)) {
+                break;
+            }
+            array.append(stationJson(station, stationPiles));
         }
         if (!repositoryError.isEmpty()) {
             return storageError(request, QStringLiteral("数据库访问"), repositoryError);
@@ -869,7 +942,11 @@ Message RequestRouter::route(const Message& request)
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }
         QJsonArray pileArray;
-        const auto stationPiles = piles.listByStation(*stationId, &repositoryError);
+        auto stationPiles = piles.listByStation(*stationId, &repositoryError);
+        if (!repositoryError.isEmpty()
+            || !applyActiveOrderStatuses(database_, *stationId, &stationPiles, &repositoryError)) {
+            return storageError(request, QStringLiteral("数据库访问"), repositoryError);
+        }
         for (const auto& pile : stationPiles) {
             pileArray.append(pileJson(pile));
         }
@@ -919,12 +996,14 @@ Message RequestRouter::route(const Message& request)
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("station_id 无效"));
         }
         PileRepository piles(database_);
-        QJsonArray array;
-        for (const auto& pile : piles.listByStation(*stationId, &repositoryError)) {
-            array.append(pileJson(pile));
-        }
-        if (!repositoryError.isEmpty()) {
+        auto stationPiles = piles.listByStation(*stationId, &repositoryError);
+        if (!repositoryError.isEmpty()
+            || !applyActiveOrderStatuses(database_, *stationId, &stationPiles, &repositoryError)) {
             return storageError(request, QStringLiteral("数据库访问"), repositoryError);
+        }
+        QJsonArray array;
+        for (const auto& pile : stationPiles) {
+            array.append(pileJson(pile));
         }
         return success(request, {{QStringLiteral("piles"), array}});
     }

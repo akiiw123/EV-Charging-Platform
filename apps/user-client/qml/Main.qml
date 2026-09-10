@@ -1,5 +1,3 @@
-// 应用界面总装与页面导航，连接控制器状态和各业务页面。
-// 本文件只装配登录态、页面切换和全局反馈；每个业务页面位于 pages/，真实状态来自 app 控制器。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

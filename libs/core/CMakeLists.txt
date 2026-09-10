@@ -1,4 +1,3 @@
-# 声明本目录构建目标、源码/QML 清单、Qt 依赖和目标链接关系。
 add_library(charging-core STATIC
     include/charging/core/api_client.h
     include/charging/core/database_maintenance.h

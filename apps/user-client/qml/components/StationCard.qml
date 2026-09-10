@@ -1,4 +1,3 @@
-// 用户端充电站摘要卡片。
 import QtQuick
 import QtQuick.Layouts
 import ChargingUser

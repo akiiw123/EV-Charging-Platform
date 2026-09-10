@@ -1,4 +1,3 @@
-// 统一模态对话框结构及确认/取消交互。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

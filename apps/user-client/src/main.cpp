@@ -1,4 +1,3 @@
-// 程序启动入口：初始化 Qt、共享资源和控制器，然后加载 QML 主界面。
 #include "user_app_controller.h"
 
 #include <QApplication>

@@ -1,4 +1,3 @@
-// 封装客户端 TCP/JSON 请求、断线重连和响应分发，是 QML 控制器访问服务端的异步入口。
 #pragma once
 
 #include "charging/core/message_protocol.h"

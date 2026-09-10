@@ -1,4 +1,3 @@
-// Web 运营大屏前端逻辑，定时请求统计接口并更新图表与指标。
 const revenue = echarts.init(document.getElementById('revenue'));
 const statusChart = echarts.init(document.getElementById('status'));
 const hourlyChart = echarts.init(document.getElementById('hourly'));

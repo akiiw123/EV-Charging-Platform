@@ -1,4 +1,3 @@
--- 插入本地演示所需的最小初始化数据，不包含真实用户隐私。
 -- 开发演示数据。管理员密码目前为课程说明书中的明文占位；认证功能完成时必须替换为加盐哈希。
 INSERT OR IGNORE INTO administrators(username, password_hash)
 VALUES ('admin', 'DEV_ONLY:123456');

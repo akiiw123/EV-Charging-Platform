@@ -1,4 +1,3 @@
-# 声明本目录构建目标、源码/QML 清单、Qt 依赖和目标链接关系。
 cmake_minimum_required(VERSION 3.21)
 
 project(charging-platform VERSION 0.1.0 LANGUAGES CXX)

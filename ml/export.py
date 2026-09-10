@@ -1,4 +1,3 @@
-# 从 SQLite 导出脱敏训练数据，隔离生产数据与机器学习训练流程。
 """把平台 SQLite 运营数据导出为 ml 模块的标准训练数据格式。
 
 标准格式与 UrbanEV zone 级 CSV 布局完全一致（由 data.load_urbanev 加载）:

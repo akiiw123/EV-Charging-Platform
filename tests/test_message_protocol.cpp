@@ -1,4 +1,3 @@
-// 自动化回归测试，验证 message protocol 相关的正常流程、错误边界和关键约束。
 #include "charging/core/message_protocol.h"
 #include "charging/core/password_security.h"
 

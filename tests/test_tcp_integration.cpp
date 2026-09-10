@@ -1,4 +1,3 @@
-// 自动化回归测试，验证 tcp integration 相关的正常流程、错误边界和关键约束。
 #include "charging/core/api_client.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/message_protocol.h"
@@ -132,6 +131,69 @@ private slots:
         socket.waitForDisconnected(1000);
     }
 
+    void awaitingPaymentPileIsNotAdvertisedAsIdle()
+    {
+        Fixture fixture;
+        QTcpSocket userA;
+        userA.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userA.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userA, {QStringLiteral("login-a"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13700137001")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        QTcpSocket userB;
+        userB.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(userB.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(userB, {QStringLiteral("login-b"), QStringLiteral("auth.phone_login"),
+                                  {{QStringLiteral("phone"), QStringLiteral("13700137002")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 用户 A 把 1 号桩推进到待结算；设备表此时为 idle，但活动订单仍占用该桩。
+        const auto reserveA = exchange(
+            userA, {QStringLiteral("reserve-a"), QStringLiteral("order.reserve"),
+                    {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reserveA.type, QStringLiteral("order.reserve.ok"));
+        const qint64 orderId = reserveA.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QVERIFY(orderId > 0);
+        QCOMPARE(exchange(userA, {QStringLiteral("start-a"), QStringLiteral("order.start"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.start.ok"));
+        QCOMPARE(exchange(userA, {QStringLiteral("stop-a"), QStringLiteral("order.stop"),
+                                  {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.stop.ok"));
+
+        // 用户接口应返回订单占用状态，而不是把该桩继续宣传为可预约的 idle。
+        const auto pileList = exchange(
+            userB, {QStringLiteral("piles-b"), QStringLiteral("pile.list"),
+                    {{QStringLiteral("station_id"), 1}}});
+        QCOMPARE(pileList.type, QStringLiteral("pile.list.ok"));
+        QString effectiveStatus;
+        for (const auto& value : pileList.payload.value(QStringLiteral("piles")).toArray()) {
+            const auto pile = value.toObject();
+            if (pile.value(QStringLiteral("id")).toInteger() == 1) {
+                effectiveStatus = pile.value(QStringLiteral("status")).toString();
+                break;
+            }
+        }
+        QCOMPARE(effectiveStatus, QStringLiteral("awaiting_payment"));
+
+        // 即使客户端持有旧列表并发起预约，也只能收到业务提示，不能看到 SQL 原文。
+        const auto reserveB = exchange(
+            userB, {QStringLiteral("reserve-b"), QStringLiteral("order.reserve"),
+                    {{QStringLiteral("pile_id"), 1}}});
+        QCOMPARE(reserveB.type, QStringLiteral("order.reserve.error"));
+        const QString message = reserveB.payload.value(QStringLiteral("message")).toString();
+        QVERIFY(message.contains(QStringLiteral("不可预约"))
+                || message.contains(QStringLiteral("其他用户")));
+        QVERIFY(!message.contains(QStringLiteral("UNIQUE constraint")));
+
+        userA.abort();
+        userB.abort();
+    }
+
     void authenticatedChargingLifecycle()
     {
         Fixture fixture;
@@ -178,10 +240,11 @@ private slots:
         QCOMPARE(stopped.type, QStringLiteral("order.stop.ok"));
         QCOMPARE(stopped.payload.value(QStringLiteral("order")).toObject()
                      .value(QStringLiteral("status")).toString(), QStringLiteral("awaiting_payment"));
-        const auto idlePiles = exchange(socket, {QStringLiteral("idle-piles"), QStringLiteral("pile.list"),
-                                                  {{QStringLiteral("station_id"), 1}}});
-        QCOMPARE(idlePiles.payload.value(QStringLiteral("piles")).toArray().first().toObject()
-                     .value(QStringLiteral("status")).toString(), QStringLiteral("idle"));
+        // 未支付订单仍占用充电桩，用户端必须保持“待付款”，不能误导其他用户再次预约。
+        const auto awaitingPaymentPiles = exchange(socket, {QStringLiteral("awaiting-payment-piles"),
+            QStringLiteral("pile.list"), {{QStringLiteral("station_id"), 1}}});
+        QCOMPARE(awaitingPaymentPiles.payload.value(QStringLiteral("piles")).toArray().first().toObject()
+                     .value(QStringLiteral("status")).toString(), QStringLiteral("awaiting_payment"));
         const auto settled = exchange(socket, {QStringLiteral("settle"), QStringLiteral("order.settle"),
                                                 {{QStringLiteral("order_id"), orderId}}});
         QCOMPARE(settled.type, QStringLiteral("order.settle.ok"));

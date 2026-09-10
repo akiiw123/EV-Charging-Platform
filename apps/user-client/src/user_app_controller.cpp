@@ -1,6 +1,3 @@
-// 用户端 ViewModel：编排登录、电站浏览、预约充电、结算、定位和地图导航。
-// Q_INVOKABLE 方法接收 QML 操作，sendRequest() 记录请求上下文，handleResponse() 统一更新页面状态。
-// 页面不直接改订单结果；预约、充电、停止和结算均以服务端响应为事实来源。
 #include "charging/core/display_time.h"
 #include "user_app_controller.h"
 
@@ -487,9 +484,11 @@ void UserAppController::pickAvatar()
         showNotice(QStringLiteral("头像目录创建失败"), QStringLiteral("error"));
         return;
     }
-    // 按手机号命名,切换账号不串头像;QImage 只保存不移动原文件
-    const QString avatarPath = avatarDir + QStringLiteral("/profile-%1.png")
-        .arg(user_.value(QStringLiteral("phone")).toString());
+    // 使用“手机号 + 时间戳”生成新路径：手机号避免不同账号串图，时间戳让
+    // QML Image 明确感知 source 已变化，不再继续显示同路径文件的旧缓存。
+    const QString avatarPath = avatarDir + QStringLiteral("/profile-%1-%2.png")
+        .arg(user_.value(QStringLiteral("phone")).toString())
+        .arg(QDateTime::currentMSecsSinceEpoch());
     if (!rounded.save(avatarPath, "PNG")) {
         showNotice(QStringLiteral("头像保存失败"), QStringLiteral("error"));
         return;
@@ -634,34 +633,82 @@ void UserAppController::updateUser(const QVariantMap& value)
 
 void UserAppController::updateOrder(const QVariant& value)
 {
+    const qint64 previousOrderId = activeOrder_.value(QStringLiteral("id")).toLongLong();
+    const QString previousStatus = activeOrder_.value(QStringLiteral("status")).toString();
+
     activeOrder_ = value.toMap();
     if (activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("completed")
-        || activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("cancelled")) activeOrder_.clear();
+        || activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("cancelled"))
+        activeOrder_.clear();
+
+    const qint64 currentOrderId = activeOrder_.value(QStringLiteral("id")).toLongLong();
     const QString status = activeOrder_.value(QStringLiteral("status")).toString();
-    if (status == QStringLiteral("charging")) {
+
+    const double power = activeOrder_.value(QStringLiteral("power_kw")).toDouble();
+    const double price = activeOrder_.value(QStringLiteral("price_per_kwh")).toDouble();
+    if (power > 0.0) selectedPowerKw_ = power;
+    if (price >= 0.0) selectedPrice_ = price;
+
+    qint64 serverSeconds = activeOrder_.value(QStringLiteral("duration_seconds")).toLongLong();
+    if (serverSeconds <= 0 && activeOrder_.value(QStringLiteral("started_at")).isValid()) {
         const QDateTime started = charging::core::parseTimestamp(
             activeOrder_.value(QStringLiteral("started_at")).toString());
-        chargingSeconds_ = started.isValid()
-            ? qMax<qint64>(0, started.secsTo(QDateTime::currentDateTime()))
-            : 0;
+        if (started.isValid()) {
+            QDateTime end = QDateTime::currentDateTimeUtc();
+            const QDateTime ended = charging::core::parseTimestamp(
+                activeOrder_.value(QStringLiteral("ended_at")).toString());
+            if (status != QStringLiteral("charging") && ended.isValid()) end = ended.toUTC();
+            serverSeconds = qMax<qint64>(0, started.toUTC().secsTo(end));
+        }
+    }
+
+    if (status == QStringLiteral("charging")) {
+        // 同一订单的周期刷新只能把计时向前校准，绝不能把已经走过的秒数重置为 0。
+        // 服务端同时返回 duration_seconds，可避免本地时区/时间字符串解析差异造成 5 秒轮询归零。
+        if (currentOrderId == previousOrderId && previousStatus == QStringLiteral("charging"))
+            chargingSeconds_ = qMax(chargingSeconds_, serverSeconds);
+        else
+            chargingSeconds_ = qMax<qint64>(0, serverSeconds);
         chargingTimer_.start();
     } else {
         chargingTimer_.stop();
-        chargingSeconds_ = 0;
+        // 待结算时保留最终充电时长，顶部摘要不再回到 00:00:00。
+        chargingSeconds_ = status == QStringLiteral("awaiting_payment")
+            ? qMax<qint64>(0, serverSeconds)
+            : 0;
     }
+
     updateChargingEstimate();
     emit activeOrderChanged();
 }
 
 void UserAppController::updateChargingEstimate()
 {
-    const double energy = selectedPowerKw_ * chargingSeconds_ / 3600.0;
+    const QString status = activeOrder_.value(QStringLiteral("status")).toString();
+
+    double energy = 0.0;
+    double amount = 0.0;
+    if (status == QStringLiteral("charging")) {
+        energy = qMax(0.0, selectedPowerKw_ * chargingSeconds_ / 3600.0);
+        amount = qMax(0.0, energy * selectedPrice_);
+
+        // 顶部摘要和下方指标卡使用同一个 1 秒计时源。
+        // 周期刷新只会用服务端时长向前校准，不会把实时值覆盖回数据库中的 0。
+        activeOrder_.insert(QStringLiteral("energy_kwh"), energy);
+        activeOrder_.insert(QStringLiteral("amount"), amount);
+        emit activeOrderChanged();
+    } else if (status == QStringLiteral("awaiting_payment")) {
+        // 停止充电后必须展示服务端最终结算值，不能再用已停止的本地计时器重新计算为 0。
+        energy = activeOrder_.value(QStringLiteral("energy_kwh")).toDouble();
+        amount = activeOrder_.value(QStringLiteral("amount")).toDouble();
+    }
+
     chargingEstimate_ = QStringLiteral("%1:%2:%3 · %4 kWh · ￥%5")
         .arg(chargingSeconds_ / 3600, 2, 10, QLatin1Char('0'))
         .arg((chargingSeconds_ % 3600) / 60, 2, 10, QLatin1Char('0'))
         .arg(chargingSeconds_ % 60, 2, 10, QLatin1Char('0'))
         .arg(energy, 0, 'f', 3)
-        .arg(energy * selectedPrice_, 0, 'f', 2);
+        .arg(amount, 0, 'f', 2);
     emit chargingEstimateChanged();
 }
 
@@ -689,6 +736,12 @@ void UserAppController::handleResponse(const charging::core::Message& message)
         const QString text =
             message.payload.value(QStringLiteral("message")).toString();
         showNotice(text.isEmpty() ? QStringLiteral("操作失败，请稍后重试") : text, QStringLiteral("error"));
+        // 预约失败可能是其他客户端刚刚抢先占用。立即同步订单和电桩状态，
+        // 不再让用户等待下一次五秒轮询，也避免继续看到可点击的“预约”按钮。
+        if (requestType == QStringLiteral("order.reserve")) {
+            sendRequest(QStringLiteral("order.active"));
+            refreshStations();
+        }
         if (requestType == QStringLiteral("pile.list")) { loadingStation_ = 0; loadNextFilterPiles(); }
         if (requestType == QStringLiteral("order.settle") && (text.contains(QStringLiteral("余额"))
             || message.payload.value(QStringLiteral("code")).toString().contains(QStringLiteral("INSUFFICIENT")))) emit rechargeRequired();

@@ -1,4 +1,3 @@
-# 声明本目录构建目标、源码/QML 清单、Qt 依赖和目标链接关系。
 qt_add_executable(charging-admin
     src/main.cpp
     src/admin_app_controller.cpp

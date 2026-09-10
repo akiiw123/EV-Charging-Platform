@@ -1,4 +1,3 @@
-// 用户端首页，展示位置、筛选条件和充电站列表。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

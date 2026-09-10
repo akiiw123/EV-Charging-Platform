@@ -1,4 +1,3 @@
-// 从右侧展示记录详情和操作入口的抽屉。
 import QtQuick
 import QtQuick.Controls
 import Charging.UI

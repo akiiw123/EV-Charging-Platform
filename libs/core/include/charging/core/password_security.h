@@ -1,4 +1,3 @@
-// 实现管理员密码 PBKDF2 哈希、校验及旧口令升级。
 #pragma once
 #include <QString>
 namespace charging::core::password {

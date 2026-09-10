@@ -1,4 +1,3 @@
-// 共享输入框，处理验证、焦点和中文输入。
 import QtQuick
 
 FocusScope {

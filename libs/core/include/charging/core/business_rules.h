@@ -1,4 +1,3 @@
-// 集中定义状态值、输入边界和计费等纯业务规则，避免规则散落在界面或路由中。
 #pragma once
 
 #include <QtGlobal>
