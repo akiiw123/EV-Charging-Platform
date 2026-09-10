@@ -1,4 +1,3 @@
-// 用户资料、余额充值、头像和主题设置。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -105,6 +104,9 @@ Item {
                             visible: status === Image.Ready
                             source: parent.hasAvatar ? "file:///" + String(appController.user.avatar_path).replace(/\\/g, "/").replace(/^\//, "") : ""
                             fillMode: Image.PreserveAspectFit
+                            // 头像会被用户频繁更换，关闭组件缓存可避免继续显示旧像素。
+                            // 文件名时间戳负责改变 source，本设置作为额外保障。
+                            cache: false
                         }
                         Rectangle {
                             anchors.right: parent.right

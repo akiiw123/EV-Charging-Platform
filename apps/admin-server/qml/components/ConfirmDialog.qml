@@ -1,4 +1,3 @@
-// 危险操作二次确认对话框。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

@@ -1,4 +1,3 @@
-// 管理端登录后页面壳层，组合侧栏、顶栏与内容区。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

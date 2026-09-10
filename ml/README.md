@@ -1,64 +1,25 @@
-# 智能分析与负荷预测模块
+# 智能分析模块
 
-`ml/` 是与 Qt GUI 解耦的 Python 机器学习模块，包含脱敏数据导出、特征构造、PyTorch 训练和只读 HTTP 推理。预测服务不修改订单、电桩或用户数据。
+该目录预留负荷预测服务。基础业务完成后，建议采用独立 Python 服务并提供稳定的 JSON API，避免将 Python 运行时直接耦合进 Qt GUI。
 
-## 文件结构
+建议输入：站点 ID、时间特征、历史负荷、天气、节假日；建议输出：未来 1/6/24 小时负荷、空闲桩数量和置信区间。
 
-- `export.py`：从平台 SQLite 只读导出按“站点 × 小时”聚合的数据。
-- `data.py`：加载 UrbanEV 或同结构自有数据，构造负荷、占用率、时间、天气和价格特征。
-- `model.py`：负荷预测网络及分位数损失。
-- `train.py`：训练/验证拆分、早停、评估并输出 `model.pt` 和 `meta.json`。
-- `service.py`：加载产物并提供 JSON HTTP API。
-- `requirements.txt`：Python 依赖范围。
+训练数据必须脱敏，模型不可直接修改订单或电桩状态。
 
-## 安装依赖
+## 数据来源与自有数据兼容
 
-建议在项目外的虚拟环境安装，模型和数据产物不要提交 Git：
+模型输入统一为“站点 x 小时”标准 CSV 布局（与 [UrbanEV](https://github.com/IntelligentSystemsLab/UrbanEV) zone 级数据一致），由 `data.load_urbanev` 加载；任何符合该布局的数据目录都能直接用于 `train.py` / `service.py`。
 
-```bash
-cd /home/bit/charging-platform/ml
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+自有平台数据用 `export.py` 从 SQLite 导出为同一格式，训练与推理代码零改动：
+
+```
+python export.py --db ../database/your.db --out ./data/own
+python train.py --data-dir ./data/own --artifacts ./artifacts
+python service.py --data-dir ./data/own --artifacts ./artifacts
 ```
 
-## 数据格式与自有数据
+- 站点 ID 即 `charging_stations.id`；负荷为订单 `energy_kwh` 按时间重叠分摊到小时；占用为每小时活跃订单的桩·小时 / 站点总桩数；电价取 `price_per_kwh`，服务费暂填 0；天气常数填充（可用 `--weather-csv` 换成实测）。
 
-输入采用 UrbanEV 风格的“站点 × 小时”CSV。自有平台数据可直接从 SQLite 脱敏导出：
+- 导出仅含站点级聚合、无用户字段，且以只读方式打开数据库，满足脱敏与“不修改订单/电桩状态”约束。
 
-```bash
-python export.py --db ../charging_platform.db --out ./data/own
-```
-
-导出结果只保留站点级聚合，不含用户 ID、手机号或订单身份信息。建议积累至少四周数据再训练；数据不足时可使用兼容的公开 UrbanEV 数据完成流程演示。
-
-## 训练
-
-```bash
-python train.py \
-  --data-dir ./data/own \
-  --artifacts ./artifacts \
-  --seq-len 24 --horizon 24 --epochs 10
-```
-
-训练输出包含模型权重和特征归一化元数据。默认预测 24 小时，并提供 0.05、0.5、0.95 分位数用于区间估计。
-
-## 启动推理服务
-
-```bash
-python service.py --data-dir ./data/own --artifacts ./artifacts --host 127.0.0.1 --port 8090
-```
-
-接口：
-
-- `GET /health`：服务及模型状态。
-- `GET /stations`：模型可识别站点。
-- `POST /predict`：输入站点、预测时刻、1/6/24 小时范围及可选历史/天气/价格，返回负荷、空闲桩和置信区间。
-
-管理端通过 `CHARGING_ML_URL` 指定服务地址，默认 `http://127.0.0.1:8090`。服务或产物不可用时，管理端会显示失败或带标识的集中演示数据。
-
-## 真实限制
-
-- 天气数据需要外部 CSV 或请求参数；平台数据库本身没有天气字段。
-- 预测效果依赖数据跨度和质量，课程演示指标不代表生产泛化能力。
-- 模型产物、公开大数据集和 Python 虚拟环境均被视为本地运行资产，不应提交仓库。
+- 建议积累 4 周以上数据再训练自有模型；期间可继续使用 UrbanEV 模型提供服务。

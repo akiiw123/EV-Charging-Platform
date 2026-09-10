@@ -1,4 +1,3 @@
-// 负责 SQLite 连接创建、建表初始化和线程内连接生命周期。
 #pragma once
 
 #include <QSqlDatabase>

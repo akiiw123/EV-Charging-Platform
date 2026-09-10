@@ -1,4 +1,3 @@
-// 管理端运营总览和营收趋势图。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

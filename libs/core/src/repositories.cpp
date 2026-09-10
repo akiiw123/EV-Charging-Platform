@@ -1,6 +1,3 @@
-// 封装用户、电站、电桩、订单和计价规则的 SQL 与事务操作。
-// 按 User/Administrator/Station/Pile/Order/Pricing 六组 Repository 阅读，每组只处理自己的表和事务。
-// 订单与钱包的多步写入必须同成同败，数据库约束是并发竞争下的最后一道保护。
 #include "charging/core/repositories.h"
 
 #include <QRegularExpression>
@@ -573,11 +570,13 @@ std::optional<ChargingOrder> OrderRepository::createReservation(qint64 userId, q
     }
     QSqlQuery check(database_);
     check.prepare(QStringLiteral(
-        "SELECT p.status, COALESCE(s.status,'active') FROM charging_piles p "
+        "SELECT p.status, COALESCE(s.status,'active'), "
+        "EXISTS(SELECT 1 FROM charging_orders o WHERE o.pile_id=p.id "
+        "AND o.status IN ('reserved','charging','awaiting_payment')) FROM charging_piles p "
         "LEFT JOIN charging_stations s ON s.id = p.station_id WHERE p.id = :id"));
     check.bindValue(QStringLiteral(":id"), pileId);
     if (!check.exec() || !check.next()
-        || check.value(0).toString() != QStringLiteral("idle")) {
+        || check.value(0).toString() != QStringLiteral("idle") || check.value(2).toBool()) {
         rollback(database_, errorMessage, QStringLiteral("电桩不存在或当前不可预约"));
         return std::nullopt;
     }
@@ -592,7 +591,15 @@ std::optional<ChargingOrder> OrderRepository::createReservation(qint64 userId, q
     insert.bindValue(QStringLiteral(":user"), userId);
     insert.bindValue(QStringLiteral(":pile"), pileId);
     if (!insert.exec()) {
-        rollback(database_, errorMessage, insert.lastError().text());
+        // 前面的查询只能改善正常提示；并发抢订仍必须由唯一索引裁决。
+        // 将约束名转换为业务文案，禁止把 SQLite 内部错误直接显示给用户。
+        const QString detail = insert.lastError().text();
+        QString friendly = QStringLiteral("预约失败，请稍后刷新重试");
+        if (detail.contains(QStringLiteral("charging_orders.pile_id")))
+            friendly = QStringLiteral("该电桩刚被其他用户预约，请刷新后选择其他电桩");
+        else if (detail.contains(QStringLiteral("charging_orders.user_id")))
+            friendly = QStringLiteral("您有未完成的充电订单，请先处理");
+        rollback(database_, errorMessage, friendly);
         return std::nullopt;
     }
     const qint64 orderId = insert.lastInsertId().toLongLong();

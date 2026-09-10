@@ -1,6 +1,3 @@
-// 管理端 ViewModel：维护页面状态、列表模型、筛选条件并异步调用服务端接口。
-// TCP 请求负责运营数据和管理动作，QNetworkAccessManager 只负责独立 ML HTTP 服务。
-// 列表先保留 raw JSON，再经筛选写入 JsonListModel；QML 表格只消费模型角色。
 #include "charging/core/display_time.h"
 #include "admin_app_controller.h"
 
@@ -270,6 +267,94 @@ void AdminAppController::finishForecasts()
     predictionUpdatedAt_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"));
     emit predictionChanged();
 }
-void AdminAppController::usePredictionDemo(const QString& reason){predictionLoad1_=predictionLoad6_=predictionLoad24_=QStringLiteral("—");predictionConfidence_=QStringLiteral("—");QList<QVariantMap> rows={{{"station_id",1},{"station_name",QStringLiteral("深圳演示充电站")},{"h1","42.6 kWh"},{"h6","238.4 kWh"},{"h24","886.1 kWh"},{"free",3},{"risk",QStringLiteral("18:00 高峰")}},{{"station_id",2},{"station_name",QStringLiteral("南山科技园站")},{"h1","28.9 kWh"},{"h6","174.2 kWh"},{"h24","641.5 kWh"},{"free",5},{"risk",QStringLiteral("正常")}},{{"station_id",3},{"station_name",QStringLiteral("宝安中心站")},{"h1","51.3 kWh"},{"h6","302.8 kWh"},{"h24","1024.7 kWh"},{"free",2},{"risk",QStringLiteral("容量预警")}}};predictions_.setRows(rows);predictionSource_=QStringLiteral("演示数据");predictionStatus_=QStringLiteral("预测服务未就绪：%1").arg(reason);predictionUpdatedAt_=QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm");emit predictionChanged();}
+void AdminAppController::usePredictionDemo(const QString& reason)
+{
+    // 模型服务不可用时，不再展示固定演示值；改用平台真实订单做只读估算。
+    QList<QVariantMap> rows;
+    double sum1 = 0.0, sum6 = 0.0, sum24 = 0.0;
+    int sampleCount = 0;
+
+    double globalEnergy = 0.0;
+    int globalEnergyCount = 0;
+    for (const auto& value : rawOrders_) {
+        const auto order = value.toObject();
+        const QString status = order.value(QStringLiteral("status")).toString();
+        const double energy = order.value(QStringLiteral("energy_kwh")).toDouble();
+        if ((status == QStringLiteral("completed") || status == QStringLiteral("awaiting_payment")) && energy > 0.0) {
+            globalEnergy += energy;
+            ++globalEnergyCount;
+        }
+    }
+    const double globalAverageEnergy = globalEnergyCount > 0 ? globalEnergy / globalEnergyCount : 0.0;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+
+    for (const auto& stationValue : rawStations_) {
+        const auto station = stationValue.toObject();
+        const QString stationName = station.value(QStringLiteral("name")).toString();
+        const int totalPiles = station.value(QStringLiteral("pile_count")).toInt();
+        const int idlePiles = station.value(QStringLiteral("idle_pile_count")).toInt();
+
+        double recentEnergy = 0.0;
+        int recentOrders = 0;
+        double stationEnergy = 0.0;
+        int stationEnergyCount = 0;
+        for (const auto& orderValue : rawOrders_) {
+            const auto order = orderValue.toObject();
+            if (order.value(QStringLiteral("station_name")).toString() != stationName) continue;
+            const QString status = order.value(QStringLiteral("status")).toString();
+            const double energy = order.value(QStringLiteral("energy_kwh")).toDouble();
+            if ((status == QStringLiteral("completed") || status == QStringLiteral("awaiting_payment")) && energy > 0.0) {
+                stationEnergy += energy;
+                ++stationEnergyCount;
+            }
+            const QDateTime created = charging::core::parseTimestamp(order.value(QStringLiteral("created_at")).toString());
+            if (created.isValid()) {
+                const qint64 age = created.toUTC().secsTo(now);
+                if (age >= 0 && age <= 24 * 3600) {
+                    ++recentOrders;
+                    recentEnergy += qMax(0.0, energy);
+                }
+            }
+        }
+
+        const double avgSessionEnergy = stationEnergyCount > 0
+            ? stationEnergy / stationEnergyCount : globalAverageEnergy;
+        double load24 = recentEnergy;
+        if (load24 <= 0.0 && recentOrders > 0 && avgSessionEnergy > 0.0)
+            load24 = recentOrders * avgSessionEnergy;
+        const double h1 = load24 / 24.0;
+        const double h6 = h1 * 6.0;
+        sum1 += h1; sum6 += h6; sum24 += load24;
+        sampleCount += recentOrders;
+
+        QString risk = QStringLiteral("正常");
+        if (totalPiles > 0 && idlePiles <= 0)
+            risk = QStringLiteral("容量预警");
+        else if (totalPiles > 0 && idlePiles * 4 <= totalPiles)
+            risk = QStringLiteral("空闲桩偏少");
+        else if (recentOrders >= qMax(3, totalPiles))
+            risk = QStringLiteral("近期需求较高");
+
+        rows.append(QVariantMap{
+            {QStringLiteral("station_id"), station.value(QStringLiteral("id")).toVariant()},
+            {QStringLiteral("station_name"), stationName},
+            {QStringLiteral("h1"), QStringLiteral("%1 kWh").arg(h1, 0, 'f', 1)},
+            {QStringLiteral("h6"), QStringLiteral("%1 kWh").arg(h6, 0, 'f', 1)},
+            {QStringLiteral("h24"), QStringLiteral("%1 kWh").arg(load24, 0, 'f', 1)},
+            {QStringLiteral("free"), idlePiles},
+            {QStringLiteral("risk"), risk}});
+    }
+
+    predictions_.setRows(rows);
+    predictionSource_ = QStringLiteral("历史数据估算");
+    predictionLoad1_ = QStringLiteral("%1 kWh").arg(sum1, 0, 'f', 1);
+    predictionLoad6_ = QStringLiteral("%1 kWh").arg(sum6, 0, 'f', 1);
+    predictionLoad24_ = QStringLiteral("%1 kWh").arg(sum24, 0, 'f', 1);
+    predictionConfidence_ = QStringLiteral("—");
+    predictionStatus_ = QStringLiteral("模型服务不可用（%1）；当前按最近 24 小时真实订单与实时空闲桩估算，共 %2 个近期订单样本")
+                            .arg(reason).arg(sampleCount);
+    predictionUpdatedAt_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+    emit predictionChanged();
+}
 
 } // namespace charging::admin

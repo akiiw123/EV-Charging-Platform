@@ -1,4 +1,3 @@
-// 电桩查询、筛选、状态维护和远程操作页面。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

@@ -1,4 +1,3 @@
-// 登录页面，负责输入、校验提示和登录动作。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

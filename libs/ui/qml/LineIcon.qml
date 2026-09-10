@@ -1,4 +1,3 @@
-// 共享线性图标组件。
 import QtQuick
 
 Canvas {

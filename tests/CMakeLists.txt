@@ -1,4 +1,3 @@
-# 注册七个 Qt Test 可执行程序，并把它们加入 CTest 回归集合。
 add_executable(core-tests test_message_protocol.cpp)
 target_link_libraries(core-tests PRIVATE charging-core Qt6::Test)
 add_test(NAME core-tests COMMAND core-tests)

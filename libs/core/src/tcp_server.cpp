@@ -1,6 +1,3 @@
-// 管理监听端口、客户端连接、线程池和消息收发，并把请求交给路由器。
-// start() 建立监听；incomingConnection() 检查容量；连接任务逐行解码消息并调用 RequestRouter。
-// 每个工作线程创建自己的 SQLite 连接，连接结束后释放会话和容量计数。
 #include "charging/core/tcp_server.h"
 
 #include "charging/core/database_manager.h"
@@ -109,8 +106,13 @@ public:
                 break;
             }
         }
-        socket.disconnectFromHost();
-        socket.waitForDisconnected(250);
+        // 对端可能已经先关闭连接；只在仍连接时请求断开并等待，
+        // 避免对 UnconnectedState 调用 waitForDisconnected() 产生运行期警告。
+        if (socket.state() != QAbstractSocket::UnconnectedState) {
+            socket.disconnectFromHost();
+            if (socket.state() != QAbstractSocket::UnconnectedState)
+                socket.waitForDisconnected(250);
+        }
     }
 
 private:

@@ -1,4 +1,3 @@
-// 管理页面标题、说明和主要操作区。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

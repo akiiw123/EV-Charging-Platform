@@ -1,6 +1,6 @@
 # 用户端运行与验收
 
-用户端已重构为 Qt Quick/QML 移动端界面。服务端、SQLite 数据库、TCP 协议和业务模型继续沿用原实现；QML 负责页面、动效与导航，`UserAppController` 负责网络请求和状态管理。
+用户端采用 Qt Quick/QML 实现移动端界面。服务端、SQLite 数据库、TCP 协议和业务模型继续沿用原实现；QML 负责页面、动效与导航，`UserAppController` 负责网络请求和状态管理。
 
 ## 环境依赖
 

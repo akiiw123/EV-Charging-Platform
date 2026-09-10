@@ -1,4 +1,3 @@
-// 统一滚轮和触控板滚动行为的滚动容器。
 import QtQuick
 import QtQuick.Controls
 

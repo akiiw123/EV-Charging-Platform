@@ -1,4 +1,3 @@
-// 管理端 ViewModel：维护页面状态、列表模型、筛选条件并异步调用服务端接口。
 #pragma once
 
 #include "charging/core/api_client.h"

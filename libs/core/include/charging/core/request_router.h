@@ -1,4 +1,3 @@
-// 校验会话和参数并把协议请求路由到仓储及业务规则，是服务端业务编排中心。
 #pragma once
 
 #include "charging/core/message_protocol.h"

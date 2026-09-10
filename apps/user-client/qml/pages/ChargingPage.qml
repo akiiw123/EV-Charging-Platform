@@ -1,4 +1,3 @@
-// 展示活动订单、充电计时并处理停止与结算。
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

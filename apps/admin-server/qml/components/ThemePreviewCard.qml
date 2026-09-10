@@ -1,4 +1,3 @@
-// 主题设置页的配色预览与选择卡片。
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

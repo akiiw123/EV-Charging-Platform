@@ -1,4 +1,3 @@
-// 提供 SQLite 完整性检查、在线备份和安全恢复能力。
 #include "charging/core/database_maintenance.h"
 
 #include <QDir>
