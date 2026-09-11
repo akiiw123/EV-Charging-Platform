@@ -21,7 +21,15 @@ ApiClient::ApiClient(QObject* parent) : QObject(parent)
     });
     connect(&socket_, &QTcpSocket::readyRead, this, &ApiClient::readAvailable);
     connect(&socket_, &QTcpSocket::errorOccurred, this,
-            [this](QAbstractSocket::SocketError) { emit clientError(socket_.errorString()); });
+            [this](QAbstractSocket::SocketError error) {
+        emit clientError(socket_.errorString());
+
+        // 首次连接被拒绝时不会触发 disconnected，因此主动安排重连。
+        if (error == QAbstractSocket::ConnectionRefusedError
+            && !host_.isEmpty()) {
+            reconnectTimer_.start();
+        }
+    });
 }
 
 void ApiClient::connectToServer(const QString& host, quint16 port)
