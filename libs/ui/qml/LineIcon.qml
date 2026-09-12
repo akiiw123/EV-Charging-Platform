@@ -20,6 +20,7 @@ Canvas {
         else if (name === "settings") { c.arc(10,10,3,0,Math.PI*2); c.arc(10,10,7,0,Math.PI*2); }
         else if (name === "logout") { c.moveTo(9,3); c.lineTo(3,3); c.lineTo(3,17); c.lineTo(9,17); c.moveTo(8,10); c.lineTo(18,10); c.moveTo(14,6); c.lineTo(18,10); c.lineTo(14,14); }
         else if (name === "menu") { c.moveTo(3,5); c.lineTo(17,5); c.moveTo(3,10); c.lineTo(17,10); c.moveTo(3,15); c.lineTo(17,15); }
+        else if (name === "lock") { c.roundedRect(4,9,12,9,2,2); c.moveTo(7,9); c.lineTo(7,6); c.arc(10,6,3,Math.PI,0); c.lineTo(13,9); c.moveTo(10,12); c.lineTo(10,14.5); }
         else { c.arc(10,10,7,0,Math.PI*2); }
         c.stroke();
     }

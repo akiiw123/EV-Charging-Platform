@@ -18,24 +18,35 @@ ApplicationWindow {
         function onSettingsChanged(){Theme.animationsEnabled=adminController.animationsEnabled;Theme.fontScale=adminController.fontScale}
     }
     LoginPage { anchors.fill: parent; visible: !adminController.loggedIn }
-    AppShell { anchors.fill: parent; visible: adminController.loggedIn }
+    AppShell { anchors.fill: parent; visible: adminController.loggedIn
+        onSecuritySettingsRequested: changePasswordDialog.openManual() }
 
-    // 首登改密提醒:检测到初始密码时弹出,可关闭稍后处理(每次登录会再提醒)
+    // 改密弹窗:首登检测到初始密码时强制提醒(每次登录都会再提醒);
+    // 也可随时通过侧边栏"安全设置"手动打开。可见性由 openForced/openManual/closeSelf 显式驱动。
     Dialog {
         id: changePasswordDialog
+        property bool manual: false
+        property bool forcedDismissed: false
         modal: true
         closePolicy: Popup.CloseOnEscape
-        visible: adminController.loggedIn && adminController.mustChangePassword
+        visible: false
         anchors.centerIn: parent
         width: 430
         padding: 24
+        function resetFields() { oldPwd.text = ""; newPwd.text = ""; confirmPwd.text = ""; cpError.text = "" }
+        function openForced() { if (forcedDismissed) return; manual = false; resetFields(); visible = true }
+        function openManual() { manual = true; resetFields(); visible = true }
+        function closeSelf() { visible = false; manual = false }
+        onRejected: closeSelf()
         background: PanelCard {}
         contentItem: ColumnLayout {
             spacing: 10
-            Text { text: "请修改初始密码"; color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
+            Text { text: changePasswordDialog.manual ? "安全设置 · 修改密码" : "请修改初始密码"; color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
             Text {
                 Layout.fillWidth: true; wrapMode: Text.WordWrap
-                text: "检测到当前账号仍在使用初始密码。为保障运营数据安全，请设置新密码后继续使用控制台。"
+                text: changePasswordDialog.manual
+                      ? "定期更换管理员密码可以降低账号泄露风险。修改成功后需要使用新密码重新登录。"
+                      : "检测到当前账号仍在使用初始密码。为保障运营数据安全，请设置新密码后继续使用控制台。"
                 color: Theme.textSecondary; font.pixelSize: Theme.fontBody
             }
             Text { text: "当前密码"; color: Theme.textSecondary; font.pixelSize: Theme.fontCaption }
@@ -49,9 +60,14 @@ ApplicationWindow {
                 Layout.fillWidth: true; Layout.topMargin: 6
                 AppButton {
                     Layout.fillWidth: true
-                    text: "稍后再说"
+                    text: "取消"
                     variant: "secondary"
-                    onClicked: changePasswordDialog.close()
+                    onClicked: {
+                        // 手动打开:直接关闭;首登提醒:本次登录内不再打扰
+                        if (changePasswordDialog.manual) changePasswordDialog.manual = false
+                        else changePasswordDialog.forcedDismissed = true
+                        changePasswordDialog.closeSelf()
+                    }
                 }
                 AppButton {
                     Layout.fillWidth: true
@@ -69,14 +85,24 @@ ApplicationWindow {
             }
             Connections {
                 target: adminController
-                // 改密成功后 mustChangePassword 变 false,弹窗随之关闭
+                // 改密成功(或取消/退出登录)时收起弹窗;失败时展示服务端原因
                 function onPasswordChangeResult(success) {
-                    if (!success) cpError.text = adminController.errorMessage
+                    if (success) changePasswordDialog.closeSelf()
+                    else cpError.text = adminController.errorMessage
+                }
+                function onLoggedInChanged() {
+                    if (adminController.loggedIn) {
+                        // 每次登录都重新检查初始密码状态(每个登录周期最多提醒一次)
+                        changePasswordDialog.forcedDismissed = false
+                        if (adminController.mustChangePassword) changePasswordDialog.openForced()
+                    } else {
+                        changePasswordDialog.forcedDismissed = false
+                        changePasswordDialog.closeSelf()
+                    }
                 }
                 function onMustChangePasswordChanged() {
-                    if (adminController.mustChangePassword) {
-                        oldPwd.text = ""; newPwd.text = ""; confirmPwd.text = ""; cpError.text = ""
-                    }
+                    if (adminController.loggedIn && adminController.mustChangePassword)
+                        changePasswordDialog.openForced()
                 }
             }
         }

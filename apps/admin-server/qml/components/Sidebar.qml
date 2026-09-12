@@ -9,6 +9,7 @@ Rectangle {
     id: root
     property int currentIndex: 0
     signal selected(int index)
+    signal securitySettingsRequested()
     width: adminController.sidebarExpanded?232:76
     color: "#0A112E"
     Behavior on width{NumberAnimation{duration:Theme.durationNormal;easing.type:Easing.OutCubic}}
@@ -32,6 +33,12 @@ Rectangle {
             }
         }
         Item{Layout.fillHeight:true}
+        Item{Layout.fillWidth:true;Layout.preferredHeight:52
+            LineIcon{anchors.left:parent.left;anchors.leftMargin:27;anchors.verticalCenter:parent.verticalCenter;name:"lock";strokeColor:secMouse.containsMouse?"#C6D0E4":"#8E99B4"}
+            Text{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:58;anchors.verticalCenter:parent.verticalCenter;text:"安全设置";color:secMouse.containsMouse?"#C6D0E4":"#AAB4CC";font.pixelSize:Theme.fontBody}
+            ToolTip.visible:secMouse.containsMouse&&!adminController.sidebarExpanded;ToolTip.text:"安全设置 / 修改密码"
+            MouseArea{id:secMouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:root.securitySettingsRequested()}
+        }
         Item{Layout.fillWidth:true;Layout.preferredHeight:52
             LineIcon{anchors.left:parent.left;anchors.leftMargin:27;anchors.verticalCenter:parent.verticalCenter;name:"logout";strokeColor:"#8E99B4"}
             Text{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:58;anchors.verticalCenter:parent.verticalCenter;text:"退出登录";color:"#AAB4CC";font.pixelSize:Theme.fontBody}
