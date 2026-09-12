@@ -157,7 +157,7 @@ Item {
                                 Rectangle {
                                     width: 28; height: 28; radius: 6
                                     color: Theme.primarySoft
-                                    AppIcon { anchors.centerIn: parent; name: "pen"; iconColor: Theme.primaryDark; width: 14; height: 14 }
+                                    AppIcon { anchors.centerIn: parent; name: "pen"; iconColor: Theme.primary; width: 14; height: 14 }
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -283,7 +283,7 @@ Item {
                         Layout.fillWidth: true; Layout.minimumWidth: 0
                         spacing: 10
                         Repeater {
-                            model: [{name:"云白蓝", key:"default"}, {name:"浅白黄", key:"gold"}, {name:"翡翠绿", key:"emerald"}]
+                            model: [{name:"护眼黄", key:"default"}, {name:"云白蓝", key:"porcelain"}, {name:"翡翠绿", key:"emerald"}]
                             delegate: AppButton {
                                 required property var modelData
                                 Layout.fillWidth: true; Layout.minimumWidth: 0

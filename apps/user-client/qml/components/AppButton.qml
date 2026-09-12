@@ -14,7 +14,7 @@ Button {
         elide: Text.ElideRight
         text: control.text
         font: control.font
-        color: control.variant === "primary" ? Theme.text
+        color: control.variant === "primary" ? "white"
               : control.variant === "danger" ? Theme.danger : Theme.text
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter

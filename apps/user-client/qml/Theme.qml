@@ -8,21 +8,11 @@ import Charging.UI as UI
 QtObject {
     property string currentTheme: "default"
     readonly property var palette: {
-        var table = {}
-        // 云白蓝:浅蓝底 #B9D9EB;浅白黄:米黄底 #F2E9DB(用户指定参考色);翡翠绿沿用共享色板
-        table["default"] = { bg: "#B9D9EB", bg2: "#A8C9DC", surface: UI.Theme.palettes.default.surface,
-                             hover: "#C9DFEC", selected: "#B7D4E4", border: "#9EC2D6",
-                             text: UI.Theme.palettes.default.text, secondary: UI.Theme.palettes.default.secondary,
-                             muted: "#5E7889",
-                             accent: UI.Theme.palettes.default.accent, hoverAccent: UI.Theme.palettes.default.hoverAccent,
-                             pressed: UI.Theme.palettes.default.pressed }
-        table["gold"] = { bg: "#F2E9DB", bg2: "#E8DFCE", surface: UI.Theme.palettes.default.surface,
-                          hover: "#F6F0E4", selected: "#EDE3D0", border: "#DDD2BC",
-                          text: UI.Theme.palettes.default.text, secondary: UI.Theme.palettes.default.secondary,
-                          muted: UI.Theme.palettes.default.muted,
-                          accent: "#E6C34A", hoverAccent: "#EDCF66", pressed: "#A8841C" }
-        table["emerald"] = UI.Theme.palettes.emerald
-        return table[currentTheme] || table["default"]
+        var shared = {}
+        shared["default"] = UI.Theme.palettes.default
+        shared["porcelain"] = UI.Theme.palettes.porcelain
+        shared["emerald"] = UI.Theme.palettes.emerald
+        return shared[currentTheme] || shared["default"]
     }
     readonly property string fontFamily: Qt.application.font.family
     readonly property color primary: palette.accent

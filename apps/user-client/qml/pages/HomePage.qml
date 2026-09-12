@@ -79,7 +79,7 @@ Item {
                 Text {
                     Layout.fillWidth: true; Layout.minimumWidth: 0
                     text: page.filterCount ? "已启用 " + page.filterCount + " 项条件" : "距离 / 价格 / 充电类型"
-                    color: page.filterCount ? Theme.primaryDark : Theme.textMuted
+                    color: page.filterCount ? Theme.primary : Theme.textMuted
                     font.pixelSize: 12
                     elide: Text.ElideRight
                 }

@@ -35,7 +35,7 @@ Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 18; height: 18
                         name: modelData.icon
-                        iconColor: nav.currentIndex === index ? Theme.primaryDark : Theme.textMuted
+                        iconColor: nav.currentIndex === index ? Theme.primary : Theme.textMuted
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
