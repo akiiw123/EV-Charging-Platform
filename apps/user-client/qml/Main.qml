@@ -99,11 +99,7 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter: parent.verticalCenter
                     height: 64
-                    Rectangle {
-                        width: 38; height: 38; radius: 12; color: Theme.primarySoft
-                        AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 22; height: 22 }
-                    }
-                Text { text: "充电客户端"; color: Theme.text; font.pixelSize: 18; font.bold: true }
+                Text { text: "充电"; color: Theme.text; font.pixelSize: 18; font.bold: true }
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                 Column {
                     Layout.preferredWidth: Math.min(120, app.width * 0.28)

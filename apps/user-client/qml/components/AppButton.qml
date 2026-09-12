@@ -5,8 +5,8 @@ import ChargingUser
 Button {
     id: control
     property string variant: "primary"
-    implicitHeight: 48
-    font.pixelSize: 15
+    implicitHeight: 44
+    font.pixelSize: 14
     font.bold: true
     leftPadding: 18
     rightPadding: 18
@@ -15,7 +15,7 @@ Button {
         text: control.text
         font: control.font
         color: control.variant === "primary" ? "white"
-              : control.variant === "danger" ? Theme.danger : Theme.primaryDark
+              : control.variant === "danger" ? Theme.danger : Theme.text
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         opacity: control.enabled ? 1 : 0.5
@@ -25,8 +25,8 @@ Button {
         color: control.variant === "primary"
                ? (control.down ? Theme.primaryDark : Theme.primary)
                : control.hovered ? Theme.primarySoft : Theme.surface
-        border.width: control.variant === "primary" ? 0 : 1.5
-        border.color: control.variant === "danger" ? Theme.danger : Theme.primary
+        border.width: control.variant === "primary" ? 0 : 1
+        border.color: control.variant === "danger" ? Theme.danger : Theme.border
         opacity: control.enabled ? 1 : 0.55
         Behavior on color { ColorAnimation { duration: 140 } }
     }

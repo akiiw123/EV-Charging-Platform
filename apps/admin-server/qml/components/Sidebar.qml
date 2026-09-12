@@ -21,7 +21,7 @@ Rectangle {
                 Text{text:"充电运营平台";color:"#FFFFFF";font.pixelSize:15;font.bold:true}
                 Text{text:"运营管理端";color:"#5E6C8A";font.pixelSize:10}}
         }
-        Repeater{model:[{t:"数据总览",i:"dashboard"},{t:"电站管理",i:"station"},{t:"电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"主题与设置",i:"settings"}]
+        Repeater{model:[{t:"工作台",i:"dashboard"},{t:"充电站管理",i:"station"},{t:"充电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"系统设置",i:"settings"}]
             delegate:Item{required property var modelData;required property int index;Layout.fillWidth:true;Layout.preferredHeight:48
                 Rectangle{anchors.fill:parent;anchors.margins:6;radius:Theme.radiusSmall
                     color:root.currentIndex===index?Theme.accent:mouse.containsMouse?"#141C3F":"transparent"

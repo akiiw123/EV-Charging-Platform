@@ -30,11 +30,6 @@ Item {
                 Text { width: parent.width; elide: Text.ElideRight; text: appController.locationName; color: Theme.text; font.pixelSize: 20; font.bold: true }
             }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-            Rectangle {
-                width: 44; height: 44; radius: 14
-                color: Theme.primarySoft
-                AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 24; height: 24 }
-            }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
@@ -59,25 +54,6 @@ Item {
                 enabled: !appController.locating
                 implicitWidth: 78
                 onClicked: appController.locate(search.text)
-            }
-        }
-        Flow {
-            Layout.fillWidth: true; Layout.minimumWidth: 0
-            spacing: 6
-            Repeater {
-                model: appController.presetCities()
-                delegate: AppButton {
-                    required property var modelData
-                    text: modelData
-                    implicitWidth: 50
-                    leftPadding: 4
-                    rightPadding: 4
-                    font.pixelSize: 12
-                    variant: appController.locationName.indexOf(modelData) === 0 ? "primary" : "secondary"
-                    implicitHeight: 32
-                    enabled: !appController.locating
-                    onClicked: appController.locate(modelData)
-                }
             }
         }
         RowLayout {

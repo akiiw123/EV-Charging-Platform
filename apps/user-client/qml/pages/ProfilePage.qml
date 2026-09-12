@@ -85,10 +85,6 @@ Item {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
                 Text { text: "个人中心"; color: Theme.text; font.pixelSize: 25; font.bold: true }
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                Rectangle {
-                    width: 42; height: 42; radius: 12; color: Theme.primarySoft
-                    AppIcon { anchors.centerIn: parent; name: "person"; iconColor: Theme.primary; width: 22; height: 22 }
-                }
             }
 
             // 资料卡:头像 + 昵称(铅笔进入编辑) + 账号信息 + 消费统计

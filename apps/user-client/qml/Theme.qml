@@ -28,7 +28,7 @@ QtObject {
     readonly property color danger: UI.Theme.danger
     readonly property color warning: UI.Theme.warning
     readonly property color success: UI.Theme.success
-    readonly property int radiusSmall: 8
-    readonly property int radius: 12
-    readonly property int radiusLarge: 16
+    readonly property int radiusSmall: 6
+    readonly property int radius: 8
+    readonly property int radiusLarge: 10
 }
