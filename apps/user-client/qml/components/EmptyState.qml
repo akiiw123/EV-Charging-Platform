@@ -18,7 +18,7 @@ Item {
             width: 64; height: 64; radius: 32
             anchors.horizontalCenter: parent.horizontalCenter
             color: Theme.primarySoft
-            AppIcon { anchors.centerIn: parent; name: empty.icon; iconColor: Theme.primary; width: 30; height: 30 }
+            AppIcon { anchors.centerIn: parent; name: empty.icon; iconColor: Theme.primaryDark; width: 30; height: 30 }
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
