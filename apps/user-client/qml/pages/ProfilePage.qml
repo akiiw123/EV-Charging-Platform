@@ -155,7 +155,7 @@ Item {
                                     elide: Text.ElideRight
                                 }
                                 Rectangle {
-                                    width: 28; height: 28; radius: 14
+                                    width: 28; height: 28; radius: 6
                                     color: Theme.primarySoft
                                     AppIcon { anchors.centerIn: parent; name: "pen"; iconColor: Theme.primary; width: 14; height: 14 }
                                     MouseArea {
@@ -262,7 +262,7 @@ Item {
                     }
                     Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     Rectangle {
-                        width: 74; height: 40; radius: 12
+                        width: 74; height: 40; radius: 6
                         color: "white"
                         Text { anchors.centerIn: parent; text: "充值"; color: Theme.primaryDark; font.bold: true }
                         MouseArea { anchors.fill: parent; enabled: !appController.busy; onClicked: rechargeDialog.open(); cursorShape: Qt.PointingHandCursor }

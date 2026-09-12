@@ -10,7 +10,7 @@ ApplicationWindow {
     id: window
     width: 1440; height: 900; minimumWidth: 1280; minimumHeight: 720
     visible: true
-    title: "电动汽车充电桩应用管理平台"
+    title: "VoltFlow 智充管理平台"
     color: Theme.backgroundPrimary
     Component.onCompleted: { Theme.currentTheme=adminController.theme; Theme.animationsEnabled=adminController.animationsEnabled; Theme.fontScale=adminController.fontScale }
     Connections { target: adminController

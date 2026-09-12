@@ -32,6 +32,8 @@ qt_add_qml_module(charging-admin
         qml/pages/UsersPage.qml
         qml/pages/PredictionPage.qml
         qml/pages/SettingsPage.qml
+    RESOURCES
+        assets/voltflow-logo.png
 )
 
 target_link_libraries(charging-admin PRIVATE

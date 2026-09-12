@@ -15,11 +15,11 @@ Rectangle {
     Behavior on width{NumberAnimation{duration:Theme.durationNormal;easing.type:Easing.OutCubic}}
     ColumnLayout{anchors.fill:parent;spacing:0
         Item{Layout.fillWidth:true;Layout.preferredHeight:72
-            Rectangle{width:36;height:36;radius:11;color:Theme.accent;anchors.left:parent.left;anchors.leftMargin:20;anchors.verticalCenter:parent.verticalCenter
-                LineIcon{anchors.centerIn:parent;name:"pile";strokeColor:"white"}}
+            Image{width:36;height:36;source:"qrc:/ChargingAdmin/assets/voltflow-logo.png";fillMode:Image.PreserveAspectFit;anchors.left:parent.left;anchors.leftMargin:20;anchors.verticalCenter:parent.verticalCenter
+                }
             Column{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:68;anchors.verticalCenter:parent.verticalCenter
-                Text{text:"充电运营平台";color:"#FFFFFF";font.pixelSize:15;font.bold:true}
-                Text{text:"运营管理端";color:"#5E6C8A";font.pixelSize:10}}
+                Text{text:"VoltFlow";color:"#FFFFFF";font.pixelSize:15;font.bold:true}
+                Text{text:"智充管理平台";color:"#5E6C8A";font.pixelSize:10}}
         }
         Repeater{model:[{t:"工作台",i:"dashboard"},{t:"充电站管理",i:"station"},{t:"充电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"系统设置",i:"settings"}]
             delegate:Item{required property var modelData;required property int index;Layout.fillWidth:true;Layout.preferredHeight:48

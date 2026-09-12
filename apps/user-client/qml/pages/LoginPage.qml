@@ -26,19 +26,32 @@ Item {
             y: 46
             spacing: 14
 
-            Text {
+            Image {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 26
-                text: "充电"
+                Layout.preferredWidth: 88; Layout.preferredHeight: 88
+                source: "qrc:/ChargingUser/assets/voltflow-logo.png"
+                fillMode: Image.PreserveAspectFit
+            }
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 10
+                text: "VoltFlow 智充管理平台"
                 color: Theme.text
-                font.pixelSize: 30
+                font.pixelSize: 24
                 font.bold: true
+            }
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Electric Vehicle Charging Station Management System"
+                color: Theme.textMuted
+                font.pixelSize: 10
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: "便捷找桩 · 安心充电"
                 color: Theme.textMuted
-                font.pixelSize: 14
+                font.pixelSize: 13
             }
 
             AppCard {
@@ -60,7 +73,7 @@ Item {
                         maximumLength: 11
                         font.pixelSize: 16
                         background: Rectangle {
-                            radius: 12
+                            radius: 6
                             color: Theme.backgroundSecondary
                             border.width: phoneInput.activeFocus ? 2 : 1
                             border.color: phoneInput.activeFocus ? Theme.primary : Theme.border

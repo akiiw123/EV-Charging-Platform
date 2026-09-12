@@ -20,8 +20,8 @@ Rectangle {
                                   : status === "awaiting_payment" || status === "warning" ? Theme.warning
                                   : Theme.textMuted
     implicitWidth: textItem.implicitWidth + 20
-    implicitHeight: 28
-    radius: 14
+    implicitHeight: 24
+    radius: 4
     color: Qt.rgba(tone.r, tone.g, tone.b, 0.14)
     border.width: 1
     border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.35)

@@ -24,10 +24,6 @@ Item {
                 Text { text: order.id ? "实时掌握当前订单" : "预约电桩后在此开始充电"; color: Theme.textMuted; font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-            Rectangle {
-                width: 48; height: 48; radius: 16; color: Theme.primarySoft
-                AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 26; height: 26 }
-            }
         }
 
         AppCard {

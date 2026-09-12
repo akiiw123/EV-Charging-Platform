@@ -41,7 +41,7 @@ Item {
                 placeholderText: "输入城市或地址定位"
                 leftPadding: 16
                 background: Rectangle {
-                    radius: 14
+                    radius: 6
                     color: Theme.surface
                     border.width: 1
                     border.color: search.activeFocus ? Theme.primary : Theme.border
@@ -66,31 +66,26 @@ Item {
             }
 
         }
-        Button {
+        Item {
             id: filterEntry
             objectName: "filterEntry"
             Layout.fillWidth: true; Layout.minimumWidth: 0
-            implicitHeight: 58
-            padding: 12
+            implicitHeight: 36
             Accessible.name: "筛选电站，距离、价格、充电类型和空闲状态"
-            onClicked: filters.open()
-            background: Rectangle {
-                radius: 14
-                color: filterEntry.down ? Theme.primarySelected : Theme.primarySoft
-                border.color: filterEntry.activeFocus || filterEntry.hovered ? Theme.primary : Theme.border
-            }
-            contentItem: RowLayout {
-                spacing: 10
-                Text { text: "筛选电站"; font.pixelSize: 15; font.bold: true; color: Theme.primaryDark }
+            RowLayout {
+                anchors.fill: parent
+                spacing: 8
+                Text { text: "筛选"; color: Theme.text; font.pixelSize: 14; font.bold: true }
                 Text {
                     Layout.fillWidth: true; Layout.minimumWidth: 0
-                    text: page.filterCount ? "已启用 " + page.filterCount + " 项条件" : "距离 / 价格 / 类型"
+                    text: page.filterCount ? "已启用 " + page.filterCount + " 项条件" : "距离 / 价格 / 充电类型"
+                    color: page.filterCount ? Theme.primary : Theme.textMuted
                     font.pixelSize: 12
-                    color: Theme.primaryDark
                     elide: Text.ElideRight
                 }
-                Text { text: "展开 ›"; font.pixelSize: 13; font.bold: true; color: Theme.primaryDark }
+                Text { text: "›"; color: Theme.textMuted; font.pixelSize: 14 }
             }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: filters.open() }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0

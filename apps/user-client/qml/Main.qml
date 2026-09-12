@@ -12,7 +12,7 @@ ApplicationWindow {
     width: 440
     height: 820
     visible: false
-    title: "充电客户端"
+    title: "VoltFlow 智充管理平台"
     color: Theme.background
     font.family: Theme.fontFamily
 
@@ -99,7 +99,8 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter: parent.verticalCenter
                     height: 64
-                Text { text: "充电"; color: Theme.text; font.pixelSize: 18; font.bold: true }
+                Image { Layout.preferredWidth: 26; Layout.preferredHeight: 26; source: "qrc:/ChargingUser/assets/voltflow-logo.png"; fillMode: Image.PreserveAspectFit }
+                Text { text: "VoltFlow 智充管理平台"; color: Theme.text; font.pixelSize: 16; font.bold: true }
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                 Column {
                     Layout.preferredWidth: Math.min(120, app.width * 0.28)
@@ -171,7 +172,7 @@ ApplicationWindow {
         width: Math.min(parent.width - 32, noticeText.implicitWidth + 46)
         height: noticeText.implicitHeight + 28
         visible: appController.notice.length > 0
-        radius: 14
+        radius: 6
         z: 100
         color: appController.noticeKind === "error" ? "#FFF0F0"
                : appController.noticeKind === "warning" ? "#FFF7E8"
@@ -230,7 +231,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 320
         padding: 20
-        background: Rectangle { radius: 16; color: Theme.surface }
+        background: Rectangle { radius: 8; color: Theme.surface }
         contentItem: ColumnLayout {
             spacing: 14
             Text {

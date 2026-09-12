@@ -54,9 +54,9 @@ QtObject {
     readonly property int space4: 16
     readonly property int space5: 20
     readonly property int space6: 24
-    readonly property int radiusSmall: 6
-    readonly property int radiusMedium: 8
-    readonly property int radiusLarge: 10
+    readonly property int radiusSmall: 4
+    readonly property int radiusMedium: 6
+    readonly property int radiusLarge: 8
     readonly property int radius: radiusMedium
     readonly property int controlHeight: 40
     readonly property int rowHeight: 46
