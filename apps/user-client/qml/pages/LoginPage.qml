@@ -72,7 +72,7 @@ Item {
                         font.pixelSize: 16
                         background: Rectangle {
                             radius: 12
-                            color: "#F8FAFC"
+                            color: Theme.backgroundSecondary
                             border.width: phoneInput.activeFocus ? 2 : 1
                             border.color: phoneInput.activeFocus ? Theme.primary : Theme.border
                         }

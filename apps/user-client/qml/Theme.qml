@@ -1,29 +1,34 @@
 pragma Singleton
 import QtQuick
+import Charging.UI as UI
 
-// 设计令牌:与管理端统一为参考图(ChargePilot)提取的"信号蓝 + 藏青墨 + 浅灰底"
-// 品牌家族;绿色仅作成功/可用状态色,不再作主色
+// 设计令牌:色板/状态色/圆角全部委托给共享设计系统 Charging.UI,
+// 用户端只保留自己的令牌名映射,不再维护第二套颜色值,保证与管理端视觉一致。
+// 主题名对应共享色板:信号蓝=default、云白蓝=porcelain、翡翠绿=emerald。
 QtObject {
     property string currentTheme: "default"
-    readonly property var colors: ({
-        "default": {primary:"#1B6EF3", dark:"#155FD6", soft:"#EAF2FF", bg:"#F4F6F8", text:"#0B1531"},
-        "porcelain": {primary:"#497596", dark:"#34546F", soft:"#EAF0F4", bg:"#FBFAF6", text:"#243847"},
-        "emerald": {primary:"#0F9279", dark:"#096E5B", soft:"#E1F4ED", bg:"#F1F7F4", text:"#17392F"}
-    })
-    readonly property var palette: colors[currentTheme] || colors.default
+    readonly property var palette: {
+        var shared = {}
+        shared["default"] = UI.Theme.palettes.default
+        shared["porcelain"] = UI.Theme.palettes.porcelain
+        shared["emerald"] = UI.Theme.palettes.emerald
+        return shared[currentTheme] || shared["default"]
+    }
     readonly property string fontFamily: Qt.application.font.family
-    readonly property color primary: palette.primary
-    readonly property color primaryDark: palette.dark
-    readonly property color primarySoft: palette.soft
+    readonly property color primary: palette.accent
+    readonly property color primaryDark: palette.pressed
+    readonly property color primarySoft: palette.hover
+    readonly property color primarySelected: palette.selected
     readonly property color background: palette.bg
-    readonly property color surface: "#FFFFFF"
+    readonly property color backgroundSecondary: palette.bg2
+    readonly property color surface: palette.surface
     readonly property color text: palette.text
-    readonly property color textMuted: "#6B7480"
-    readonly property color border: "#E3E7EC"
-    readonly property color danger: "#DC2626"
-    readonly property color warning: "#D97706"
-    readonly property color success: "#16A34A"
+    readonly property color textMuted: palette.muted
+    readonly property color border: palette.border
+    readonly property color danger: UI.Theme.danger
+    readonly property color warning: UI.Theme.warning
+    readonly property color success: UI.Theme.success
     readonly property int radiusSmall: 8
-    readonly property int radius: 14
-    readonly property int radiusLarge: 20
+    readonly property int radius: 12
+    readonly property int radiusLarge: 16
 }

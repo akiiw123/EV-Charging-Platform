@@ -91,17 +91,19 @@ ApplicationWindow {
                 anchors.right: parent.right
                 height: app.currentPage === "map" ? 0 : 64
                 visible: height > 0
-                color: Theme.primaryDark
+                color: Theme.surface
+                // 与管理端一致的轻顶栏:白色表面 + 底部细分隔线 + 深色文字
+                Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: Theme.border }
                 RowLayout {
                     width: Math.min(parent.width, app.contentWidth)
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter: parent.verticalCenter
                     height: 64
                     Rectangle {
-                        width: 38; height: 38; radius: 12; color: "#24FFFFFF"
-                        AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: "white"; width: 22; height: 22 }
+                        width: 38; height: 38; radius: 12; color: Theme.primarySoft
+                        AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 22; height: 22 }
                     }
-                Text { text: "充电客户端"; color: "white"; font.pixelSize: 18; font.bold: true }
+                Text { text: "充电客户端"; color: Theme.text; font.pixelSize: 18; font.bold: true }
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                 Column {
                     Layout.preferredWidth: Math.min(120, app.width * 0.28)
@@ -111,7 +113,7 @@ ApplicationWindow {
                         width: parent.width
                         horizontalAlignment: Text.AlignRight
                         text: appController.user.nickname || "用户"
-                        color: "white"
+                        color: Theme.text
                         font.pixelSize: 13
                         font.bold: true
                         elide: Text.ElideRight
@@ -119,7 +121,7 @@ ApplicationWindow {
                     Text {
                         anchors.right: parent.right
                         text: "￥" + Number(appController.user.wallet_balance || 0).toFixed(2)
-                        color: "#D9FFFFFF"
+                        color: Theme.textMuted
                         font.pixelSize: 11
                     }
                 }

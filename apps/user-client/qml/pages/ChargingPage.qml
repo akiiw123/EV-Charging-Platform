@@ -41,7 +41,7 @@ Item {
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     width: 92; height: 92; radius: 46
-                    color: order.status === "charging" ? Theme.primarySoft : "#F1F5F9"
+                    color: order.status === "charging" ? Theme.primarySoft : Theme.backgroundSecondary
                     Rectangle {
                         anchors.centerIn: parent
                         width: 70; height: 70; radius: 35

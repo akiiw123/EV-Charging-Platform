@@ -52,12 +52,12 @@ AppCard {
                 implicitWidth: availability.implicitWidth + 18
                 implicitHeight: 30
                 radius: 15
-                color: Number(station.idle_pile_count) > 0 ? "#E7F8F1" : "#EDF1F5"
+                color: Number(station.idle_pile_count) > 0 ? Qt.rgba(Theme.success.r, Theme.success.g, Theme.success.b, 0.14) : Qt.rgba(Theme.textMuted.r, Theme.textMuted.g, Theme.textMuted.b, 0.10)
                 Text {
                     id: availability
                     anchors.centerIn: parent
                     text: "空闲 " + (station.idle_pile_count || 0) + "/" + (station.pile_count || 0)
-                    color: Number(station.idle_pile_count) > 0 ? "#11845B" : Theme.textMuted
+                    color: Number(station.idle_pile_count) > 0 ? Theme.success : Theme.textMuted
                     font.pixelSize: 12
                     font.bold: true
                 }

@@ -8,6 +8,9 @@
 #include <QScreen>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
+// 共享设计系统 Charging.UI 的静态模块注册(与管理端一致)
+extern void qml_register_types_Charging_UI();
+
 int main(int argc, char* argv[])
 {
     QtWebEngineQuick::initialize();
@@ -18,8 +21,13 @@ int main(int argc, char* argv[])
     QCoreApplication::setApplicationName(QStringLiteral("充电客户端"));
     QCoreApplication::setOrganizationName(QStringLiteral("charging-platform"));
 
+    Q_INIT_RESOURCE(qmake_Charging_UI);
+    Q_INIT_RESOURCE(charging_ui_raw_qml_0);
+    qml_register_types_Charging_UI();
+
     charging::user::UserAppController controller;
     QQmlApplicationEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/"));
     engine.rootContext()->setContextProperty(QStringLiteral("appController"), &controller);
     const QUrl url(QStringLiteral("qrc:/ChargingUser/qml/Main.qml"));
     QObject::connect(

@@ -33,6 +33,8 @@ qt_add_qml_module(charging-user
 
 target_link_libraries(charging-user PRIVATE
     charging-core
+    charging-ui
+    charging-uiplugin
     Qt6::Core
     Qt6::Network
     Qt6::Qml

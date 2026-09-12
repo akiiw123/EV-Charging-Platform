@@ -108,7 +108,7 @@ Item {
                     spacing: 12
                     Rectangle {
                         width: 48; height: 48; radius: 15
-                        color: modelData.status === "idle" ? Theme.primarySoft : "#F1F5F9"
+                        color: modelData.status === "idle" ? Theme.primarySoft : Theme.backgroundSecondary
                         AppIcon { anchors.centerIn: parent; name: "bolt"; width: 24; height: 24; iconColor: modelData.status === "idle" ? Theme.primary : Theme.textMuted }
                     }
                     ColumnLayout {

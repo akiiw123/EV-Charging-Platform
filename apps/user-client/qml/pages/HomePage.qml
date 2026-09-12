@@ -100,8 +100,8 @@ Item {
             onClicked: filters.open()
             background: Rectangle {
                 radius: 14
-                color: filterEntry.down ? "#D5E5FF" : Theme.primarySoft
-                border.color: filterEntry.activeFocus || filterEntry.hovered ? Theme.primary : "#C8DCFF"
+                color: filterEntry.down ? Theme.primarySelected : Theme.primarySoft
+                border.color: filterEntry.activeFocus || filterEntry.hovered ? Theme.primary : Theme.border
             }
             contentItem: RowLayout {
                 spacing: 10
