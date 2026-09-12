@@ -13,16 +13,16 @@ QtObject {
         // pressed 为对应深色调,兼作浅色主操作上的文字/图标对比色
         table["default"] = { bg: UI.Theme.palettes.default.bg, bg2: UI.Theme.palettes.default.bg2,
                              surface: UI.Theme.palettes.default.surface,
-                             hover: "#DCEAF4", selected: "#CBDFEE",
+                             hover: "#E8F0F6", selected: "#D9E6EF",
                              border: UI.Theme.palettes.default.border,
                              text: UI.Theme.palettes.default.text, secondary: UI.Theme.palettes.default.secondary,
                              muted: UI.Theme.palettes.default.muted,
-                             accent: "#B9D9EB", hoverAccent: "#C9E2F0", pressed: "#5E93B4" }
+                             accent: "#5E93B4", hoverAccent: "#6FA3C4", pressed: "#46748F" }
         table["gold"] = { bg: "#F8F7EF", bg2: "#F0EFE2", surface: UI.Theme.palettes.default.surface,
-                          hover: "#F5EFE4", selected: "#EDE3D0", border: "#E5E2D2",
+                          hover: "#F5EFE4", selected: "#EDE3D0", border: "#E0D6C2",
                           text: UI.Theme.palettes.default.text, secondary: UI.Theme.palettes.default.secondary,
                           muted: UI.Theme.palettes.default.muted,
-                          accent: "#F2E9DB", hoverAccent: "#F5EFE4", pressed: "#9C8A5E" }
+                          accent: "#9C8A5E", hoverAccent: "#AD9B70", pressed: "#7E6E48" }
         table["porcelain"] = UI.Theme.palettes.porcelain
         table["emerald"] = UI.Theme.palettes.emerald
         return table[currentTheme] || table["default"]
