@@ -8,7 +8,7 @@ QtObject {
     property real fontScale: 1.0
 
     readonly property var palettes: ({
-        "default":   { bg:"#F7F7F5", bg2:"#F0F0ED", surface:"#FFFFFF", elevated:"#FFFFFF", hover:"#FAF4E1", selected:"#F5ECD3", border:"#E2E2DE", strong:"#B9B9B4", text:"#202124", secondary:"#747474", muted:"#9A9A96", accent:"#C08B00", hoverAccent:"#D19B14", pressed:"#9E7200", shadow:"1F141419", overlay:"66000000", focus:"#E0C070" },
+        "default":   { bg:"#F7F7F5", bg2:"#F0F0ED", surface:"#FFFFFF", elevated:"#FFFFFF", hover:"#F1F1EE", selected:"#E8EFFD", border:"#E2E2DE", strong:"#B9B9B4", text:"#202124", secondary:"#747474", muted:"#9A9A96", accent:"#2563EB", hoverAccent:"#3D74EF", pressed:"#1E51C7", shadow:"1F141419", overlay:"66000000", focus:"#8FB0F5" },
         "midnight":  { bg:"#07111F", bg2:"#0B1728", surface:"#102039", elevated:"#162B47", hover:"#193453", selected:"#123F55", border:"#29415D", strong:"#466887", text:"#EAF4FF", secondary:"#B3C5D8", muted:"#8299B2", accent:"#18C8F4", hoverAccent:"#46D6F7", pressed:"#09A7D2", shadow:"#73000000", overlay:"#A0000710", focus:"#75E3FF" },
         "aurora":    { bg:"#0B1020", bg2:"#11172B", surface:"#171E35", elevated:"#202944", hover:"#282F50", selected:"#30265E", border:"#333D5F", strong:"#59658C", text:"#F2F0FF", secondary:"#C0BDE1", muted:"#8E91B3", accent:"#8B75FF", hoverAccent:"#A995FF", pressed:"#6F55E9", shadow:"#78000000", overlay:"#A0060914", focus:"#B6A9FF" },
         "graphite":  { bg:"#121416", bg2:"#191C20", surface:"#202429", elevated:"#292E34", hover:"#31363C", selected:"#3B3021", border:"#3B4148", strong:"#606872", text:"#F5F2EC", secondary:"#C9C1B6", muted:"#918B83", accent:"#F2A93B", hoverAccent:"#FFC15C", pressed:"#D58B20", shadow:"#80000000", overlay:"#A00A0B0C", focus:"#FFD083" },
