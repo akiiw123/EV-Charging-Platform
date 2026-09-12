@@ -7,14 +7,17 @@ import "pages"
 
 ApplicationWindow {
     id: app
+    // 窗口几何由 main.cpp 在映射前按屏幕可用区域设定(首选 440x820,小屏自动缩小并居中);
+    // 这里保持 visible:false,由 C++ 端 show(),避免映射后二次 resize 导致首帧不渲染
     width: 440
     height: 820
-    minimumWidth: 390
-    minimumHeight: 680
-    visible: true
+    visible: false
     title: "充电客户端"
     color: Theme.background
     font.family: Theme.fontFamily
+
+    // 内容列最大宽度:手机尺寸优先,宽窗口下居中显示、两侧留背景,避免组件被硬拉伸
+    readonly property real contentWidth: Math.min(width, 480)
 
     Binding { target: Theme; property: "currentTheme"; value: appController.theme }
 
@@ -90,9 +93,10 @@ ApplicationWindow {
                 visible: height > 0
                 color: Theme.primaryDark
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
+                    width: Math.min(parent.width, app.contentWidth)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 64
                     Rectangle {
                         width: 38; height: 38; radius: 12; color: "#24FFFFFF"
                         AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: "white"; width: 22; height: 22 }
@@ -125,9 +129,9 @@ ApplicationWindow {
         Loader {
             id: pageLoader
             anchors.top: topBar.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
             anchors.bottom: bottomNav.visible ? bottomNav.top : parent.bottom
+            width: Math.min(parent.width, app.contentWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
             active: appController.loggedIn
             sourceComponent: app.currentPage === "home" ? homeComponent
                : app.currentPage === "station" ? stationComponent

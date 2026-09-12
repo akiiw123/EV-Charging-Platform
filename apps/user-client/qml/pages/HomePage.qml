@@ -13,10 +13,14 @@ Item {
         + (applied.type !== "" ? 1 : 0) + (applied.idleOnly ? 1 : 0)
 
 
-    ColumnLayout {
+    // 整页滚动:小屏高度下头部区块与站点列表都可达,不再被裁切
+    AppScrollView {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 10
+        contentWidth: availableWidth
+        ColumnLayout {
+            width: page.width - 36
+            x: 18
+            spacing: 10
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             Column {
@@ -118,25 +122,16 @@ Item {
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
             Text { text: appController.stations.length + " 个站点"; color: Theme.textMuted; font.pixelSize: 12 }
         }
-        ListView {
-            id: stationList
-            WheelArea { flickable: stationList }
-            Layout.fillWidth: true; Layout.minimumWidth: 0
-            Layout.fillHeight: true
-            clip: true
-            spacing: 12
+        Repeater {
             model: appController.stations
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             delegate: StationCard {
-                width: stationList.width
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 station: modelData
                 onOpened: {
                     appController.selectStation(modelData)
                     page.openStation()
                 }
             }
-            footer: Item { width: 1; height: 8 }
         }
         Column {
             Layout.alignment: Qt.AlignCenter
@@ -144,6 +139,8 @@ Item {
             spacing: 8
             Text { anchors.horizontalCenter: parent.horizontalCenter; text: "⌕"; font.pixelSize: 40; color: Theme.textMuted }
             Text { anchors.horizontalCenter: parent.horizontalCenter; text: "没有找到匹配的充电站"; color: Theme.textMuted }
+        }
+        Item { Layout.fillWidth: true; height: 8 }
         }
     }
     AppDialog {

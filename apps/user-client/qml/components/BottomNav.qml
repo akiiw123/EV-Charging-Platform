@@ -12,9 +12,11 @@ Rectangle {
     border.color: Theme.border
 
     RowLayout {
-        anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
+        // 宽窗口下内容列同样限制在手机宽度内,与页面列对齐
+        width: Math.min(parent.width, 480)
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height - 2
         spacing: 8
         Repeater {
             model: [
