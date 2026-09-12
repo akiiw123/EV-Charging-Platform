@@ -283,7 +283,7 @@ Item {
                         Layout.fillWidth: true; Layout.minimumWidth: 0
                         spacing: 10
                         Repeater {
-                            model: [{name:"信号蓝", key:"default"}, {name:"云白蓝", key:"porcelain"}, {name:"翡翠绿", key:"emerald"}]
+                            model: [{name:"护眼黄", key:"default"}, {name:"云白蓝", key:"porcelain"}, {name:"翡翠绿", key:"emerald"}]
                             delegate: AppButton {
                                 required property var modelData
                                 Layout.fillWidth: true; Layout.minimumWidth: 0

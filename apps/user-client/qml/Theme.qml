@@ -4,7 +4,7 @@ import Charging.UI as UI
 
 // 设计令牌:色板/状态色/圆角全部委托给共享设计系统 Charging.UI,
 // 用户端只保留自己的令牌名映射,不再维护第二套颜色值,保证与管理端视觉一致。
-// 主题名对应共享色板:信号蓝=default、云白蓝=porcelain、翡翠绿=emerald。
+// 主题名对应共享色板:护眼黄=default、云白蓝=porcelain、翡翠绿=emerald。
 QtObject {
     property string currentTheme: "default"
     readonly property var palette: {

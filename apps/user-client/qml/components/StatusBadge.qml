@@ -14,7 +14,7 @@ Rectangle {
                            : status === "completed" ? "已完成"
                            : status === "cancelled" ? "已取消" : "未知状态"
     readonly property color tone: status === "idle" || status === "active" || status === "completed" ? Theme.success
-                                  : status === "charging" || status === "restarting" ? Theme.primary
+                                  : status === "charging" || status === "restarting" ? Theme.info
                                   : status === "reserved" || status === "info" ? "#9B87F5"
                                   : status === "fault" || status === "frozen" || status === "danger" ? Theme.danger
                                   : status === "awaiting_payment" || status === "warning" ? Theme.warning

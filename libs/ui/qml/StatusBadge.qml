@@ -5,7 +5,7 @@ Rectangle {
     property string status: "idle"
     property string label: status
     readonly property color tone: status === "idle" || status === "active" || status === "completed" ? Theme.success
-                                : status === "charging" ? Theme.accent
+                                : status === "charging" ? Theme.info
                                 : status === "reserved" || status === "info" ? "#9B87F5"
                                 : status === "fault" || status === "frozen" || status === "danger" ? Theme.danger
                                 : status === "restarting" || status === "awaiting_payment" || status === "warning" ? Theme.warning
