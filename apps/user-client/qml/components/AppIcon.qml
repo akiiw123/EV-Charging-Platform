@@ -43,6 +43,17 @@ Canvas {
             ctx.moveTo(5, 9); ctx.lineTo(15, 9)
             ctx.moveTo(5, 13.5); ctx.lineTo(11, 13.5)
             ctx.stroke()
+        } else if (name === "wallet") {   // 钱包
+            ctx.beginPath()
+            ctx.roundedRect(2.5, 5, 15, 11, 2, 2)
+            ctx.moveTo(12, 7.5); ctx.lineTo(17.5, 7.5)
+            ctx.moveTo(12, 12.5); ctx.lineTo(17.5, 12.5)
+            ctx.stroke()
+        } else if (name === "pin") {      // 定位
+            ctx.beginPath()
+            ctx.arc(10, 7.5, 4.2, 0, Math.PI * 2)
+            ctx.moveTo(7.4, 10.2); ctx.lineTo(10, 17.5); ctx.lineTo(12.6, 10.2)
+            ctx.stroke()
         } else if (name === "pen") {      // 铅笔
             ctx.beginPath()
             ctx.moveTo(4, 16); ctx.lineTo(5.2, 12.6); ctx.lineTo(13.4, 4.4)

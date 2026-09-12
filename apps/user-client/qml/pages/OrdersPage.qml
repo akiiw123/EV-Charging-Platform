@@ -270,33 +270,14 @@ Item {
                 }
             }
 
-            // 没有历史订单时显示
-            ColumnLayout {
+            // 没有历史订单时显示统一的空状态
+            EmptyState {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
-                Layout.topMargin: 30
+                Layout.topMargin: 12
                 visible: appController.history.length === 0
-                spacing: 8
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "○"
-                    color: Theme.textMuted
-                    font.pixelSize: 34
-                }
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "暂无订单记录"
-                    color: Theme.textMuted
-                    font.pixelSize: 14
-                }
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "完成一次充电后，订单会显示在这里"
-                    color: Theme.textMuted
-                    font.pixelSize: 11
-                }
+                icon: "order"
+                title: "暂无订单记录"
+                hint: "完成一次充电后，订单会显示在这里"
             }
 
             Item {

@@ -133,12 +133,12 @@ Item {
                 }
             }
         }
-        Column {
-            Layout.alignment: Qt.AlignCenter
+        EmptyState {
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             visible: appController.stations.length === 0
-            spacing: 8
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "⌕"; font.pixelSize: 40; color: Theme.textMuted }
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "没有找到匹配的充电站"; color: Theme.textMuted }
+            icon: "pin"
+            title: "没有找到匹配的充电站"
+            hint: "试试切换城市或清空搜索与筛选条件"
         }
         Item { Layout.fillWidth: true; height: 8 }
         }

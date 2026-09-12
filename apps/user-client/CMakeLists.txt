@@ -11,6 +11,7 @@ qt_add_qml_module(charging-user
     VERSION 1.0
     QML_FILES
         qml/components/WheelArea.qml
+        qml/components/EmptyState.qml
         qml/components/AppScrollView.qml
         qml/Main.qml
         qml/Theme.qml
