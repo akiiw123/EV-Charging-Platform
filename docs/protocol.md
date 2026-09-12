@@ -28,6 +28,7 @@ export CHARGING_SERVER_PORT=45454
   （`start_minute`/`end_minute` 左闭右开、`period_type` 为 `peak|flat|valley`、`price_per_kwh`）
   以及 `rule`（`enabled`/`free_move_minutes`/`occupancy_fee_per_minute`/`occupancy_fee_cap`，
   未配置时为 `null`，`occupancy_fee_cap <= 0` 表示占位费不封顶）。
+  逻辑停用（disabled）的电站与 `station.detail` 口径一致，返回 `STATION_NOT_FOUND` 错误。
   该接口为新增类型，旧客户端不受影响；`order.stop` 计费仍使用站点固定电价。
 - `pile.list`：`payload.station_id` 为电站 ID；返回该站电桩列表。
 - `user.profile` / `user.profile.update`：查询或修改当前连接已登录用户资料。

@@ -525,6 +525,10 @@ Message RequestRouter::route(const Message& request)
         QSqlQuery active(database_); active.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id AND o.status IN ('reserved','charging','awaiting_payment')")); active.bindValue(QStringLiteral(":id"),*stationId);
         if (!active.exec() || !active.next()) return storageError(request, QStringLiteral("附近站点查询"), active.lastError().text());
         if (active.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在进行中或待结算订单，不能删除"));
+        // 历史订单(已完成/已取消)同样通过外键阻止删除,这里预先给出明确原因,避免暴露原始数据库错误
+        QSqlQuery history(database_); history.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id")); history.bindValue(QStringLiteral(":id"),*stationId);
+        if (!history.exec() || !history.next()) return storageError(request, QStringLiteral("历史订单查询"), history.lastError().text());
+        if (history.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在历史订单记录，为保留订单数据不能删除"));
         QSqlQuery query(database_); query.prepare(QStringLiteral("DELETE FROM charging_stations WHERE id=:id"));query.bindValue(QStringLiteral(":id"),*stationId);
         if(!query.exec()||query.numRowsAffected()!=1)return error(request,QStringLiteral("STATION_DELETE_FAILED"),query.lastError().isValid()?query.lastError().text():QStringLiteral("电站不存在"));
         return success(request,{{QStringLiteral("id"),*stationId}});
@@ -964,7 +968,8 @@ Message RequestRouter::route(const Message& request)
         }
         StationRepository stations(database_);
         const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
+        // 逻辑停用的电站对用户端不可见,计价信息同样不再对外提供(与 station.detail 口径一致)
+        if (!station || station->status == QStringLiteral("disabled")) {
             return error(request, QStringLiteral("STATION_NOT_FOUND"),
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }
