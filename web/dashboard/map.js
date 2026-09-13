@@ -94,6 +94,7 @@ const state = {
 const chart = echarts.init(document.getElementById('map'));
 let mapRegistered = false;
 let fxPoints = [];   // 星辉效果层点位缓存,由 buildOption 重建
+let fxLinks = [];    // 电流连线缓存(站点→桩),由 buildOption 重建,fx 层绘制
 
 /* ---------- 工具函数 ---------- */
 function themeByHour() {
@@ -195,32 +196,33 @@ function pileTooltip(params) {
 
 function buildOption(theme) {
   const allStations = state.showDemo ? state.stations.concat(DEMO_STATIONS) : state.stations;
-  const live = [], faint = [], pilePoints = [], demoRings = [];
+  const pilePoints = [], demoRings = [];
   const realGroups = [[], []];   // 真实站点按 id 奇偶分两组呼吸,错开涟漪节奏避免齐闪
-  fxPoints = [];                 // 星辉效果层的点位缓存(经纬度 + 稳定相位)
+  fxPoints = [];                 // 星辉层点位缓存(经纬度 + 稳定相位)
+  fxLinks = [];                  // 电流连线缓存:站点 → 桩,由 fx 层用 Canvas 绘制
 
   allStations.forEach(station => {
     station.piles.forEach((pile, index) => {
       const coord = pileCoord(station, index, station.piles.length);
-      if (pile.status === 'charging') {
-        live.push({ coords: [[station.longitude, station.latitude], coord], demo: !!station.demo });
-      } else {
-        faint.push({
-          coords: [[station.longitude, station.latitude], coord],
-          lineStyle: pile.status === 'fault'
-            ? { type: 'dashed', color: theme.fault, opacity: 0.5 }
-            : { opacity: 0.25 }
-        });
-      }
       pilePoints.push({
         value: coord, code: pile.code, status: pile.status, demo: pile.demo,
         symbolSize: pile.power_kw >= 40 ? 8 : (pile.power_kw > 0 ? 6 : 5),
         itemStyle: { color: theme[STATUS_COLOR_KEY[pile.status]] }
       });
+      const seed = String(pile.id || (station.id + '-' + index));
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+      // 电流连线参数:弯曲方向/弧度/流速/火花节奏均由桩 ID 稳定派生,不齐刷刷
+      fxLinks.push({
+        from: [station.longitude, station.latitude], to: coord, status: pile.status,
+        side: index % 2 ? 1 : -1,
+        curv: 0.14 + (hash % 9) / 100,
+        speed: 0.5 + (hash % 40) / 100,
+        phase: (hash % 628) / 100,
+        hash: hash,
+        sparkNext: 800 + hash % 3600, sparkT0: 0, sparkDur: 0, sparkPos: 0, sparkLen: 0
+      });
       if (pile.status !== 'fault' && pile.status !== 'offline') {
-        const seed = String(pile.id || (station.id + '-' + index));
-        let hash = 0;
-        for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
         fxPoints.push({
           coord: coord,
           size: pile.power_kw >= 40 ? 3.0 : 2.1,
@@ -277,17 +279,8 @@ function buildOption(theme) {
       select: { itemStyle: { areaColor: theme.land }, label: { show: false } }
     },
     series: [
-      /* 全部系列统一放在 zlevel 2 的独立叠加层(geo 底图在 zlevel 0):
-         实测 ECharts 5.6.0,流光 effect 与 geo 同层(zlevel 0)或分散多层时,
-         深度缩放会产生跨帧幽灵轨迹;单一独立叠加层则干净 */
-      { type: 'lines', coordinateSystem: 'geo', data: faint, zlevel: 2, z: 2, silent: true,
-        lineStyle: { color: theme.glow, width: 1, opacity: 0.25, curveness: 0 } },
-      { type: 'lines', coordinateSystem: 'geo', data: live, zlevel: 2, z: 3, silent: true,
-        lineStyle: { color: theme.glow, width: 1.2, opacity: 0.55, curveness: 0 },
-        /* trailLength 必须为 0:实测 ECharts 5.6.0,拖尾在 geo 缩放重投影下
-           会留下跨帧幽灵虚线;移动光点本身已足以表达电流方向 */
-        effect: { show: true, period: 3, trailLength: 0, symbol: 'circle',
-                  symbolSize: 3.5, color: theme.spark } },
+      /* 全部系列统一放在 zlevel 2 的独立叠加层(geo 底图在 zlevel 0)。
+         站内连线已改由 fx Canvas 层绘制(曲线 + 流光 + 火花),不再用 lines 系列 */
       { type: 'scatter', coordinateSystem: 'geo', data: pilePoints, zlevel: 2, z: 4,
         symbolSize: 6, emphasis: { scale: 1.6 },
         itemStyle: { borderColor: theme.bg, borderWidth: 1 },
@@ -412,9 +405,10 @@ function tickClock() {
 setInterval(tickClock, 1000);
 tickClock();
 
-/* ---------- 夜间星辉效果层 ----------
-   桩点光晕画在与地图错开的透明 canvas 上,按各自稳定相位轻微闪烁;
-   仅夜间启用,白天静止;参考常见 canvas starfield twinkle 的 sin 相位做法 */
+/* ---------- 电流连线 + 夜间星辉效果层 ----------
+   站内连接改由 Canvas 绘制:贝塞尔曲线(交替弯向) + 沿线流动短划 +
+   随机火花(模拟电流滋滋声),状态语义不变:充电中流动、空闲淡线、故障红虚线。
+   夜间额外绘制桩点星辉光晕;白天整体静止、只保留低速流光 */
 const fxCanvas = document.getElementById('fx');
 const fxCtx = (fxCanvas && fxCanvas.tagName === 'CANVAS') ? fxCanvas.getContext('2d') : null;
 const fxSprite = document.createElement('canvas');
@@ -428,6 +422,12 @@ fxSprite.width = fxSprite.height = 48;
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 48, 48);
 })();
+
+function bez(p0, p1, p2, u) {
+  const v = 1 - u;
+  return [v * v * p0[0] + 2 * v * u * p1[0] + u * u * p2[0],
+          v * v * p0[1] + 2 * v * u * p1[1] + u * u * p2[1]];
+}
 
 function fxResize() {
   if (!fxCtx) return;
@@ -444,27 +444,100 @@ function fxFrame(ts) {
   if (!fxCtx || !mapRegistered) return;
   fxCtx.setTransform(1, 0, 0, 1, 0, 0);
   fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
-  if (effectiveTheme() !== THEMES.night || document.hidden || !fxPoints.length) return;
+  if (document.hidden || (!fxLinks.length && !fxPoints.length)) return;
 
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   fxCtx.scale(dpr, dpr);
   const w = fxCanvas.width / dpr, h = fxCanvas.height / dpr;
-
+  const theme = effectiveTheme();
+  const night = theme === THEMES.night;
   const t = ts / 1000;
-  for (let i = 0; i < fxPoints.length; i++) {
-    let p;
-    try { p = chart.convertToPixel({ geoIndex: 0 }, fxPoints[i].coord); }
-    catch (error) { return; }
-    if (!p || p[0] === undefined) continue;
-    if (p[0] < -24 || p[0] > w + 24 || p[1] < -24 || p[1] > h + 24) continue;
-    const fp = fxPoints[i];
-    const wave = 0.5 + 0.5 * Math.sin(t * fp.speed * 2 * Math.PI + fp.phase);
-    const alpha = 0.08 + 0.30 * wave;          // 亮度上限 0.38,保持安静
-    const r = fp.size * (2.6 + 1.4 * wave);
-    fxCtx.globalAlpha = alpha;
-    fxCtx.drawImage(fxSprite, p[0] - r, p[1] - r, r * 2, r * 2);
+
+  // ---- 站内电流连接 ----
+  for (let i = 0; i < fxLinks.length; i++) {
+    const link = fxLinks[i];
+    let a, b;
+    try {
+      a = chart.convertToPixel({ geoIndex: 0 }, link.from);
+      b = chart.convertToPixel({ geoIndex: 0 }, link.to);
+    } catch (error) { return; }
+    if (!a || !b || a[0] === undefined || b[0] === undefined) continue;
+    if (Math.max(a[0], b[0]) < -30 || Math.min(a[0], b[0]) > w + 30 ||
+        Math.max(a[1], b[1]) < -30 || Math.min(a[1], b[1]) > h + 30) continue;
+
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    // 控制点:垂直偏移交替弯向 + 轻微摆动,让曲线有“活着”的感觉
+    const sway = Math.sin(t * 1.7 + link.phase) * Math.min(2.5, len * 0.015);
+    const cxm = (a[0] + b[0]) / 2 - (dy / len) * len * link.curv * link.side + (dx / len) * sway;
+    const cym = (a[1] + b[1]) / 2 + (dx / len) * len * link.curv * link.side + (dy / len) * sway;
+    const path = () => {
+      fxCtx.beginPath();
+      fxCtx.moveTo(a[0], a[1]);
+      fxCtx.quadraticCurveTo(cxm, cym, b[0], b[1]);
+    };
+
+    // 基线:细而淡
+    fxCtx.lineWidth = 1;
+    fxCtx.strokeStyle = night ? 'rgba(230,190,115,.17)' : 'rgba(46,111,159,.30)';
+    path(); fxCtx.stroke();
+
+    if (link.status === 'charging') {
+      // 流动短划:能量从站点流向桩
+      fxCtx.setLineDash([2.5, 12]);
+      fxCtx.lineDashOffset = -((t * link.speed * 30) % 14.5);
+      fxCtx.lineWidth = 1.5;
+      fxCtx.strokeStyle = night ? 'rgba(255,236,190,.6)' : 'rgba(31,111,168,.55)';
+      path(); fxCtx.stroke();
+      fxCtx.setLineDash([]);
+      // 随机火花:一小段亮光一闪而过,模拟“滋滋滋”的电流声
+      if (ts >= link.sparkNext) {
+        link.sparkT0 = ts;
+        link.sparkDur = 130 + link.hash % 150;
+        link.sparkPos = 0.22 + (link.hash % 46) / 100;
+        link.sparkLen = 0.10 + (link.hash % 14) / 100;
+        link.sparkNext = ts + 1600 + link.hash % 3400;
+      }
+      if (link.sparkT0 && ts < link.sparkT0 + link.sparkDur) {
+        const k = (ts - link.sparkT0) / link.sparkDur;
+        const alpha = Math.sin(Math.PI * k);
+        const p1 = [cxm, cym];
+        const s0 = bez(a, p1, b, link.sparkPos);
+        const s1 = bez(a, p1, b, Math.min(0.98, link.sparkPos + link.sparkLen));
+        fxCtx.lineWidth = 2.2;
+        fxCtx.strokeStyle = night ? `rgba(255,246,220,${0.9 * alpha})`
+                                  : `rgba(226,89,59,${0.8 * alpha})`;
+        fxCtx.beginPath(); fxCtx.moveTo(s0[0], s0[1]); fxCtx.lineTo(s1[0], s1[1]); fxCtx.stroke();
+        fxCtx.fillStyle = night ? `rgba(255,250,235,${0.9 * alpha})`
+                                : `rgba(226,89,59,${0.85 * alpha})`;
+        fxCtx.beginPath(); fxCtx.arc(s1[0], s1[1], 1.7, 0, 6.2832); fxCtx.fill();
+      }
+    } else if (link.status === 'fault') {
+      fxCtx.setLineDash([3, 4]);
+      fxCtx.lineWidth = 1;
+      fxCtx.strokeStyle = night ? 'rgba(237,115,104,.5)' : 'rgba(192,86,74,.55)';
+      path(); fxCtx.stroke();
+      fxCtx.setLineDash([]);
+    }
   }
-  fxCtx.globalAlpha = 1;
+
+  // ---- 夜间星辉:桩点光晕(白天不画) ----
+  if (night) {
+    for (let i = 0; i < fxPoints.length; i++) {
+      let p;
+      try { p = chart.convertToPixel({ geoIndex: 0 }, fxPoints[i].coord); }
+      catch (error) { break; }
+      if (!p || p[0] === undefined) continue;
+      if (p[0] < -24 || p[0] > w + 24 || p[1] < -24 || p[1] > h + 24) continue;
+      const fp = fxPoints[i];
+      const wave = 0.5 + 0.5 * Math.sin(t * fp.speed * 2 * Math.PI + fp.phase);
+      const alpha = 0.08 + 0.30 * wave;          // 亮度上限 0.38,保持安静
+      const r = fp.size * (2.6 + 1.4 * wave);
+      fxCtx.globalAlpha = alpha;
+      fxCtx.drawImage(fxSprite, p[0] - r, p[1] - r, r * 2, r * 2);
+    }
+    fxCtx.globalAlpha = 1;
+  }
 }
 
 if (fxCtx) {
