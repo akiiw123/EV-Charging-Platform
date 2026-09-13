@@ -137,8 +137,9 @@ function normalizeStation(raw) {
 }
 
 /* 近邻站点(间距 < minSep 度)按簇错位:簇内成员均匀摆到质心周围的小圆上,
-   保证彼此间距 ≥ minSep,让每座站拥有自己的轨道环;只影响绘制,不影响数据 */
-function spreadNearby(stations, minSep = 0.06) {
+   仅处理几乎重合的站(默认 0.02°≈2km),其余保持真实间距——接受低倍下桩点重合;
+   只影响绘制,不影响数据 */
+function spreadNearby(stations, minSep = 0.02) {
   const parent = stations.map((_, i) => i);
   const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
   for (let i = 0; i < stations.length; i++) {
@@ -210,8 +211,8 @@ function buildOption(theme) {
   fxPoints = [];                 // 星辉层点位缓存(经纬度 + 稳定相位)
   fxOrbits = [];                 // 电子轨道缓存:每站一条,由 fx 层用 Canvas 绘制
 
-  // 轨道半径自适应:取与最近邻站距离的 45%(0.025~0.12°),紧邻站环线相切不穿插,
-  // 独立站保持大环;配合 spreadNearby 的簇内错位,保证"电桩环绕自己的电站"
+  // 轨道半径自适应:取与最近邻站距离的 45%(0.008~0.12°),保持真实间距——
+  // 低倍下密集站群桩点会重合(已接受),放大后每站轨道环逐渐分离
   const nearestOf = station => {
     let best = Infinity;
     allStations.forEach(other => {
@@ -226,7 +227,7 @@ function buildOption(theme) {
     const seed = String(station.id);
     let shash = 0;
     for (let i = 0; i < seed.length; i++) shash = (shash * 31 + seed.charCodeAt(i)) >>> 0;
-    const orbitR = Math.min(0.12, Math.max(0.025, nearestOf(station) * 0.45));
+    const orbitR = Math.min(0.12, Math.max(0.008, nearestOf(station) * 0.45));
     station.piles.forEach((pile, index) => {
       const coord = pileCoord(station, index, station.piles.length, orbitR);
       pilePoints.push({
