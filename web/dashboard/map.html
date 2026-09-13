@@ -11,10 +11,12 @@
   <style>
     /* 本页专属:纯地图模式铺满整页(不设 MAP_GEO_INSETS) */
     #map { width:100vw; height:100vh; }
+    #fx { position:fixed; inset:0; pointer-events:none; z-index:1; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <canvas id="fx"></canvas>
 
   <header class="topbar">
     <div class="brand">

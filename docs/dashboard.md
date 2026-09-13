@@ -35,3 +35,4 @@ http://192.168.179.128:8080
 - 地图边界：阿里云 DataV.GeoAtlas `100000_full.json`（2026-09-13 下载，34 个省级行政区 + 九段线要素），已本地化为 `web/dashboard/assets/china.json`，离线可用；仅用于教学演示。
 - 已知限制：桩级无心跳/状态变更时间字段，页面不展示心跳时间；同城坐标极近的多座站展示时做微小错位平移避免完全重叠（只影响绘制）。品牌名与 Logo 已接入 VoltFlow 智充（Logo 取自 `apps/user-client/assets/voltflow-logo.png`，缩放为 96px 存于 `web/dashboard/assets/voltflow-logo.png`）。
 - 渲染注意事项（实测 ECharts 5.6.0）：① `lines` 流光的拖尾（`effect.trailLength > 0`）在地图缩放重投影下会留下跨帧幽灵虚线，故固定 `trailLength: 0`，以移动光点表现电流方向；② 全部系列统一放在 `zlevel: 2` 独立叠加层，缩放/平移结束后防抖重建一次 option；③ geo 的 `left/right/top/bottom` 布局键一旦显式传入（即使值为 undefined）就会改变默认居中布局，`map.js` 已用条件展开规避；④ `map.js` 与 `app.js` 同页加载且共享全局作用域，新增顶层常量前注意查重。
+- 视觉体系：日间为低饱和纸感方案（浅灰底 + 雾蓝地图 + 深蓝→天蓝同色系渐变图表 + 橙红 KPI 强调，夜间 KPI 为琥珀金），模块投影、细线分割、KPI 颜色均由昼夜令牌（`--kpi`/`--hairline`/`--shadow`）驱动；夜间另有 `#fx` 透明 Canvas 星辉层，让非故障/离线的桩点按稳定相位轻微闪烁（仅夜间启用、白天静止，亮度上限 0.38 保持安静），fx 画布尺寸由 JS 按视口显式设置，不依赖 CSS 加载时序。

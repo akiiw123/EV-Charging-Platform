@@ -10,16 +10,26 @@ const DATA_REFRESH_MS = 30000;      // 数据静默刷新间隔
 const THEME_CHECK_MS = 30000;       // 自动模式下复查系统时间的间隔
 const PILE_RING_RADIUS = 0.12;      // 桩位示意半径(度):仅示意布局,不代表真实相对位置
 
-/* ---------- 昼夜颜色令牌(对应设计稿 §5.1,换肤只改这里) ---------- */
+/* ---------- 昼夜颜色令牌(对应设计稿 §5.1 + 低饱和纸感方案,换肤只改这里) ---------- */
 const THEMES = {
-  night: { bg:'#06080a', land:'#101214', border:'#303638', text:'#f4f2ea', muted:'#8b9299',
+  night: { bg:'#04060a', land:'#0e1116', border:'#2c3238', text:'#f4f2ea', muted:'#8b9299',
            glow:'#e6be73', spark:'#fff2ca', idle:'#938777', fault:'#ed7368', offline:'#626b6b',
-           panel:'rgba(17,19,21,.85)', panelStrong:'rgba(12,14,16,.93)',
-           tipBg:'rgba(17,19,21,.94)' },
-  day:   { bg:'#f5f7f4', land:'#e8eeeb', border:'#b3c3bd', text:'#182a2a', muted:'#5d706d',
-           glow:'#11b8c5', spark:'#0b7e8a', idle:'#5babb1', fault:'#b84943', offline:'#8b9995',
-           panel:'rgba(255,255,255,.88)', panelStrong:'rgba(255,255,255,.94)',
-           tipBg:'rgba(255,255,255,.96)' }
+           panel:'rgba(13,16,20,.72)', panelStrong:'rgba(12,14,17,.92)',
+           tipBg:'rgba(17,19,21,.94)',
+           kpi:'#f0a45c',
+           hairline:'rgba(244,242,234,.10)',
+           shadow:'0 10px 28px rgba(0,0,0,.45), 0 0 0 0.5px rgba(244,242,234,.10)',
+           areaTop:'rgba(230,190,115,.55)', areaBottom:'rgba(230,190,115,.06)',
+           barTop:'rgba(230,190,115,.95)', barBottom:'rgba(230,190,115,.40)' },
+  day:   { bg:'#f2f4f6', land:'#e7ecf1', border:'#c3ced9', text:'#26333f', muted:'#65788a',
+           glow:'#3e88b0', spark:'#1f6fa8', idle:'#7fb3cd', fault:'#c0564a', offline:'#9aa8b4',
+           panel:'rgba(255,255,255,.78)', panelStrong:'rgba(255,255,255,.9)',
+           tipBg:'rgba(255,255,255,.97)',
+           kpi:'#e2593b',
+           hairline:'rgba(38,51,63,.12)',
+           shadow:'0 1px 2px rgba(23,32,44,.06), 0 10px 24px rgba(23,32,44,.10), 0 0 0 0.5px rgba(38,51,63,.08)',
+           areaTop:'rgba(46,111,159,.85)', areaBottom:'rgba(46,111,159,.05)',
+           barTop:'#2e6f9f', barBottom:'#a9cfe6' }
 };
 
 const STATUS_LABEL = { charging:'充电中', idle:'空闲', fault:'故障', offline:'离线' };
@@ -83,6 +93,7 @@ const state = {
 
 const chart = echarts.init(document.getElementById('map'));
 let mapRegistered = false;
+let fxPoints = [];   // 星辉效果层点位缓存,由 buildOption 重建
 
 /* ---------- 工具函数 ---------- */
 function themeByHour() {
@@ -186,6 +197,7 @@ function buildOption(theme) {
   const allStations = state.showDemo ? state.stations.concat(DEMO_STATIONS) : state.stations;
   const live = [], faint = [], pilePoints = [], demoRings = [];
   const realGroups = [[], []];   // 真实站点按 id 奇偶分两组呼吸,错开涟漪节奏避免齐闪
+  fxPoints = [];                 // 星辉效果层的点位缓存(经纬度 + 稳定相位)
 
   allStations.forEach(station => {
     station.piles.forEach((pile, index) => {
@@ -205,6 +217,17 @@ function buildOption(theme) {
         symbolSize: pile.power_kw >= 40 ? 8 : (pile.power_kw > 0 ? 6 : 5),
         itemStyle: { color: theme[STATUS_COLOR_KEY[pile.status]] }
       });
+      if (pile.status !== 'fault' && pile.status !== 'offline') {
+        const seed = String(pile.id || (station.id + '-' + index));
+        let hash = 0;
+        for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+        fxPoints.push({
+          coord: coord,
+          size: pile.power_kw >= 40 ? 3.0 : 2.1,
+          phase: (hash % 628) / 100,                 // 稳定相位:重建后不齐跳
+          speed: 0.35 + ((hash >> 8) % 50) / 100     // 0.35~0.85 Hz 慢闪
+        });
+      }
     });
     if (station.demo) {
       demoRings.push({
@@ -288,6 +311,9 @@ function applyCssTokens(theme) {
   root.setProperty('--glow', theme.glow);
   root.setProperty('--panel', theme.panel);
   root.setProperty('--panel-strong', theme.panelStrong);
+  root.setProperty('--kpi', theme.kpi);
+  root.setProperty('--hairline', theme.hairline);
+  root.setProperty('--shadow', theme.shadow);
   document.querySelectorAll('.legend [data-c]').forEach(el => {
     el.style.background = theme[el.dataset.c];
   });
@@ -377,7 +403,7 @@ document.querySelectorAll('.zoomer button').forEach(button => {
   });
 });
 
-window.addEventListener('resize', () => chart.resize());
+window.addEventListener('resize', () => { chart.resize(); fxResize(); });
 
 function tickClock() {
   document.getElementById('clock').textContent =
@@ -385,6 +411,66 @@ function tickClock() {
 }
 setInterval(tickClock, 1000);
 tickClock();
+
+/* ---------- 夜间星辉效果层 ----------
+   桩点光晕画在与地图错开的透明 canvas 上,按各自稳定相位轻微闪烁;
+   仅夜间启用,白天静止;参考常见 canvas starfield twinkle 的 sin 相位做法 */
+const fxCanvas = document.getElementById('fx');
+const fxCtx = (fxCanvas && fxCanvas.tagName === 'CANVAS') ? fxCanvas.getContext('2d') : null;
+const fxSprite = document.createElement('canvas');
+fxSprite.width = fxSprite.height = 48;
+(() => {
+  const ctx = fxSprite.getContext('2d');
+  const g = ctx.createRadialGradient(24, 24, 0, 24, 24, 24);
+  g.addColorStop(0, 'rgba(255,236,190,1)');
+  g.addColorStop(0.4, 'rgba(255,236,190,.4)');
+  g.addColorStop(1, 'rgba(255,236,190,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 48, 48);
+})();
+
+function fxResize() {
+  if (!fxCtx) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  // 显式按视口设尺寸,不依赖 CSS(inset) 的加载时序
+  fxCanvas.width = Math.max(1, window.innerWidth * dpr);
+  fxCanvas.height = Math.max(1, window.innerHeight * dpr);
+  fxCanvas.style.width = window.innerWidth + 'px';
+  fxCanvas.style.height = window.innerHeight + 'px';
+}
+
+function fxFrame(ts) {
+  requestAnimationFrame(fxFrame);
+  if (!fxCtx || !mapRegistered) return;
+  fxCtx.setTransform(1, 0, 0, 1, 0, 0);
+  fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+  if (effectiveTheme() !== THEMES.night || document.hidden || !fxPoints.length) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  fxCtx.scale(dpr, dpr);
+  const w = fxCanvas.width / dpr, h = fxCanvas.height / dpr;
+
+  const t = ts / 1000;
+  for (let i = 0; i < fxPoints.length; i++) {
+    let p;
+    try { p = chart.convertToPixel({ geoIndex: 0 }, fxPoints[i].coord); }
+    catch (error) { return; }
+    if (!p || p[0] === undefined) continue;
+    if (p[0] < -24 || p[0] > w + 24 || p[1] < -24 || p[1] > h + 24) continue;
+    const fp = fxPoints[i];
+    const wave = 0.5 + 0.5 * Math.sin(t * fp.speed * 2 * Math.PI + fp.phase);
+    const alpha = 0.08 + 0.30 * wave;          // 亮度上限 0.38,保持安静
+    const r = fp.size * (2.6 + 1.4 * wave);
+    fxCtx.globalAlpha = alpha;
+    fxCtx.drawImage(fxSprite, p[0] - r, p[1] - r, r * 2, r * 2);
+  }
+  fxCtx.globalAlpha = 1;
+}
+
+if (fxCtx) {
+  fxResize();
+  requestAnimationFrame(fxFrame);
+}
 
 /* 自动模式定期复查系统时间;从后台切回时立即复查,处理改时/休眠跨时段 */
 setInterval(render, THEME_CHECK_MS);

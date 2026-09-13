@@ -12,6 +12,7 @@
   <style>
     /* 本页专属:地图铺满底层;图例横排居中,缩放按钮挪到右侧浮层内侧 */
     #map { position:fixed; inset:0; }
+    #fx { position:fixed; inset:0; pointer-events:none; z-index:1; }
     .legend { left:50%; transform:translateX(-50%); bottom:38px; display:flex;
       flex-wrap:wrap; justify-content:center; gap:4px 14px; max-width:640px; }
     .legend b { display:none; }
@@ -20,6 +21,7 @@
 </head>
 <body>
   <div id="map"></div>
+  <canvas id="fx"></canvas>
 
   <header class="topbar">
     <div class="brand">

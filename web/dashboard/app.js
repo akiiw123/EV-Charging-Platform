@@ -46,7 +46,9 @@ function renderDashboard(data) {
     yAxis: { type:'value', splitNumber:3, axisLabel:{ color:t.muted, fontSize:10 },
              splitLine:{ lineStyle:{ color:t.border } } },
     series: [{ type:'bar', data:data.hourly_orders,
-               itemStyle:{ color:t.glow, opacity:.85, borderRadius:[3, 3, 0, 0] } }]
+               itemStyle:{ color:new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                 { offset:0, color:t.barTop }, { offset:1, color:t.barBottom } ]),
+                 borderRadius:[3, 3, 0, 0] } }]
   }, true);
 
   // 营收趋势
@@ -63,7 +65,8 @@ function renderDashboard(data) {
     series: [{ type:'line', smooth:true, data:trend.map(x => x.amount),
                itemStyle:{ color:t.glow }, lineStyle:{ color:t.glow },
                symbolSize:5,
-               areaStyle:{ color:t.glow, opacity:.25 } }]
+               areaStyle:{ color:new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                 { offset:0, color:t.areaTop }, { offset:1, color:t.areaBottom } ]) } }]
   }, true);
 
   // 电桩状态构成:状态不只靠颜色,悬停与图例都有文字
