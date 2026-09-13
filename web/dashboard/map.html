@@ -4,51 +4,13 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>充电网络 · 全国灯点地图</title>
   <link rel="icon" href="data:,">
+  <!-- 组件样式(顶栏/图例/状态栏/缩放按钮/主题令牌)与合并大屏共用 styles.css -->
+  <link rel="stylesheet" href="styles.css">
   <!-- ECharts 本地化:与大屏首页共用同一份 echarts.min.js,离线可用 -->
   <script src="echarts.min.js"></script>
   <style>
-    /* 颜色令牌由 map.js 按昼夜主题写入 CSS 变量,页面元素随之换肤 */
-    :root { --bg:#06080a; --text:#f4f2ea; --muted:#8b9299; --border:#303638;
-            --glow:#e6be73; --panel:rgba(17,19,21,.85); }
-    html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
-                 font:14px/1.6 "Noto Sans SC","Microsoft YaHei",sans-serif;
-                 transition:background 1s, color 1s; }
+    /* 本页专属:纯地图模式铺满整页(不设 MAP_GEO_INSETS) */
     #map { width:100vw; height:100vh; }
-    .topbar { position:fixed; top:0; left:0; right:0; z-index:20; display:flex; align-items:center;
-              gap:14px; padding:10px 20px; pointer-events:none;
-              background:linear-gradient(var(--panel), transparent); }
-    .topbar > * { pointer-events:auto; }
-    .brand { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:600; letter-spacing:1px; }
-    .brand svg { display:block; }
-    .brand .logo-path { stroke:var(--glow); fill:none; stroke-width:2.5; stroke-linecap:round;
-                        stroke-linejoin:round; stroke-dasharray:120; stroke-dashoffset:120;
-                        animation:power-on 1s ease-out .2s forwards; }
-    @keyframes power-on { to { stroke-dashoffset:0; } }
-    #clock { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--muted); }
-    .modes { display:flex; gap:6px; }
-    .modes button { padding:4px 12px; cursor:pointer; border:1px solid var(--border);
-                    border-radius:8px; background:transparent; color:var(--muted); font-size:13px; }
-    .modes button.on { color:var(--bg); background:var(--glow); border-color:var(--glow); font-weight:600; }
-    .legend { position:fixed; left:16px; bottom:44px; z-index:20; display:grid; gap:4px;
-              padding:10px 14px; border:1px solid var(--border); border-radius:12px;
-              background:var(--panel); font-size:12px; color:var(--muted); transition:background 1s; }
-    .legend b { color:var(--text); font-weight:600; margin-bottom:2px; }
-    .legend .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
-                   margin-right:6px; vertical-align:1px; }
-    .legend .ring { display:inline-block; width:8px; height:8px; border-radius:50%;
-                    margin-right:6px; vertical-align:1px; border:2px solid var(--glow);
-                    box-sizing:border-box; }
-    .legend .line { display:inline-block; width:16px; height:0; border-top:2px solid var(--glow);
-                    margin-right:6px; vertical-align:3px; }
-    .legend .line.faint { opacity:.35; }
-    .statusbar { position:fixed; left:16px; right:16px; bottom:0; z-index:20; display:flex;
-                 align-items:center; gap:16px; padding:6px 4px; font-size:12px; color:var(--muted); }
-    .statusbar label { cursor:pointer; display:flex; align-items:center; gap:4px; }
-    #sourceTag.demo { color:var(--glow); }
-    .zoomer { position:fixed; right:16px; bottom:44px; z-index:20; display:grid; gap:6px; }
-    .zoomer button { width:34px; height:34px; cursor:pointer; border:1px solid var(--border);
-                     border-radius:10px; background:var(--panel); color:var(--text);
-                     font-size:15px; transition:background 1s; }
   </style>
 </head>
 <body>

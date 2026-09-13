@@ -14,10 +14,12 @@ const PILE_RING_RADIUS = 0.12;      // 桩位示意半径(度):仅示意布局,�
 const THEMES = {
   night: { bg:'#06080a', land:'#101214', border:'#303638', text:'#f4f2ea', muted:'#8b9299',
            glow:'#e6be73', spark:'#fff2ca', idle:'#938777', fault:'#ed7368', offline:'#626b6b',
-           panel:'rgba(17,19,21,.85)', tipBg:'rgba(17,19,21,.94)' },
+           panel:'rgba(17,19,21,.85)', panelStrong:'rgba(12,14,16,.93)',
+           tipBg:'rgba(17,19,21,.94)' },
   day:   { bg:'#f5f7f4', land:'#e8eeeb', border:'#b3c3bd', text:'#182a2a', muted:'#5d706d',
            glow:'#11b8c5', spark:'#0b7e8a', idle:'#5babb1', fault:'#b84943', offline:'#8b9995',
-           panel:'rgba(255,255,255,.9)', tipBg:'rgba(255,255,255,.96)' }
+           panel:'rgba(255,255,255,.88)', panelStrong:'rgba(255,255,255,.94)',
+           tipBg:'rgba(255,255,255,.96)' }
 };
 
 const STATUS_LABEL = { charging:'充电中', idle:'空闲', fault:'故障', offline:'离线' };
@@ -229,6 +231,12 @@ function buildOption(theme) {
     tooltip: { formatter: stationTooltip }
   }));
 
+  // 合并大屏传入安全区,让地图落在两侧浮层之间;纯地图页不设置则保持默认铺满布局。
+  // 注意:仅在设置了安全区时才添加这些键,显式传 undefined 也会改变 ECharts 默认布局
+  const geoLayout = window.MAP_GEO_INSETS ? {
+    left: window.MAP_GEO_INSETS.left, right: window.MAP_GEO_INSETS.right,
+    top: window.MAP_GEO_INSETS.top, bottom: window.MAP_GEO_INSETS.bottom
+  } : {};
   return {
     backgroundColor: 'transparent',   // 透出 body 背景,昼夜切换时 CSS 过渡更平滑
     tooltip: {
@@ -240,6 +248,7 @@ function buildOption(theme) {
       map: 'china', roam: true,
       zoom: state.camera.zoom,
       center: state.camera.center,
+      ...geoLayout,
       itemStyle: { areaColor: theme.land, borderColor: theme.border, borderWidth: 0.6 },
       emphasis: { itemStyle: { areaColor: theme.border }, label: { show: false } },
       select: { itemStyle: { areaColor: theme.land }, label: { show: false } }
@@ -278,14 +287,21 @@ function applyCssTokens(theme) {
   root.setProperty('--border', theme.border);
   root.setProperty('--glow', theme.glow);
   root.setProperty('--panel', theme.panel);
+  root.setProperty('--panel-strong', theme.panelStrong);
   document.querySelectorAll('.legend [data-c]').forEach(el => {
     el.style.background = theme[el.dataset.c];
   });
 }
 
+let lastTheme = null;
 function render() {
   const theme = effectiveTheme();
   applyCssTokens(theme);
+  if (theme !== lastTheme) {
+    lastTheme = theme;
+    window.chargingMapTheme = theme;   // 供后加载的页面脚本读取初始主题
+    document.dispatchEvent(new CustomEvent('chargingmap:theme', { detail: theme }));
+  }
   if (!mapRegistered) return;
   // notMerge 完整重建:缩放等相机变化会让 lines 流光动画器留下跨帧幽灵轨迹,
   // 实测(ECharts 5.6.0)只有重建系列才能确保清除;数据规模下重建成本可忽略
@@ -376,6 +392,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) rend
 
 /* ---------- 启动 ---------- */
 syncModeButtons();
+render();   // 地图资源就绪前先应用主题令牌并广播,避免白天先亮后黑闪屏
 fetch('./assets/china.json')
   .then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
   .then(geoJson => {
