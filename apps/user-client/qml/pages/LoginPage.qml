@@ -26,30 +26,32 @@ Item {
             y: 46
             spacing: 14
 
-            Rectangle {
+            Image {
                 Layout.alignment: Qt.AlignHCenter
-                width: 88; height: 88; radius: 28
-                color: Theme.primaryDark
-                AppIcon {
-                    anchors.centerIn: parent
-                    name: "bolt"
-                    iconColor: "white"
-                    width: 48; height: 48
-                }
+                Layout.topMargin: 26
+                Layout.preferredWidth: 88; Layout.preferredHeight: 88
+                source: "qrc:/ChargingUser/assets/voltflow-logo.png"
+                fillMode: Image.PreserveAspectFit
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 8
-                text: "充电客户端"
+                Layout.topMargin: 10
+                text: "VoltFlow 智充管理平台"
                 color: Theme.text
-                font.pixelSize: 30
+                font.pixelSize: 24
                 font.bold: true
+            }
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Electric Vehicle Charging Station Management System"
+                color: Theme.textMuted
+                font.pixelSize: 10
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: "便捷找桩 · 安心充电"
                 color: Theme.textMuted
-                font.pixelSize: 14
+                font.pixelSize: 13
             }
 
             AppCard {
@@ -71,8 +73,8 @@ Item {
                         maximumLength: 11
                         font.pixelSize: 16
                         background: Rectangle {
-                            radius: 12
-                            color: "#F8FAFC"
+                            radius: 6
+                            color: Theme.backgroundSecondary
                             border.width: phoneInput.activeFocus ? 2 : 1
                             border.color: phoneInput.activeFocus ? Theme.primary : Theme.border
                         }
@@ -94,31 +96,33 @@ Item {
                 Text { text: "演示账号"; color: Theme.textMuted; font.pixelSize: 12 }
                 Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
             }
-            GridLayout {
+            ColumnLayout {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
-                columns: 2
-                columnSpacing: 10
-                rowSpacing: 10
+                spacing: 2
                 Repeater {
                     model: [
-                        { label: "余额充足", phone: "18800000001", color: "#E7F8F1" },
-                        { label: "待结算", phone: "18800000002", color: "#FFF3DB" },
-                        { label: "低余额", phone: "18800000003", color: "#EDF3FF" },
-                        { label: "已冻结", phone: "18800000004", color: "#FDEBEC" }
+                        { label: "余额充足", phone: "18800000001" },
+                        { label: "待结算", phone: "18800000002" },
+                        { label: "低余额", phone: "18800000003" },
+                        { label: "已冻结", phone: "18800000004" }
                     ]
                     delegate: Rectangle {
+                        required property var modelData
                         Layout.fillWidth: true; Layout.minimumWidth: 0
-                        implicitHeight: 58
-                        radius: 12
-                        color: modelData.color
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 2
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.label; color: Theme.text; font.bold: true; font.pixelSize: 12 }
-                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.phone; color: Theme.textMuted; font.pixelSize: 11 }
+                        implicitHeight: 40
+                        color: demoMouse.containsMouse ? Theme.primarySoft : "transparent"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            Text { text: modelData.label; color: Theme.text; font.pixelSize: 13 }
+                            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                            Text { text: modelData.phone; color: Theme.textMuted; font.pixelSize: 12 }
                         }
                         MouseArea {
+                            id: demoMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: phoneInput.text = modelData.phone
                         }

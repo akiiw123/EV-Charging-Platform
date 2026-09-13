@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS charging_stations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     address TEXT NOT NULL,
+    -- 行政区划:省/市/区三级,供管理端级联筛选,空串表示未分区(旧数据兼容)
+    province TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    district TEXT NOT NULL DEFAULT '',
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     price_per_kwh REAL NOT NULL CHECK(price_per_kwh >= 0),
@@ -107,3 +111,5 @@ INSERT OR IGNORE INTO schema_versions(version) VALUES (2);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (3);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (4);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (5);
+-- 版本 6(2026-09):charging_stations 增加 province/city/district 行政区划列(见 DatabaseManager::migrate)
+INSERT OR IGNORE INTO schema_versions(version) VALUES (6);

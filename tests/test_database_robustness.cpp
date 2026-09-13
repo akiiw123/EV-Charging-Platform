@@ -456,6 +456,83 @@ private slots:
         });
     }
 
+    // 旧库升级:没有 status / province / city / district 列的存量库,
+    // initialize 时应被幂等迁移补齐;存量行区域保持未分区(空串),
+    // 且不阻挡 seed 对区域为空的行做回填。
+    void migrateAddsRegionColumnsToLegacyDatabase()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString dbPath = directory.filePath(QStringLiteral("legacy.db"));
+        {
+            // 手工构造版本 4 时代的旧 schema 后再交由 DatabaseManager 初始化,
+            // CREATE TABLE IF NOT EXISTS 不会重建已存在的表,补列完全依赖幂等迁移
+            QSqlDatabase legacy = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), uniqueConnection());
+            legacy.setDatabaseName(dbPath);
+            QVERIFY(legacy.open());
+            QSqlQuery create(legacy);
+            QVERIFY2(create.exec(QStringLiteral(
+                         "CREATE TABLE charging_stations ("
+                         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                         "name TEXT NOT NULL,"
+                         "address TEXT NOT NULL,"
+                         "latitude REAL NOT NULL,"
+                         "longitude REAL NOT NULL,"
+                         "price_per_kwh REAL NOT NULL CHECK(price_per_kwh >= 0),"
+                         "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")),
+                     qPrintable(create.lastError().text()));
+            QVERIFY2(create.exec(QStringLiteral(
+                         "INSERT INTO charging_stations(name,address,latitude,longitude,price_per_kwh) "
+                         "VALUES('旧站A','旧地址',39.7,116.1,1.2)")),
+                     qPrintable(create.lastError().text()));
+            QVERIFY2(create.exec(QStringLiteral(
+                         "INSERT INTO charging_stations(name,address,latitude,longitude,price_per_kwh) "
+                         "VALUES('旧站B','旧地址',39.8,116.2,1.3)")),
+                     qPrintable(create.lastError().text()));
+            const QString legacyConnection = legacy.connectionName();
+            legacy.close();
+            legacy = QSqlDatabase();   // 先解除引用再移除连接,避免 Qt 警告连接仍被占用
+            QSqlDatabase::removeDatabase(legacyConnection);
+        }
+        charging::core::DatabaseManager manager(uniqueConnection());
+        QString error;
+        QVERIFY2(manager.open(dbPath, &error), qPrintable(error));
+        QVERIFY2(manager.initialize(&error), qPrintable(error));
+        const QSqlDatabase database = manager.database();
+        QSqlQuery pragma(database);
+        QVERIFY2(pragma.exec(QStringLiteral("PRAGMA table_info(charging_stations)")),
+                 qPrintable(pragma.lastError().text()));
+        QStringList columns;
+        while (pragma.next()) {
+            columns << pragma.value(1).toString();
+        }
+        for (const QString& column : {QStringLiteral("status"), QStringLiteral("province"),
+                                      QStringLiteral("city"), QStringLiteral("district")}) {
+            QVERIFY2(columns.contains(column), qPrintable(QStringLiteral("迁移后缺少列 %1").arg(column)));
+        }
+        // 旧站B(id=2)不与 seed 演示站冲突:区域保持未分区,营业状态取迁移默认值
+        QSqlQuery select(database);
+        QVERIFY2(select.exec(QStringLiteral(
+                     "SELECT province,city,district,status FROM charging_stations "
+                     "WHERE name='旧站B'")),
+                 qPrintable(select.lastError().text()));
+        QVERIFY(select.next());
+        QCOMPARE(select.value(0).toString(), QString());
+        QCOMPARE(select.value(1).toString(), QString());
+        QCOMPARE(select.value(2).toString(), QString());
+        QCOMPARE(select.value(3).toString(), QStringLiteral("active"));
+        // 迁移后可以正常写入行政区划
+        QSqlQuery update(database);
+        QVERIFY2(update.exec(QStringLiteral(
+                     "UPDATE charging_stations SET province='北京市',city='北京市',district='房山区' "
+                     "WHERE name='旧站B'")),
+                 qPrintable(update.lastError().text()));
+        QVERIFY2(update.exec(QStringLiteral(
+                     "SELECT district FROM charging_stations WHERE name='旧站B'")) && update.next(),
+                 qPrintable(update.lastError().text()));
+        QCOMPARE(update.value(0).toString(), QStringLiteral("房山区"));
+    }
+
 private:
     // 两个线程各持一条连接，在同一时刻抢占同一个电桩
     class ReservationRacer final : public QThread {

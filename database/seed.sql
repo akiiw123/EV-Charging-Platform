@@ -106,3 +106,14 @@ VALUES (900001, 1, 10, 0.80, 0);
 -- 900014 学园北街充电站演示"逻辑停用":用户端不可见、不可预约,
 -- 管理端可随时恢复营业(历史订单保留)。
 UPDATE charging_stations SET status = 'disabled' WHERE id = 900014;
+
+-- ===== 行政区划回填(版本 6,管理端三级区域筛选演示数据) =====
+-- 仅在区域字段为空时回填:seed 每次启动都会执行,加空值保护可避免
+-- 覆盖管理员在"编辑电站"表单中维护的省市区。
+UPDATE charging_stations SET province = '北京市', city = '北京市', district = '海淀区'
+WHERE id = 1 AND (province IS NULL OR province = '');
+UPDATE charging_stations SET province = '广东省', city = '深圳市', district = '福田区'
+WHERE id = 900001 AND (province IS NULL OR province = '');
+UPDATE charging_stations SET province = '北京市', city = '北京市', district = '房山区'
+WHERE id IN (900010, 900011, 900012, 900013, 900014)
+  AND (province IS NULL OR province = '');

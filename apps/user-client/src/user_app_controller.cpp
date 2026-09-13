@@ -97,7 +97,7 @@ UserAppController::UserAppController(QObject* parent) : QObject(parent)
 
 QString UserAppController::displayTime(const QString& value) const { return charging::core::beijingTime(value); }
 void UserAppController::setTheme(const QString& value) {
-    if (value != QStringLiteral("default") && value != QStringLiteral("porcelain") && value != QStringLiteral("emerald")) return;
+    if (value != QStringLiteral("default") && value != QStringLiteral("gold") && value != QStringLiteral("porcelain") && value != QStringLiteral("emerald")) return;
     if (theme_ == value) return;
     theme_ = value; QSettings settings; settings.setValue(QStringLiteral("appearance/theme"), value); emit themeChanged();
 }

@@ -306,16 +306,42 @@ private slots:
                                          .payload.value(QStringLiteral("piles")).toArray().size();
         const auto created = exchange(socket, {QStringLiteral("station-create"), QStringLiteral("admin.station.create"),
             {{QStringLiteral("name"), QStringLiteral("测试新站")}, {QStringLiteral("address"), QStringLiteral("测试路1号")},
+             {QStringLiteral("province"), QStringLiteral("北京市")}, {QStringLiteral("city"), QStringLiteral("北京市")},
+             {QStringLiteral("district"), QStringLiteral("海淀区")},
              {QStringLiteral("latitude"), 41.8}, {QStringLiteral("longitude"), 123.4},
              {QStringLiteral("price_per_kwh"), 1.5}, {QStringLiteral("pile_count"), 2}}});
         QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
         const qint64 stationId = created.payload.value(QStringLiteral("station")).toObject()
                                      .value(QStringLiteral("id")).toInteger();
+        // 行政区划键存在才更新:此处只改 district,省/市保持原值
         QCOMPARE(exchange(socket, {QStringLiteral("station-update"), QStringLiteral("admin.station.update"),
             {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("测试新站（已编辑）")},
              {QStringLiteral("address"), QStringLiteral("测试路2号")}, {QStringLiteral("latitude"), 41.81},
-             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6}}}).type,
+             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6},
+             {QStringLiteral("province"), QStringLiteral("北京市")}, {QStringLiteral("city"), QStringLiteral("北京市")},
+             {QStringLiteral("district"), QStringLiteral("朝阳区")}}}).type,
                  QStringLiteral("admin.station.update.ok"));
+        // 超长区域名应被拒绝,防止脏数据污染级联筛选选项
+        QCOMPARE(exchange(socket, {QStringLiteral("station-region-too-long"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("测试新站（已编辑）")},
+             {QStringLiteral("address"), QStringLiteral("测试路2号")}, {QStringLiteral("latitude"), 41.81},
+             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6},
+             {QStringLiteral("province"), QString(33, QLatin1Char('省'))}}}).type,
+                 QStringLiteral("admin.station.update.error"));
+        // 列表序列化应携带省市区,且 district 反映部分更新后的值
+        const auto stationsAfter = exchange(socket, {QStringLiteral("stations-list"), QStringLiteral("admin.station.list"), {}});
+        QCOMPARE(stationsAfter.type, QStringLiteral("admin.station.list.ok"));
+        QJsonObject editedStation;
+        const auto stationRows = stationsAfter.payload.value(QStringLiteral("stations")).toArray();
+        for (const auto& row : stationRows) {
+            if (row.toObject().value(QStringLiteral("id")).toInteger() == stationId) {
+                editedStation = row.toObject();
+                break;
+            }
+        }
+        QCOMPARE(editedStation.value(QStringLiteral("province")).toString(), QStringLiteral("北京市"));
+        QCOMPARE(editedStation.value(QStringLiteral("city")).toString(), QStringLiteral("北京市"));
+        QCOMPARE(editedStation.value(QStringLiteral("district")).toString(), QStringLiteral("朝阳区"));
         const auto piles = exchange(socket, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
         QCOMPARE(piles.type, QStringLiteral("admin.pile.list.ok"));
         QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), initialPileCount + 2);
@@ -887,6 +913,95 @@ private slots:
         QCOMPARE(exchange(user, {QStringLiteral("reserve2"), QStringLiteral("order.reserve"),
                                  {{QStringLiteral("pile_id"), pileId}}}).type,
                  QStringLiteral("order.reserve.ok"));
+        user.disconnectFromHost(); user.waitForDisconnected(1000);
+        admin.disconnectFromHost(); admin.waitForDisconnected(1000);
+    }
+
+    // 停用电站的计价信息与详情口径一致地对用户端关闭;
+    // 删除含历史订单的电站返回明确原因,而不是原始外键错误
+    void disabledStationPricingAndDeleteMessage()
+    {
+        Fixture fixture;
+        QTcpSocket admin;
+        admin.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(admin.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(admin, {QStringLiteral("login"), QStringLiteral("admin.login"),
+                                  {{QStringLiteral("username"), QStringLiteral("admin")},
+                                   {QStringLiteral("password"), QStringLiteral("123456")}}}).type,
+                 QStringLiteral("admin.login.ok"));
+
+        const auto created = exchange(admin, {QStringLiteral("create"), QStringLiteral("admin.station.create"),
+            {{QStringLiteral("name"), QStringLiteral("计价删除测试站")}, {QStringLiteral("address"), QStringLiteral("测试路8号")},
+             {QStringLiteral("latitude"), 39.72}, {QStringLiteral("longitude"), 116.17},
+             {QStringLiteral("price_per_kwh"), 1.2}, {QStringLiteral("pile_count"), 1}}});
+        QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
+        const qint64 stationId = created.payload.value(QStringLiteral("station")).toObject()
+                                     .value(QStringLiteral("id")).toInteger();
+        qint64 pileId = 0;
+        const auto piles = exchange(admin, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
+        for (const auto& p : piles.payload.value(QStringLiteral("piles")).toArray()) {
+            if (p.toObject().value(QStringLiteral("station_id")).toInteger() == stationId) {
+                pileId = p.toObject().value(QStringLiteral("id")).toInteger();
+                break;
+            }
+        }
+        QVERIFY(pileId > 0);
+
+        QTcpSocket user;
+        user.connectToHost(QHostAddress::LocalHost, fixture.port());
+        QVERIFY(user.waitForConnected(3000));
+        QVERIFY(fixture.acceptConnection());
+        QCOMPARE(exchange(user, {QStringLiteral("login"), QStringLiteral("auth.phone_login"),
+                                 {{QStringLiteral("phone"), QStringLiteral("13600136001")}}}).type,
+                 QStringLiteral("auth.phone_login.ok"));
+
+        // 营业中:计价对外可见
+        QCOMPARE(exchange(user, {QStringLiteral("pricing"), QStringLiteral("station.pricing"),
+                                 {{QStringLiteral("station_id"), stationId}}}).type,
+                 QStringLiteral("station.pricing.ok"));
+        // 预约后取消,留下历史订单
+        QCOMPARE(exchange(user, {QStringLiteral("reserve"), QStringLiteral("order.reserve"),
+                                 {{QStringLiteral("pile_id"), pileId}}}).type,
+                 QStringLiteral("order.reserve.ok"));
+        const auto active = exchange(user, {QStringLiteral("active"), QStringLiteral("order.active"), {}});
+        const qint64 orderId = active.payload.value(QStringLiteral("order")).toObject()
+                                   .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(user, {QStringLiteral("cancel"), QStringLiteral("order.cancel"),
+                                 {{QStringLiteral("order_id"), orderId}}}).type,
+                 QStringLiteral("order.cancel.ok"));
+
+        // 停用后:计价与详情同样拒绝(不再泄露停用站的收费数据)
+        QCOMPARE(exchange(admin, {QStringLiteral("disable"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("计价删除测试站")},
+             {QStringLiteral("address"), QStringLiteral("测试路8号")}, {QStringLiteral("latitude"), 39.72},
+             {QStringLiteral("longitude"), 116.17}, {QStringLiteral("price_per_kwh"), 1.2},
+             {QStringLiteral("status"), QStringLiteral("disabled")}}}).type,
+                 QStringLiteral("admin.station.update.ok"));
+        const auto pricing = exchange(user, {QStringLiteral("pricing2"), QStringLiteral("station.pricing"),
+                                             {{QStringLiteral("station_id"), stationId}}});
+        QCOMPARE(pricing.type, QStringLiteral("station.pricing.error"));
+        QCOMPARE(pricing.payload.value(QStringLiteral("code")).toString(),
+                 QStringLiteral("STATION_NOT_FOUND"));
+
+        // 删除含历史订单的电站:明确提示保留订单数据,而非外键错误
+        const auto del = exchange(admin, {QStringLiteral("del"), QStringLiteral("admin.station.delete"),
+                                          {{QStringLiteral("station_id"), stationId}}});
+        QCOMPARE(del.type, QStringLiteral("admin.station.delete.error"));
+        QVERIFY(del.payload.value(QStringLiteral("message")).toString()
+                    .contains(QStringLiteral("历史订单")));
+
+        // 无任何订单的新站仍可正常删除
+        const auto created2 = exchange(admin, {QStringLiteral("create2"), QStringLiteral("admin.station.create"),
+            {{QStringLiteral("name"), QStringLiteral("可删除测试站")}, {QStringLiteral("address"), QStringLiteral("测试路7号")},
+             {QStringLiteral("latitude"), 39.72}, {QStringLiteral("longitude"), 116.17},
+             {QStringLiteral("price_per_kwh"), 1.0}, {QStringLiteral("pile_count"), 1}}});
+        QCOMPARE(created2.type, QStringLiteral("admin.station.create.ok"));
+        const qint64 stationId2 = created2.payload.value(QStringLiteral("station")).toObject()
+                                       .value(QStringLiteral("id")).toInteger();
+        QCOMPARE(exchange(admin, {QStringLiteral("del2"), QStringLiteral("admin.station.delete"),
+                                  {{QStringLiteral("station_id"), stationId2}}}).type,
+                 QStringLiteral("admin.station.delete.ok"));
         user.disconnectFromHost(); user.waitForDisconnected(1000);
         admin.disconnectFromHost(); admin.waitForDisconnected(1000);
     }

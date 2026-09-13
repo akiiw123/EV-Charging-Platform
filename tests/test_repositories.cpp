@@ -44,11 +44,37 @@ private slots:
             charging::core::ChargingStation input;
             input.name = QStringLiteral("测试站");
             input.address = QStringLiteral("测试地址");
+            // 版本 6 起支持行政区划:create 后 create() 内部会回读,验证整链路落库
+            input.province = QStringLiteral("北京市");
+            input.city = QStringLiteral("北京市");
+            input.district = QStringLiteral("海淀区");
             input.latitude = 41.8;
             input.longitude = 123.4;
             input.pricePerKwh = 1.5;
             const auto station = stations.create(input, &error);
             QVERIFY2(station.has_value(), qPrintable(error));
+            QCOMPARE(station->province, QStringLiteral("北京市"));
+            QCOMPARE(station->city, QStringLiteral("北京市"));
+            QCOMPARE(station->district, QStringLiteral("海淀区"));
+            // 未填区域的旧调用方式:区域字段应保持空串(未分区),不影响创建
+            charging::core::ChargingStation legacyInput;
+            legacyInput.name = QStringLiteral("未分区站");
+            legacyInput.address = QStringLiteral("测试地址2");
+            legacyInput.pricePerKwh = 1.2;
+            const auto legacyStation = stations.create(legacyInput, &error);
+            QVERIFY2(legacyStation.has_value(), qPrintable(error));
+            QCOMPARE(legacyStation->province, QString());
+            QCOMPARE(legacyStation->district, QString());
+            const auto listed = stations.list(&error);
+            QVERIFY2(!listed.isEmpty(), qPrintable(error));
+            bool foundRegionized = false;
+            for (const auto& row : listed) {
+                if (row.id == station->id) {
+                    foundRegionized = row.province == QStringLiteral("北京市")
+                                      && row.district == QStringLiteral("海淀区");
+                }
+            }
+            QVERIFY(foundRegionized);
             charging::core::ChargingPile pile;
             pile.stationId = station->id;
             pile.code = QStringLiteral("TEST-001");

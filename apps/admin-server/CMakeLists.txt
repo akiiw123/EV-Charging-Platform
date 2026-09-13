@@ -18,6 +18,7 @@ qt_add_qml_module(charging-admin
         qml/components/DataTable.qml
         qml/components/SearchField.qml
         qml/components/FilterComboBox.qml
+        qml/components/MultiSelectComboBox.qml
         qml/components/EmptyState.qml
         qml/components/ConfirmDialog.qml
         qml/components/DetailDrawer.qml
@@ -32,6 +33,8 @@ qt_add_qml_module(charging-admin
         qml/pages/UsersPage.qml
         qml/pages/PredictionPage.qml
         qml/pages/SettingsPage.qml
+    RESOURCES
+        assets/voltflow-logo.png
 )
 
 target_link_libraries(charging-admin PRIVATE

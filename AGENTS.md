@@ -5,7 +5,7 @@
 ## 1. 项目与工作环境
 
 - 项目名称：电动汽车充电桩应用管理平台。
-- 唯一权威开发目录：`/home/bit/charging-platform`。
+- 唯一权威开发目录：`/home/bit/EV-Charging-Platform`。
 - 项目运行在 VMware Ubuntu 虚拟机 `bitdev` 中。
 - Windows 已配置 SSH Host 别名 `BitDev`，从 Windows 连接时使用：
 
@@ -16,11 +16,12 @@
 - 从 Windows 发起远程命令时，应明确进入唯一开发目录：
 
   ```bash
-  ssh BitDev 'cd /home/bit/charging-platform && <command>'
+  ssh BitDev 'cd /home/bit/EV-Charging-Platform && <command>'
   ```
 
 - Windows 上可能存在同名项目副本，但它不是开发源。禁止在 Windows 本地副本中实施项目修改、构建、提交或生成业务数据。
-- 如受工具沙箱限制，可在临时可写目录准备补丁，再通过 SSH/SCP 同步至虚拟机；最终有效文件仍必须位于 `/home/bit/charging-platform`。
+- 截至 2026-09，Windows 本地「有注释版v2」副本与虚拟机仓库代码**已完全不同步**（只是某个旧版本的注释快照）。不得以它判断代码现状；只读分析同样应以虚拟机 `/home/bit/EV-Charging-Platform` 为准（可先 `scp`/`ssh cat` 拉取真实文件）。
+- 如受工具沙箱限制，可在临时可写目录准备补丁，再通过 SSH/SCP 同步至虚拟机；最终有效文件仍必须位于 `/home/bit/EV-Charging-Platform`。
 - 不得把项目复制到新的长期开发目录，也不得改变“虚拟机目录为唯一真实来源”的约定。
 
 ## 2. 每次任务开始前的强制检查
@@ -28,7 +29,7 @@
 开始修改前，先执行只读检查：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 git branch --show-current
 git status --short
 git log -5 --oneline --decorate
@@ -39,9 +40,9 @@ git remote -v
 
 处理规则：
 
-- 默认工作分支为 `codex/qml-mobile-redesign`。
+- 默认工作分支为 `glm`（2026-09 更新；若仓库实际分支与此不符，以 `git branch --show-current` 的结果为准，不要自行切换）。
 - 不要自行创建新分支。只有用户明确要求新分支时才能创建。
-- 如果当前分支不是 `codex/qml-mobile-redesign`，先判断是否为用户或队友主动切换；不要直接覆盖或强制切换。
+- 如果当前分支与上述默认不符，先判断是否为用户或队友主动切换；不要直接覆盖或强制切换。
 - 如果工作区存在未提交修改，先确认修改内容与归属。用户或队友的修改必须保留，不得覆盖、回滚或清理。
 - 禁止使用 `git reset --hard`、`git clean -fd`、强制 checkout 或其他可能丢失工作的命令，除非用户明确授权且目标已经核实。
 - 如用户要求拉取队友最新代码，先执行 `git fetch --all --prune`，检查提交和文件差异，再选择 fast-forward、rebase 或合并；发生冲突时先汇报，不要盲目覆盖。
@@ -50,13 +51,12 @@ git remote -v
 
 已配置远程：
 
-- `team`：`git@github.com:akiiw123/EV-Charging-Platform.git`
-- `origin`：`git@github.com:QLang423/charging-platform.git`
+- `origin`：`https://github.com/akiiw123/EV-Charging-Platform`（fetch/push，HTTPS）
 
 默认协作分支：
 
 ```text
-codex/qml-mobile-redesign
+glm
 ```
 
 实施类任务的标准交付顺序：
@@ -70,7 +70,7 @@ codex/qml-mobile-redesign
 7. 检查 `git diff` 和 `git status`，确保没有构建产物、数据库、密码或无关文件。
 8. 使用清晰的 Conventional Commit 风格提交信息。
 9. 用户要求提交或当前任务明确包含交付时，提交到当前既有分支；不要另建分支。
-10. 用户要求推送时，优先推送 `team`，必要时同步 `origin`，并报告准确的分支和提交号。
+10. 用户要求推送时，推送到 `origin`，并报告准确的分支和提交号。
 
 禁止：
 
@@ -278,13 +278,13 @@ docs/                      架构、协议、运行和验收文档
 推荐构建目录：
 
 ```text
-/home/bit/charging-platform/build/admin-qml2
+/home/bit/EV-Charging-Platform/build/admin-qml2
 ```
 
 完整构建：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ```
@@ -296,7 +296,7 @@ cmake --build build/admin-qml2 -j2
 基础回归测试：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 ctest --test-dir build/admin-qml2 --output-on-failure
 ```
 
@@ -339,14 +339,14 @@ qt.qpa.xcb: could not connect to display
 人工验收优先在 VMware Ubuntu 图形桌面的终端运行：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 ./build/admin-qml2/apps/admin-server/charging-admin
 ```
 
 管理端启动后，再打开第二个桌面终端运行用户端：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 ./build/admin-qml2/apps/user-client/charging-user
 ```
 

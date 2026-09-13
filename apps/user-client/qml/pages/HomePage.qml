@@ -13,10 +13,14 @@ Item {
         + (applied.type !== "" ? 1 : 0) + (applied.idleOnly ? 1 : 0)
 
 
-    ColumnLayout {
+    // 整页滚动:小屏高度下头部区块与站点列表都可达,不再被裁切
+    AppScrollView {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 10
+        contentWidth: availableWidth
+        ColumnLayout {
+            width: page.width - 36
+            x: 18
+            spacing: 10
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             Column {
@@ -26,11 +30,6 @@ Item {
                 Text { width: parent.width; elide: Text.ElideRight; text: appController.locationName; color: Theme.text; font.pixelSize: 20; font.bold: true }
             }
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-            Rectangle {
-                width: 44; height: 44; radius: 14
-                color: Theme.primarySoft
-                AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: Theme.primary; width: 24; height: 24 }
-            }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
@@ -42,7 +41,7 @@ Item {
                 placeholderText: "输入城市或地址定位"
                 leftPadding: 16
                 background: Rectangle {
-                    radius: 14
+                    radius: 6
                     color: Theme.surface
                     border.width: 1
                     border.color: search.activeFocus ? Theme.primary : Theme.border
@@ -57,25 +56,6 @@ Item {
                 onClicked: appController.locate(search.text)
             }
         }
-        Flow {
-            Layout.fillWidth: true; Layout.minimumWidth: 0
-            spacing: 6
-            Repeater {
-                model: appController.presetCities()
-                delegate: AppButton {
-                    required property var modelData
-                    text: modelData
-                    implicitWidth: 50
-                    leftPadding: 4
-                    rightPadding: 4
-                    font.pixelSize: 12
-                    variant: appController.locationName.indexOf(modelData) === 0 ? "primary" : "secondary"
-                    implicitHeight: 32
-                    enabled: !appController.locating
-                    onClicked: appController.locate(modelData)
-                }
-            }
-        }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             AppField {
@@ -86,31 +66,26 @@ Item {
             }
 
         }
-        Button {
+        Item {
             id: filterEntry
             objectName: "filterEntry"
             Layout.fillWidth: true; Layout.minimumWidth: 0
-            implicitHeight: 58
-            padding: 12
+            implicitHeight: 36
             Accessible.name: "筛选电站，距离、价格、充电类型和空闲状态"
-            onClicked: filters.open()
-            background: Rectangle {
-                radius: 14
-                color: filterEntry.down ? "#D5E5FF" : Theme.primarySoft
-                border.color: filterEntry.activeFocus || filterEntry.hovered ? Theme.primary : "#C8DCFF"
-            }
-            contentItem: RowLayout {
-                spacing: 10
-                Text { text: "筛选电站"; font.pixelSize: 15; font.bold: true; color: Theme.primaryDark }
+            RowLayout {
+                anchors.fill: parent
+                spacing: 8
+                Text { text: "筛选"; color: Theme.text; font.pixelSize: 14; font.bold: true }
                 Text {
                     Layout.fillWidth: true; Layout.minimumWidth: 0
-                    text: page.filterCount ? "已启用 " + page.filterCount + " 项条件" : "距离 / 价格 / 类型"
+                    text: page.filterCount ? "已启用 " + page.filterCount + " 项条件" : "距离 / 价格 / 充电类型"
+                    color: page.filterCount ? Theme.primaryDark : Theme.textMuted
                     font.pixelSize: 12
-                    color: Theme.primaryDark
                     elide: Text.ElideRight
                 }
-                Text { text: "展开 ›"; font.pixelSize: 13; font.bold: true; color: Theme.primaryDark }
+                Text { text: "›"; color: Theme.textMuted; font.pixelSize: 14 }
             }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: filters.open() }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
@@ -118,32 +93,25 @@ Item {
             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
             Text { text: appController.stations.length + " 个站点"; color: Theme.textMuted; font.pixelSize: 12 }
         }
-        ListView {
-            id: stationList
-            WheelArea { flickable: stationList }
-            Layout.fillWidth: true; Layout.minimumWidth: 0
-            Layout.fillHeight: true
-            clip: true
-            spacing: 12
+        Repeater {
             model: appController.stations
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             delegate: StationCard {
-                width: stationList.width
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 station: modelData
                 onOpened: {
                     appController.selectStation(modelData)
                     page.openStation()
                 }
             }
-            footer: Item { width: 1; height: 8 }
         }
-        Column {
-            Layout.alignment: Qt.AlignCenter
+        EmptyState {
+            Layout.fillWidth: true; Layout.minimumWidth: 0
             visible: appController.stations.length === 0
-            spacing: 8
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "⌕"; font.pixelSize: 40; color: Theme.textMuted }
-            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "没有找到匹配的充电站"; color: Theme.textMuted }
+            icon: "pin"
+            title: "没有找到匹配的充电站"
+            hint: "试试切换城市或清空搜索与筛选条件"
+        }
+        Item { Layout.fillWidth: true; height: 8 }
         }
     }
     AppDialog {

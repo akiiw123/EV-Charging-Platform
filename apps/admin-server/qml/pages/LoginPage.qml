@@ -7,8 +7,8 @@ Rectangle{id:root;color:Theme.backgroundPrimary
     Rectangle{anchors.fill:parent;color:Theme.backgroundPrimary}
     RowLayout{anchors.fill:parent;anchors.margins:Math.max(50,parent.width*.08);spacing:80
         ColumnLayout{Layout.fillWidth:true;Layout.maximumWidth:620;spacing:18
-            Rectangle{width:58;height:58;radius:18;color:Theme.accent;LineIcon{anchors.centerIn:parent;width:28;height:28;name:"pile";strokeColor:"white"}}
-            Text{text:"电动汽车充电桩\n应用管理平台";color:Theme.textPrimary;font.pixelSize:40;font.weight:Font.Bold;lineHeight:1.18}
+            Image{Layout.preferredWidth:64;Layout.preferredHeight:64;source:"qrc:/ChargingAdmin/assets/voltflow-logo.png";fillMode:Image.PreserveAspectFit}
+            Text{text:"VoltFlow\n智充管理平台";color:Theme.textPrimary;font.pixelSize:40;font.weight:Font.Bold;lineHeight:1.18}
             Text{Layout.maximumWidth:520;text:"面向电站、设备、订单与用户的一体化运营管理中枢";color:Theme.textSecondary;font.pixelSize:16;wrapMode:Text.Wrap}
             Row{spacing:22;Repeater{model:["实时运营","设备监控","智能预测"];delegate:Row{required property var modelData;spacing:8;Rectangle{width:7;height:7;radius:4;color:Theme.accent;anchors.verticalCenter:parent.verticalCenter}Text{text:modelData;color:Theme.textMuted;font.pixelSize:Theme.fontBody}}}}
         }

@@ -81,6 +81,10 @@ QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile
     return {{QStringLiteral("id"), station.id},
             {QStringLiteral("name"), station.name},
             {QStringLiteral("address"), station.address},
+            // 行政区划:纯增量字段,旧客户端未知键自然忽略;空串=未分区
+            {QStringLiteral("province"), station.province},
+            {QStringLiteral("city"), station.city},
+            {QStringLiteral("district"), station.district},
             {QStringLiteral("latitude"), station.latitude},
             {QStringLiteral("longitude"), station.longitude},
             {QStringLiteral("price_per_kwh"), station.pricePerKwh},
@@ -464,6 +468,13 @@ Message RequestRouter::route(const Message& request)
         ChargingStation value;
         value.name = request.payload.value(QStringLiteral("name")).toString();
         value.address = request.payload.value(QStringLiteral("address")).toString();
+        // 行政区划为可选字段:缺省为未分区;填写时校验长度,避免脏数据进入级联筛选
+        const auto readRegion = [&request](const char* key) -> QString {
+            return request.payload.value(QLatin1String(key)).toString().trimmed();
+        };
+        value.province = readRegion("province");
+        value.city = readRegion("city");
+        value.district = readRegion("district");
         value.latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
         value.longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
         value.pricePerKwh = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
@@ -471,6 +482,9 @@ Message RequestRouter::route(const Message& request)
         if (value.latitude < -90 || value.latitude > 90 || value.longitude < -180 || value.longitude > 180
             || pileCount < 1 || pileCount > 100) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("经纬度或电桩数量无效"));
+        }
+        if (value.province.size() > 32 || value.city.size() > 32 || value.district.size() > 32) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("省/市/区长度不能超过 32 个字符"));
         }
         if (!database_.transaction()) return storageError(request, QStringLiteral("数据库操作"), database_.lastError().text());
         StationRepository stations(database_); PileRepository piles(database_);
@@ -501,6 +515,21 @@ Message RequestRouter::route(const Message& request)
             return error(request, QStringLiteral("INVALID_ARGUMENT"),
                          QStringLiteral("电站状态仅支持 active/disabled"));
         }
+        // 行政区划可选更新:键存在才更新(允许置空=未分区),缺省保持原值,旧调用方不受影响
+        // 绑定值统一规范化为非 null 空串,避免 null 撞 NOT NULL 约束
+        const auto regionValue = [&request](const char* key) -> QString {
+            const QString value = request.payload.value(QLatin1String(key)).toString().trimmed();
+            return value.isNull() ? QStringLiteral("") : value;
+        };
+        const bool hasProvince = request.payload.contains(QStringLiteral("province"));
+        const bool hasCity = request.payload.contains(QStringLiteral("city"));
+        const bool hasDistrict = request.payload.contains(QStringLiteral("district"));
+        const QString province = regionValue("province");
+        const QString city = regionValue("city");
+        const QString district = regionValue("district");
+        if (province.size() > 32 || city.size() > 32 || district.size() > 32) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("省/市/区长度不能超过 32 个字符"));
+        }
         if (!stationId || name.isEmpty() || address.isEmpty() || latitude < -90 || latitude > 90
             || longitude < -180 || longitude > 180 || price < 0) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("电站表单内容无效"));
@@ -509,12 +538,18 @@ Message RequestRouter::route(const Message& request)
         QString sql = QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,"
                                      "latitude=:lat,longitude=:lng,price_per_kwh=:price");
         if (!status.isEmpty()) sql += QStringLiteral(",status=:status");
+        if (hasProvince) sql += QStringLiteral(",province=:province");
+        if (hasCity) sql += QStringLiteral(",city=:city");
+        if (hasDistrict) sql += QStringLiteral(",district=:district");
         sql += QStringLiteral(" WHERE id=:id");
         query.prepare(sql);
         query.bindValue(QStringLiteral(":name"), name); query.bindValue(QStringLiteral(":address"), address);
         query.bindValue(QStringLiteral(":lat"), latitude); query.bindValue(QStringLiteral(":lng"), longitude);
         query.bindValue(QStringLiteral(":price"), price); query.bindValue(QStringLiteral(":id"), *stationId);
         if (!status.isEmpty()) query.bindValue(QStringLiteral(":status"), status);
+        if (hasProvince) query.bindValue(QStringLiteral(":province"), province);
+        if (hasCity) query.bindValue(QStringLiteral(":city"), city);
+        if (hasDistrict) query.bindValue(QStringLiteral(":district"), district);
         if (!query.exec() || query.numRowsAffected() != 1) return error(request, QStringLiteral("STATION_UPDATE_FAILED"), query.lastError().isValid() ? query.lastError().text() : QStringLiteral("电站不存在"));
         return success(request, {{QStringLiteral("id"), *stationId}});
     }
@@ -525,6 +560,10 @@ Message RequestRouter::route(const Message& request)
         QSqlQuery active(database_); active.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id AND o.status IN ('reserved','charging','awaiting_payment')")); active.bindValue(QStringLiteral(":id"),*stationId);
         if (!active.exec() || !active.next()) return storageError(request, QStringLiteral("附近站点查询"), active.lastError().text());
         if (active.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在进行中或待结算订单，不能删除"));
+        // 历史订单(已完成/已取消)同样通过外键阻止删除,这里预先给出明确原因,避免暴露原始数据库错误
+        QSqlQuery history(database_); history.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id")); history.bindValue(QStringLiteral(":id"),*stationId);
+        if (!history.exec() || !history.next()) return storageError(request, QStringLiteral("历史订单查询"), history.lastError().text());
+        if (history.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在历史订单记录，为保留订单数据不能删除"));
         QSqlQuery query(database_); query.prepare(QStringLiteral("DELETE FROM charging_stations WHERE id=:id"));query.bindValue(QStringLiteral(":id"),*stationId);
         if(!query.exec()||query.numRowsAffected()!=1)return error(request,QStringLiteral("STATION_DELETE_FAILED"),query.lastError().isValid()?query.lastError().text():QStringLiteral("电站不存在"));
         return success(request,{{QStringLiteral("id"),*stationId}});
@@ -964,7 +1003,8 @@ Message RequestRouter::route(const Message& request)
         }
         StationRepository stations(database_);
         const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
+        // 逻辑停用的电站对用户端不可见,计价信息同样不再对外提供(与 station.detail 口径一致)
+        if (!station || station->status == QStringLiteral("disabled")) {
             return error(request, QStringLiteral("STATION_NOT_FOUND"),
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }

@@ -28,6 +28,7 @@ export CHARGING_SERVER_PORT=45454
   （`start_minute`/`end_minute` 左闭右开、`period_type` 为 `peak|flat|valley`、`price_per_kwh`）
   以及 `rule`（`enabled`/`free_move_minutes`/`occupancy_fee_per_minute`/`occupancy_fee_cap`，
   未配置时为 `null`，`occupancy_fee_cap <= 0` 表示占位费不封顶）。
+  逻辑停用（disabled）的电站与 `station.detail` 口径一致，返回 `STATION_NOT_FOUND` 错误。
   该接口为新增类型，旧客户端不受影响；`order.stop` 计费仍使用站点固定电价。
 - `pile.list`：`payload.station_id` 为电站 ID；返回该站电桩列表。
 - `user.profile` / `user.profile.update`：查询或修改当前连接已登录用户资料。
@@ -94,9 +95,13 @@ export CHARGING_SERVER_PORT=45454
 - `admin.login`：管理员账号密码登录，开发环境默认 `admin / 123456`。
 - `admin.dashboard`：今日/本月/累计营收、已完成订单数(今日/累计)、平均订单金额、注册用户数、电桩状态分布、在线率、近7/30日营收趋势(缺数据日期补0,日期连续);`payload.days` 可选 7/30 指定趋势区间。营收与订单数口径均只统计 `completed` 订单。
 - `admin.station.list` / `admin.station.create`：电站查询(含已停用,带营业状态)和新增，并可批量初始化电桩。
+  电站对象自数据库版本 6 起携带行政区划字段 `province` / `city` / `district`(可为空串=未分区,
+  纯增量字段,旧客户端自然忽略);管理端据此在客户端做省→市→区三级筛选,服务端不做区域过滤。
 - `admin.station.update`：编辑电站资料;可选 `payload.status`(`active`/`disabled`)实现**逻辑停用/恢复营业**——
   停用后用户端不再展示该电站、其电桩不可预约(服务端在 `order.reserve` 兜底校验);
   历史订单与数据保留,可随时恢复。删除接口仍保留,有活动订单时拒绝。
+  行政区划 `province` / `city` / `district` 为**按键存在才更新**(允许置空表示未分区),
+  键缺省时保持原值;单字段长度上限 32,超长返回 `INVALID_ARGUMENT`。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
 - `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
   编号全局唯一，重复返回 `PILE_CREATE_FAILED`。

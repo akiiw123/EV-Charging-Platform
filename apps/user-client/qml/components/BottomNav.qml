@@ -6,15 +6,17 @@ Rectangle {
     id: nav
     property int currentIndex: 0
     signal selected(int index)
-    height: 76
+    height: 64
     color: Theme.surface
     border.width: 1
     border.color: Theme.border
 
     RowLayout {
-        anchors.fill: parent
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
+        // 宽窗口下内容列同样限制在手机宽度内,与页面列对齐
+        width: Math.min(parent.width, 480)
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height - 2
         spacing: 8
         Repeater {
             model: [
@@ -23,26 +25,24 @@ Rectangle {
                 { icon: "order", text: "订单" },
                 { icon: "person", text: "我的" }
             ]
-            delegate: Rectangle {
+            delegate: Item {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.fillHeight: true
-                Layout.margins: 7
-                radius: 14
-                color: nav.currentIndex === index ? Theme.primarySoft : "transparent"
                 Column {
                     anchors.centerIn: parent
                     spacing: 3
                     AppIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
+                        width: 18; height: 18
                         name: modelData.icon
-                        iconColor: nav.currentIndex === index ? Theme.primary : Theme.textMuted
+                        iconColor: nav.currentIndex === index ? Theme.primaryDark : Theme.textMuted
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: modelData.text
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                         font.bold: nav.currentIndex === index
-                        color: nav.currentIndex === index ? Theme.primaryDark : Theme.textMuted
+                        color: nav.currentIndex === index ? Theme.primary : Theme.textMuted
                     }
                 }
                 MouseArea {
@@ -50,7 +50,6 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: nav.selected(index)
                 }
-                Behavior on color { ColorAnimation { duration: 160 } }
             }
         }
     }

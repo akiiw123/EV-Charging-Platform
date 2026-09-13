@@ -29,7 +29,7 @@
 ## 4. 答辩前启动
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ctest --test-dir build/admin-qml2 --output-on-failure

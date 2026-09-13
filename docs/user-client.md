@@ -23,7 +23,7 @@ sudo apt install \
 在 VS Code Remote SSH 终端中执行：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ~~~
@@ -35,14 +35,14 @@ cmake --build build/admin-qml2 -j2
 先启动管理端和 TCP 服务：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 bash scripts/run-desktop.sh admin
 ~~~
 
 再打开一个 Ubuntu 图形桌面终端启动用户端：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 export CHARGING_SERVER_HOST=127.0.0.1
 export CHARGING_SERVER_PORT=45454
 export TENCENT_MAP_KEY=你的腾讯地图Key
@@ -54,10 +54,17 @@ bash scripts/run-desktop.sh user
 ## 代码结构
 
 - `qml/Main.qml`：应用窗口、页面路由、顶部栏、底部导航和全局反馈。
-- `qml/Theme.qml`：全局颜色、间距、圆角和字体规格。
+- `qml/Theme.qml`：设计令牌适配器——色板/状态色/圆角委托给共享设计系统 `Charging.UI`（与管理端同源），主题名对应：信号蓝=default、云白蓝=porcelain、翡翠绿=emerald。
 - `qml/components/`：按钮、卡片、状态徽标、站点卡片和底部导航。
 - `qml/pages/`：登录、首页、电站详情、充电、个人中心和地图页面。
 - `src/user_app_controller.*`：登录、站点、电桩、预约、充电、订单、钱包、定位和地图业务状态。
+- `src/main.cpp`：窗口映射前按屏幕可用区域设定几何（首选 440×820，小屏自动缩小并居中），并注册共享 `Charging.UI` 静态模块。
+
+## 窗口与屏幕适配
+
+- 首选窗口 440×820；屏幕放不下时按可用区域自动缩小（不低于 390×680 的可滚动布局），并居中显示。
+- 宽窗口下内容列锁定 480px 居中、两侧留背景，组件不做全宽拉伸；顶栏与底部导航的内容列与页面对齐。
+- 首页为整页滚动视图，小屏高度下所有站点卡片均可滚动到达；详情、订单、个人中心页自带滚动容器。
 
 ## 演示账号
 

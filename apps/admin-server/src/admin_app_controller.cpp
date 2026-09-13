@@ -15,6 +15,21 @@ bool containsCI(const QJsonObject& o, const QStringList& keys, const QString& ne
     for (const auto& key : keys) if (o.value(key).toVariant().toString().contains(needle, Qt::CaseInsensitive)) return true;
     return false;
 }
+// 三级区域筛选的"未分区"哨兵值:匹配区域字段为空的电站(旧数据/未填写)
+const QString kUnclassified = QStringLiteral("未分区");
+// selected 为空串表示该级不限制;为 kUnclassified 时匹配空字段
+bool regionLevelMatches(const QString& value, const QString& selected) {
+    if (selected.isEmpty()) return true;
+    if (selected == kUnclassified) return value.isEmpty();
+    return value == selected;
+}
+// 区域选项 = 数据中出现的去重值排序;不引入行政区划字典,保证没有死选项
+QStringList sortedUniqueRegions(QSet<QString> values) {
+    QStringList out;
+    for (const auto& value : values) if (!value.isEmpty()) out << value;
+    out.sort(Qt::CaseInsensitive);
+    return out;
+}
 }
 
 AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
@@ -27,6 +42,7 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
     animationsEnabled_ = settings_.value(QStringLiteral("appearance/animations"), true).toBool();
     fontScale_ = settings_.value(QStringLiteral("appearance/fontScale"), 1.0).toDouble();
     pageSize_ = settings_.value(QStringLiteral("table/pageSize"), 20).toInt();
+    recentStationIds_ = settings_.value(QStringLiteral("recent/stationIds")).toStringList();
     noticeTimer_.setSingleShot(true); noticeTimer_.setInterval(5000);
     connect(&noticeTimer_, &QTimer::timeout, this, &AdminAppController::clearNotice);
     requestTimer_.setSingleShot(true); requestTimer_.setInterval(15000);
@@ -59,7 +75,99 @@ AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
 }
 
 QString AdminAppController::displayTime(const QString& value) const { return charging::core::beijingTime(value); }
-void AdminAppController::setStationRegion(const QString& value) { stationRegion_ = value; applyClientFilters(); }
+void AdminAppController::setStationRegionFilter(const QString& province, const QString& city, const QString& district)
+{
+    if (stationProvince_ == province && stationCity_ == city && stationDistrict_ == district) return;
+    stationProvince_ = province; stationCity_ = city; stationDistrict_ = district;
+    applyClientFilters();
+}
+
+QStringList AdminAppController::stationProvinces() const
+{
+    QSet<QString> values;
+    bool hasUnclassified = false;
+    for (const auto& v : rawStations_) {
+        const QString value = v.toObject().value(QStringLiteral("province")).toString();
+        if (value.isEmpty()) hasUnclassified = true; else values.insert(value);
+    }
+    QStringList out = sortedUniqueRegions(values);
+    if (hasUnclassified) out << kUnclassified;
+    return out;
+}
+
+QStringList AdminAppController::stationCities(const QString& province) const
+{
+    QSet<QString> values;
+    bool hasUnclassified = false;
+    for (const auto& v : rawStations_) {
+        const auto o = v.toObject();
+        if (!regionLevelMatches(o.value(QStringLiteral("province")).toString(), province)) continue;
+        const QString value = o.value(QStringLiteral("city")).toString();
+        if (value.isEmpty()) hasUnclassified = true; else values.insert(value);
+    }
+    QStringList out = sortedUniqueRegions(values);
+    if (hasUnclassified) out << kUnclassified;
+    return out;
+}
+
+QStringList AdminAppController::stationDistricts(const QString& province, const QString& city) const
+{
+    QSet<QString> values;
+    bool hasUnclassified = false;
+    for (const auto& v : rawStations_) {
+        const auto o = v.toObject();
+        if (!regionLevelMatches(o.value(QStringLiteral("province")).toString(), province)) continue;
+        if (!regionLevelMatches(o.value(QStringLiteral("city")).toString(), city)) continue;
+        const QString value = o.value(QStringLiteral("district")).toString();
+        if (value.isEmpty()) hasUnclassified = true; else values.insert(value);
+    }
+    QStringList out = sortedUniqueRegions(values);
+    if (hasUnclassified) out << kUnclassified;
+    return out;
+}
+
+QVariantList AdminAppController::allStationSummaries() const
+{
+    QVariantList out;
+    for (const auto& v : rawStations_) {
+        const auto o = v.toObject();
+        out.append(QVariantMap{
+            {QStringLiteral("id"), o.value(QStringLiteral("id")).toVariant()},
+            {QStringLiteral("name"), o.value(QStringLiteral("name")).toString()},
+            {QStringLiteral("pile_count"), o.value(QStringLiteral("pile_count")).toInt()}});
+    }
+    return out;
+}
+
+QVariantList AdminAppController::recentStations() const
+{
+    QVariantList out;
+    for (const auto& idText : recentStationIds_) {
+        const qint64 id = idText.toLongLong();
+        for (const auto& v : rawStations_) {
+            const auto o = v.toObject();
+            if (o.value(QStringLiteral("id")).toVariant().toLongLong() != id) continue;
+            out.append(QVariantMap{
+                {QStringLiteral("id"), o.value(QStringLiteral("id")).toVariant()},
+                {QStringLiteral("name"), o.value(QStringLiteral("name")).toString()},
+                {QStringLiteral("pile_count"), o.value(QStringLiteral("pile_count")).toInt()}});
+            break;
+        }
+    }
+    return out;
+}
+
+void AdminAppController::noteStationManaged(qint64 stationId)
+{
+    if (stationId <= 0) return;
+    const QString idText = QString::number(stationId);
+    recentStationIds_.removeAll(idText);
+    recentStationIds_.prepend(idText);
+    while (recentStationIds_.size() > 5) recentStationIds_.removeLast();
+    settings_.setValue(QStringLiteral("recent/stationIds"), recentStationIds_);
+}
+
+void AdminAppController::notify(const QString& text, const QString& kind) { showNotice(text, kind); }
 void AdminAppController::request(const QString& type, const QJsonObject& payload) {
     if (!api_.isConnected()) { connectionNotice_ = true; showNotice(QStringLiteral("正在连接服务，请稍后重试"), QStringLiteral("info")); return; }
     if (!loggedIn_ && type != QStringLiteral("admin.login")) return;
@@ -86,7 +194,17 @@ void AdminAppController::refreshDashboard(int days)
     request(QStringLiteral("admin.dashboard"), {{QStringLiteral("days"), days}});
 }
 void AdminAppController::refreshStations(const QString& q){ stationQuery_=q; applyClientFilters(); request(QStringLiteral("admin.station.list")); }
-void AdminAppController::refreshPiles(const QString& q,const QString& station,const QString& type,const QString& status){pileQuery_=q;pileStation_=station;pileType_=type;pileState_=status;applyClientFilters();request(QStringLiteral("admin.pile.list"));}
+void AdminAppController::refreshPiles(const QString& q, const QVariantList& stationIds, const QString& type, const QString& status)
+{
+    pileQuery_ = q;
+    pileStationIds_.clear();
+    for (const auto& value : stationIds) pileStationIds_.insert(value.toLongLong());
+    // 单站筛选视为一次明确的"管理该站"动作,记入最近管理;多选时不推断意图
+    if (pileStationIds_.size() == 1) noteStationManaged(*pileStationIds_.constBegin());
+    pileType_ = type; pileState_ = status;
+    applyClientFilters();
+    request(QStringLiteral("admin.pile.list"));
+}
 void AdminAppController::refreshOrders(const QString& q,const QString& status){orderQuery_=q;orderState_=status;applyClientFilters();request(QStringLiteral("admin.order.list"));}
 void AdminAppController::refreshUsers(const QString& q,const QString& status){userQuery_=q;userState_=status;request(QStringLiteral("admin.user.list"),{{"phone",q}});}
 void AdminAppController::createStation(const QVariantMap& f){request(QStringLiteral("admin.station.create"),QJsonObject::fromVariantMap(f));}
@@ -96,12 +214,12 @@ void AdminAppController::restartPile(qint64 id){request(QStringLiteral("admin.pi
 void AdminAppController::createPile(const QVariantMap& f){request(QStringLiteral("admin.pile.create"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::updatePile(const QVariantMap& f){request(QStringLiteral("admin.pile.update"),QJsonObject::fromVariantMap(f));}
 void AdminAppController::setPileStatus(qint64 id,const QString& status){request(QStringLiteral("admin.pile.status"),{{"pile_id",id},{"status",status}});}
-QVariantList AdminAppController::pilesOfStation(const QString& stationName) const
+QVariantList AdminAppController::pilesOfStationId(qint64 stationId) const
 {
     QVariantList out;
     for (const auto& v : rawPiles_) {
         const auto o = v.toObject();
-        if (o.value(QStringLiteral("station_name")).toString() == stationName)
+        if (o.value(QStringLiteral("station_id")).toVariant().toLongLong() == stationId)
             out.append(o.toVariantMap());
     }
     return out;
@@ -139,12 +257,23 @@ void AdminAppController::handleResponse(const charging::core::Message& m){
     else if(m.type=="admin.pile.update.ok"){showNotice(QStringLiteral("电桩信息已更新"));rawPiles_={};request("admin.pile.list");return;}
     else if(m.type=="admin.pile.status.ok"){showNotice(QStringLiteral("电桩状态已更新"));rawPiles_={};request("admin.pile.list");refreshDashboard();return;}
     else if(m.type=="admin.user.status.ok"){showNotice(QStringLiteral("用户状态已更新"));request("admin.user.list",{{"phone",userQuery_}});return;}
+    const bool stationsRefreshed = m.type == QStringLiteral("admin.station.list.ok");
     applyClientFilters();
+    // 电桩页"所属电站"下拉等依赖电站原始数据,变化时通知 QML 重新拉取
+    if (stationsRefreshed) emit stationDataChanged();
 }
 
 void AdminAppController::applyClientFilters(){QJsonArray out;
-    for(const auto&v:rawStations_){auto o=v.toObject();if(containsCI(o,{"name","address"},stationQuery_) && containsCI(o,{"address","name"},stationRegion_))out.append(o);}stations_.setJson(out);out={};
-    for(const auto&v:rawPiles_){auto o=v.toObject();if(!containsCI(o,{"code"},pileQuery_))continue;if(!pileStation_.isEmpty()&&o.value("station_name").toString()!=pileStation_)continue;if(!pileType_.isEmpty()&&o.value("type").toString()!=pileType_)continue;if(!pileState_.isEmpty()&&o.value("status").toString()!=pileState_)continue;out.append(o);}piles_.setJson(out);out={};
+    for(const auto&v:rawStations_){auto o=v.toObject();
+        if(!containsCI(o,{"name","address"},stationQuery_))continue;
+        // 行政区划按字段精确匹配,替代旧的地址子串猜测式过滤
+        if(!regionLevelMatches(o.value("province").toString(),stationProvince_))continue;
+        if(!regionLevelMatches(o.value("city").toString(),stationCity_))continue;
+        if(!regionLevelMatches(o.value("district").toString(),stationDistrict_))continue;
+        out.append(o);}stations_.setJson(out);out={};
+    for(const auto&v:rawPiles_){auto o=v.toObject();if(!containsCI(o,{"code"},pileQuery_))continue;
+        if(!pileStationIds_.isEmpty()&&!pileStationIds_.contains(o.value("station_id").toVariant().toLongLong()))continue;
+        if(!pileType_.isEmpty()&&o.value("type").toString()!=pileType_)continue;if(!pileState_.isEmpty()&&o.value("status").toString()!=pileState_)continue;out.append(o);}piles_.setJson(out);out={};
     for(const auto&v:rawOrders_){auto o=v.toObject();if(!containsCI(o,{"order_no","phone","pile_code","station_name"},orderQuery_))continue;if(!orderState_.isEmpty()&&o.value("status").toString()!=orderState_)continue;out.append(o);}orders_.setJson(out);out={};
     for(const auto&v:rawUsers_){auto o=v.toObject();if(!containsCI(o,{"phone"},userQuery_))continue;if(!userState_.isEmpty()&&o.value("status").toString()!=userState_)continue;out.append(o);}users_.setJson(out);
 }
