@@ -4,7 +4,7 @@
 import argparse
 import json
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -74,6 +74,36 @@ def query_dashboard(database_path: Path) -> dict:
         }
 
 
+def query_map(database_path: Path) -> dict:
+    # 全国灯点地图数据:站点经纬度 + 桩级状态,只读查询
+    with sqlite3.connect(database_path, timeout=5) as connection:
+        connection.row_factory = sqlite3.Row
+        stations = []
+        for row in connection.execute(
+            "SELECT id,name,province,city,longitude,latitude FROM charging_stations ORDER BY id"
+        ):
+            piles = [
+                {"id": pile["id"], "code": pile["code"], "power_kw": pile["power_kw"],
+                 "status": pile["status"]}
+                for pile in connection.execute(
+                    """SELECT id,code,power_kw,status FROM charging_piles
+                    WHERE station_id=? ORDER BY id""",
+                    (row["id"],),
+                )
+            ]
+            stations.append({
+                "id": row["id"], "name": row["name"],
+                "province": row["province"], "city": row["city"],
+                "longitude": row["longitude"], "latitude": row["latitude"],
+                "piles": piles,
+            })
+        return {
+            "source": "database",
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "stations": stations,
+        }
+
+
 class DashboardHandler(SimpleHTTPRequestHandler):
     database_path: Path
 
@@ -87,9 +117,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if urlparse(self.path).path == "/api/dashboard":
+        path = urlparse(self.path).path
+        if path == "/api/dashboard":
             try:
                 self.send_json(query_dashboard(self.database_path))
+            except (sqlite3.Error, OSError) as error:
+                self.send_json({"error": str(error)}, 500)
+            return
+        if path == "/api/map":
+            try:
+                self.send_json(query_map(self.database_path))
             except (sqlite3.Error, OSError) as error:
                 self.send_json({"error": str(error)}, 500)
             return
