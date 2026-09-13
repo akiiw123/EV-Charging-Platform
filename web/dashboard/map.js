@@ -136,20 +136,30 @@ function normalizeStation(raw) {
   };
 }
 
-/* 同坐标或极近的多座站,展示时按固定序号微小平移避免完全重叠(只影响绘制,不影响数据) */
-function spreadDuplicates(stations) {
-  const groups = {};
-  stations.forEach(station => {
-    const key = station.longitude.toFixed(3) + ',' + station.latitude.toFixed(3);
-    (groups[key] = groups[key] || []).push(station);
-  });
-  Object.keys(groups).forEach(key => {
-    const group = groups[key];
+/* 近邻站点(间距 < minSep 度)按簇错位:簇内成员均匀摆到质心周围的小圆上,
+   保证彼此间距 ≥ minSep,让每座站拥有自己的轨道环;只影响绘制,不影响数据 */
+function spreadNearby(stations, minSep = 0.06) {
+  const parent = stations.map((_, i) => i);
+  const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < stations.length; i++) {
+    for (let j = i + 1; j < stations.length; j++) {
+      const d = Math.hypot(stations[i].longitude - stations[j].longitude,
+                           stations[i].latitude - stations[j].latitude);
+      if (d < minSep) parent[find(i)] = find(j);
+    }
+  }
+  const clusters = {};
+  stations.forEach((s, i) => (clusters[find(i)] = clusters[find(i)] || []).push(s));
+  Object.values(clusters).forEach(group => {
     if (group.length < 2) return;
-    group.forEach((station, index) => {
-      const angle = (2 * Math.PI * index) / group.length;
-      station.longitude += 0.06 * Math.cos(angle);
-      station.latitude += 0.06 * Math.sin(angle);
+    const cx = group.reduce((sum, s) => sum + s.longitude, 0) / group.length;
+    const cy = group.reduce((sum, s) => sum + s.latitude, 0) / group.length;
+    // 圆半径按成员数收紧:相邻成员间距恰好 ≥ minSep
+    const r = Math.max(0.03, minSep / (2 * Math.sin(Math.PI / group.length)));
+    group.forEach((s, i) => {
+      const a = (2 * Math.PI * i) / group.length - Math.PI / 2;
+      s.longitude = cx + r * Math.cos(a);
+      s.latitude = cy + r * Math.sin(a);
     });
   });
   return stations;
@@ -165,7 +175,7 @@ async function loadData() {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const payload = await response.json();
     if (!Array.isArray(payload.stations)) throw new Error('数据结构不符');
-    state.stations = spreadDuplicates(payload.stations.map(normalizeStation));
+    state.stations = spreadNearby(payload.stations.map(normalizeStation));
     state.source = 'database';
   } catch (error) {
     // 首次失败且从无数据 → 纯演示模式;已有数据 → 保留上次数据并标注接口暂不可用
@@ -200,12 +210,23 @@ function buildOption(theme) {
   fxPoints = [];                 // 星辉层点位缓存(经纬度 + 稳定相位)
   fxOrbits = [];                 // 电子轨道缓存:每站一条,由 fx 层用 Canvas 绘制
 
+  // 轨道半径自适应:取与最近邻站距离的 45%(0.025~0.12°),紧邻站环线相切不穿插,
+  // 独立站保持大环;配合 spreadNearby 的簇内错位,保证"电桩环绕自己的电站"
+  const nearestOf = station => {
+    let best = Infinity;
+    allStations.forEach(other => {
+      if (other === station) return;
+      const d = Math.hypot(other.longitude - station.longitude,
+                           (other.latitude - station.latitude) * 0.8);
+      if (d < best) best = d;
+    });
+    return best;
+  };
   allStations.forEach(station => {
-    // 轨道半径三档(按站 ID 稳定派生):相邻多站时呈同心电子壳层,环线互不穿插
     const seed = String(station.id);
     let shash = 0;
     for (let i = 0; i < seed.length; i++) shash = (shash * 31 + seed.charCodeAt(i)) >>> 0;
-    const orbitR = 0.09 + (shash % 3) * 0.025;
+    const orbitR = Math.min(0.12, Math.max(0.025, nearestOf(station) * 0.45));
     station.piles.forEach((pile, index) => {
       const coord = pileCoord(station, index, station.piles.length, orbitR);
       pilePoints.push({
