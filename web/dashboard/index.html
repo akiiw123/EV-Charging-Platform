@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>充电网络 · 运营大屏</title>
+  <title>VoltFlow 智充 · 运营大屏</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
   <!-- ECharts 本地化:离线环境(无外网)也能正常渲染 -->
@@ -23,11 +23,8 @@
 
   <header class="topbar">
     <div class="brand">
-      <!-- TODO: 替换为真实的"电流" Logo SVG;当前为占位折线,保留了通电描边动画 -->
-      <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true">
-        <path class="logo-path" d="M2 12 h8 l4 -8 l6 16 l4 -8 h8"/>
-      </svg>
-      <span>充电网络 · 运营大屏</span>
+      <img class="logo" src="assets/voltflow-logo.png" alt="VoltFlow">
+      <span>VoltFlow 智充 · 运营大屏</span>
     </div>
     <span id="clock"></span>
     <nav class="modes" aria-label="主题模式">
@@ -45,18 +42,18 @@
   </section>
 
   <aside class="hud" id="hud-left">
-    <article>
+    <article class="grow" style="flex:1.15 0 auto">
       <h2>营收趋势
         <span class="range-toggle">
           <button id="range7" class="on">近 7 日</button>
           <button id="range30">近 30 日</button>
         </span>
       </h2>
-      <div id="revenue" class="chart"></div>
+      <div id="revenue" class="chart fill"></div>
     </article>
-    <article>
+    <article class="grow" style="flex:1 0 auto">
       <h2>近 7 日充电时段分布</h2>
-      <div id="hourly" class="chart"></div>
+      <div id="hourly" class="chart fill"></div>
     </article>
   </aside>
 

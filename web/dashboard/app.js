@@ -38,11 +38,12 @@ function renderDashboard(data) {
   // 近 7 日充电时段分布:24 小时柱状
   hourlyChart.setOption({
     tooltip: { trigger:'axis', ...tooltipTheme(t) },
+    grid: { left:6, right:14, top:14, bottom:4, containLabel:true },
     xAxis: { type:'category',
              data:[...Array(24).keys()].map(h => `${String(h).padStart(2, '0')}:00`),
-             axisLabel:{ color:t.muted, interval:3 },
+             axisLabel:{ color:t.muted, fontSize:10, interval:3, hideOverlap:true },
              axisLine:{ lineStyle:{ color:t.border } } },
-    yAxis: { type:'value', axisLabel:{ color:t.muted },
+    yAxis: { type:'value', splitNumber:3, axisLabel:{ color:t.muted, fontSize:10 },
              splitLine:{ lineStyle:{ color:t.border } } },
     series: [{ type:'bar', data:data.hourly_orders,
                itemStyle:{ color:t.glow, opacity:.85, borderRadius:[3, 3, 0, 0] } }]
@@ -52,12 +53,16 @@ function renderDashboard(data) {
   const trend = data.revenue_trend.slice(-trendRange);
   revenue.setOption({
     tooltip: { trigger:'axis', ...tooltipTheme(t) },
+    grid: { left:6, right:18, top:14, bottom:4, containLabel:true },
     xAxis: { type:'category', data:trend.map(x => x.date),
-             axisLabel:{ color:t.muted }, axisLine:{ lineStyle:{ color:t.border } } },
-    yAxis: { type:'value', axisLabel:{ color:t.muted },
+             axisLabel:{ color:t.muted, fontSize:10, hideOverlap:true,
+                         formatter: value => (value || '').slice(5) },
+             axisLine:{ lineStyle:{ color:t.border } } },
+    yAxis: { type:'value', splitNumber:3, axisLabel:{ color:t.muted, fontSize:10 },
              splitLine:{ lineStyle:{ color:t.border } } },
     series: [{ type:'line', smooth:true, data:trend.map(x => x.amount),
                itemStyle:{ color:t.glow }, lineStyle:{ color:t.glow },
+               symbolSize:5,
                areaStyle:{ color:t.glow, opacity:.25 } }]
   }, true);
 
@@ -66,7 +71,7 @@ function renderDashboard(data) {
     tooltip: { trigger:'item', ...tooltipTheme(t) },
     legend: { bottom:0, textStyle:{ color:t.muted, fontSize:11 },
               itemWidth:10, itemHeight:10 },
-    series: [{ type:'pie', radius:['45%', '66%'], center:['50%', '40%'],
+    series: [{ type:'pie', radius:['34%', '54%'], center:['50%', '44%'],
                label:{ show:false },
                data:Object.entries(data.pile_status).map(([key, value]) => ({
                  name:STATUS_NAMES[key] || key, value,

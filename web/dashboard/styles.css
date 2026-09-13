@@ -20,11 +20,7 @@ body {
 .topbar > * { pointer-events:auto; }
 .brand { display:flex; align-items:center; gap:10px; font-size:17px;
   font-weight:600; letter-spacing:1px; }
-.brand svg { display:block; }
-.brand .logo-path { stroke:var(--glow); fill:none; stroke-width:2.5; stroke-linecap:round;
-  stroke-linejoin:round; stroke-dasharray:120; stroke-dashoffset:120;
-  animation:power-on 1s ease-out .2s forwards; }
-@keyframes power-on { to { stroke-dashoffset:0; } }
+.brand img.logo { display:block; width:36px; height:auto; border-radius:9px; }
 #clock { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--muted); }
 .modes { display:flex; gap:6px; }
 .modes button { padding:4px 12px; cursor:pointer; border:1px solid var(--border);
@@ -73,14 +69,15 @@ body {
 .hud article { pointer-events:auto; flex:none; padding:12px 14px;
   border:1px solid var(--border); border-radius:12px;
   background:var(--panel-strong); overflow:hidden; transition:background 1s; }
-.hud article.grow { flex:1 0 auto; }
+.hud article.grow { flex:1 0 auto; position:relative; min-height:150px; }
 .hud h2 { margin:0 0 6px; font-size:14px; font-weight:600; }
 .hud .chart { height:150px; }
-#status { height:170px; }
-#hourly { height:140px; }
+.hud .chart.fill { position:absolute; left:14px; right:14px; top:36px; bottom:10px;
+  height:auto; }
+#status { height:236px; }
 @media (max-height:820px) {
   .hud { top:118px; }
-  .hud .chart, #status, #hourly { height:124px; }
+  .hud .chart, #status { height:124px; }
 }
 
 /* 趋势区间切换 / 站点排行 */
@@ -91,6 +88,9 @@ body {
 .range-toggle button.on { background:var(--glow); border-color:var(--glow);
   color:var(--bg); font-weight:600; }
 .ranking { list-style:none; margin:6px 0 0; padding:0; }
+/* 排行面板撑满剩余高度时,各行均匀分布,不留底部空白 */
+.hud article.grow .ranking { height:calc(100% - 34px);
+  display:flex; flex-direction:column; justify-content:space-evenly; }
 .ranking li { display:flex; align-items:baseline; gap:8px; padding:6px 2px;
   border-bottom:1px dashed var(--border); font-size:12px; }
 .ranking li:last-child { border-bottom:none; }
