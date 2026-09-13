@@ -56,6 +56,17 @@ Item {
                 onClicked: appController.locate(search.text)
             }
         }
+        // 未配置腾讯地图 Key 时地理编码不可用,定位为演示模式(内置城市白名单),
+        // 界面上明确标注,不把演示能力伪装成真实定位
+        Text {
+            Layout.fillWidth: true; Layout.minimumWidth: 0
+            visible: !appController.mapKeyConfigured
+            text: "未配置地图 Key：当前为演示定位，仅支持内置城市（"
+                  + appController.presetCities().join(" / ") + "），其余地址将回退默认位置"
+            color: Theme.textMuted
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+        }
         RowLayout {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             AppField {

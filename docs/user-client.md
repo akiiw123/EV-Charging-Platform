@@ -123,8 +123,9 @@ bash scripts/run-desktop.sh user
   估算与结算在分钟粒度上可能有分位级差异。
 - 预约倒计时的 15 分钟超时窗口为客户端与服务端共享的常量（`kReservationTimeoutMinutes`），
   两侧需同步修改；倒计时按本机时钟计算，修改系统时间会影响显示。
-- 未配置 `TENCENT_MAP_KEY` 时，定位仅支持内置预设城市白名单，其余地址回退默认位置；
-  地图导航使用腾讯 URI 接口，在桌面 WebEngineView 中的实际呈现需带 Key 人工验证。
+- 未配置 `TENCENT_MAP_KEY` 时，地理编码不可用，定位为演示模式：仅支持内置预设城市白名单，
+  其余地址回退默认位置，首页会明确显示“演示定位”提示；地图导航使用腾讯 URI 接口，
+  在桌面 WebEngineView 中的实际呈现需带 Key 人工验证。
 - `station.detail` 服务端接口暂无调用方（详情页使用 `station.list` + `pile.list` 组装），保留待后续统一。
 
 ## 自动验证
