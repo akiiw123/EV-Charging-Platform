@@ -42,7 +42,7 @@
 ## 构建
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ```
@@ -54,7 +54,7 @@ cmake --build build/admin-qml2 -j2
 在 VMware 的 Ubuntu 图形桌面终端运行：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 bash scripts/run-desktop.sh admin
 ```
 
@@ -71,7 +71,7 @@ VS Code Remote SSH 终端通常没有图形显示连接。如果 `/tmp/.X11-unix
 预测服务由队友的 `ml/service.py` 提供：
 
 ```bash
-cd /home/bit/charging-platform/ml
+cd /home/bit/EV-Charging-Platform/ml
 python3 service.py --data-dir ./data --artifacts ./artifacts --port 8090
 ```
 

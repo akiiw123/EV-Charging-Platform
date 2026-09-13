@@ -23,7 +23,7 @@ sudo apt install \
 在 VS Code Remote SSH 终端中执行：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ~~~
@@ -35,14 +35,14 @@ cmake --build build/admin-qml2 -j2
 先启动管理端和 TCP 服务：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 bash scripts/run-desktop.sh admin
 ~~~
 
 再打开一个 Ubuntu 图形桌面终端启动用户端：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 export CHARGING_SERVER_HOST=127.0.0.1
 export CHARGING_SERVER_PORT=45454
 export TENCENT_MAP_KEY=你的腾讯地图Key

@@ -5,7 +5,7 @@
 先在项目根目录启动或运行一次管理端，使 `charging_platform.db` 存在，然后执行：
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 python3 web/dashboard/server.py --database charging_platform.db --host 0.0.0.0 --port 8080
 ```
 
