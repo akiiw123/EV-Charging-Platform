@@ -1,6 +1,7 @@
 #include "charging/core/database_manager.h"
 
 #include <QFile>
+#include <QPair>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -75,6 +76,8 @@ bool DatabaseManager::initialize(QString* errorMessage)
 // 幂等迁移:schema.sql 不能写 ALTER TABLE(对已有库重跑会因重复加列而中止
 // 整个初始化),因此结构性变更在这里用代码执行——按 PRAGMA 检查缺列才补。
 // 版本 5(2026-09):charging_stations 增加营业状态 status 列。
+// 版本 6(2026-09):charging_stations 增加行政区划 province/city/district 列
+// (管理端三级区域筛选数据源;空串表示未分区,不回填已有管理员的修改)。
 bool DatabaseManager::migrate(QString* errorMessage)
 {
     QSqlQuery pragma(database_);
@@ -84,25 +87,31 @@ bool DatabaseManager::migrate(QString* errorMessage)
         }
         return false;
     }
-    bool hasStatus = false;
+    QStringList existingColumns;
     while (pragma.next()) {
-        if (pragma.value(1).toString() == QStringLiteral("status")) {
-            hasStatus = true;
-            break;
-        }
+        existingColumns << pragma.value(1).toString();
     }
-    if (hasStatus) {
-        return true;
-    }
-    QSqlQuery alter(database_);
-    if (!alter.exec(QStringLiteral(
-            "ALTER TABLE charging_stations ADD COLUMN "
-            "status TEXT NOT NULL DEFAULT 'active' "
-            "CHECK(status IN ('active','disabled'))"))) {
-        if (errorMessage) {
-            *errorMessage = alter.lastError().text();
+    // 待补列定义:与 schema.sql 中 CREATE TABLE 保持一致
+    const QList<QPair<QString, QString>> pendingColumns = {
+        {QStringLiteral("status"),
+         QStringLiteral("TEXT NOT NULL DEFAULT 'active' "
+                        "CHECK(status IN ('active','disabled'))")},
+        {QStringLiteral("province"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("city"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("district"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+    };
+    for (const auto& [column, definition] : pendingColumns) {
+        if (existingColumns.contains(column)) {
+            continue;
         }
-        return false;
+        QSqlQuery alter(database_);
+        if (!alter.exec(QStringLiteral("ALTER TABLE charging_stations ADD COLUMN %1 %2")
+                            .arg(column, definition))) {
+            if (errorMessage) {
+                *errorMessage = alter.lastError().text();
+            }
+            return false;
+        }
     }
     return true;
 }

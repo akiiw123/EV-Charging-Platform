@@ -205,6 +205,12 @@ SELECT count(*) FROM charging_pricing_periods;"
 两者都是幂等的（`CREATE TABLE IF NOT EXISTS` / `INSERT OR IGNORE`），
 所以**恢复到旧版本的库后再启动，会自动补齐缺失的表和演示数据**，不需要手工迁移。
 
+结构性变更（加列）由 `DatabaseManager::migrate()` 按 `PRAGMA table_info` 幂等补齐：
+版本 5 增加 `charging_stations.status` 营业状态列；版本 6（2026-09）增加
+`charging_stations.province` / `city` / `district` 行政区划列（管理端三级区域筛选数据源，
+空串表示未分区）。存量行区域为空串，`database/seed.sql` 中的区域回填语句仅在区域为空时生效，
+不会覆盖管理员后续在“编辑电站”中维护的值。
+
 ## 4. 损坏检查
 
 ### 4.1 两项检查缺一不可

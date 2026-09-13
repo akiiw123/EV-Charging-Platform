@@ -41,6 +41,13 @@ QDateTime dateTime(const QVariant& value)
     return {};
 }
 
+// 区域字段允许空串(未分区)但不允许 NULL:默认构造的 null QString 会被
+// SQL 驱动绑定为 NULL,违反 NOT NULL DEFAULT '' 约束,绑定前统一规范化
+QString regionOrEmpty(const QString& value)
+{
+    return value.isNull() ? QStringLiteral("") : value.trimmed();
+}
+
 User readUser(const QSqlQuery& query)
 {
     return {query.value(QStringLiteral("id")).toLongLong(),
@@ -66,6 +73,9 @@ ChargingStation readStation(const QSqlQuery& query)
     return {query.value(QStringLiteral("id")).toLongLong(),
             query.value(QStringLiteral("name")).toString(),
             query.value(QStringLiteral("address")).toString(),
+            query.value(QStringLiteral("province")).toString(),
+            query.value(QStringLiteral("city")).toString(),
+            query.value(QStringLiteral("district")).toString(),
             query.value(QStringLiteral("latitude")).toDouble(),
             query.value(QStringLiteral("longitude")).toDouble(),
             query.value(QStringLiteral("price_per_kwh")).toDouble(),
@@ -413,10 +423,14 @@ std::optional<ChargingStation> StationRepository::create(const ChargingStation& 
     }
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
-        "INSERT INTO charging_stations(name,address,latitude,longitude,price_per_kwh) "
-        "VALUES(:name,:address,:latitude,:longitude,:price)"));
+        "INSERT INTO charging_stations(name,address,province,city,district,"
+        "latitude,longitude,price_per_kwh) "
+        "VALUES(:name,:address,:province,:city,:district,:latitude,:longitude,:price)"));
     query.bindValue(QStringLiteral(":name"), station.name.trimmed());
     query.bindValue(QStringLiteral(":address"), station.address.trimmed());
+    query.bindValue(QStringLiteral(":province"), regionOrEmpty(station.province));
+    query.bindValue(QStringLiteral(":city"), regionOrEmpty(station.city));
+    query.bindValue(QStringLiteral(":district"), regionOrEmpty(station.district));
     query.bindValue(QStringLiteral(":latitude"), station.latitude);
     query.bindValue(QStringLiteral(":longitude"), station.longitude);
     query.bindValue(QStringLiteral(":price"), station.pricePerKwh);

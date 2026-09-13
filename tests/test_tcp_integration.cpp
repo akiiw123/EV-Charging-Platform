@@ -306,16 +306,42 @@ private slots:
                                          .payload.value(QStringLiteral("piles")).toArray().size();
         const auto created = exchange(socket, {QStringLiteral("station-create"), QStringLiteral("admin.station.create"),
             {{QStringLiteral("name"), QStringLiteral("测试新站")}, {QStringLiteral("address"), QStringLiteral("测试路1号")},
+             {QStringLiteral("province"), QStringLiteral("北京市")}, {QStringLiteral("city"), QStringLiteral("北京市")},
+             {QStringLiteral("district"), QStringLiteral("海淀区")},
              {QStringLiteral("latitude"), 41.8}, {QStringLiteral("longitude"), 123.4},
              {QStringLiteral("price_per_kwh"), 1.5}, {QStringLiteral("pile_count"), 2}}});
         QCOMPARE(created.type, QStringLiteral("admin.station.create.ok"));
         const qint64 stationId = created.payload.value(QStringLiteral("station")).toObject()
                                      .value(QStringLiteral("id")).toInteger();
+        // 行政区划键存在才更新:此处只改 district,省/市保持原值
         QCOMPARE(exchange(socket, {QStringLiteral("station-update"), QStringLiteral("admin.station.update"),
             {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("测试新站（已编辑）")},
              {QStringLiteral("address"), QStringLiteral("测试路2号")}, {QStringLiteral("latitude"), 41.81},
-             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6}}}).type,
+             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6},
+             {QStringLiteral("province"), QStringLiteral("北京市")}, {QStringLiteral("city"), QStringLiteral("北京市")},
+             {QStringLiteral("district"), QStringLiteral("朝阳区")}}}).type,
                  QStringLiteral("admin.station.update.ok"));
+        // 超长区域名应被拒绝,防止脏数据污染级联筛选选项
+        QCOMPARE(exchange(socket, {QStringLiteral("station-region-too-long"), QStringLiteral("admin.station.update"),
+            {{QStringLiteral("id"), stationId}, {QStringLiteral("name"), QStringLiteral("测试新站（已编辑）")},
+             {QStringLiteral("address"), QStringLiteral("测试路2号")}, {QStringLiteral("latitude"), 41.81},
+             {QStringLiteral("longitude"), 123.41}, {QStringLiteral("price_per_kwh"), 1.6},
+             {QStringLiteral("province"), QString(33, QLatin1Char('省'))}}}).type,
+                 QStringLiteral("admin.station.update.error"));
+        // 列表序列化应携带省市区,且 district 反映部分更新后的值
+        const auto stationsAfter = exchange(socket, {QStringLiteral("stations-list"), QStringLiteral("admin.station.list"), {}});
+        QCOMPARE(stationsAfter.type, QStringLiteral("admin.station.list.ok"));
+        QJsonObject editedStation;
+        const auto stationRows = stationsAfter.payload.value(QStringLiteral("stations")).toArray();
+        for (const auto& row : stationRows) {
+            if (row.toObject().value(QStringLiteral("id")).toInteger() == stationId) {
+                editedStation = row.toObject();
+                break;
+            }
+        }
+        QCOMPARE(editedStation.value(QStringLiteral("province")).toString(), QStringLiteral("北京市"));
+        QCOMPARE(editedStation.value(QStringLiteral("city")).toString(), QStringLiteral("北京市"));
+        QCOMPARE(editedStation.value(QStringLiteral("district")).toString(), QStringLiteral("朝阳区"));
         const auto piles = exchange(socket, {QStringLiteral("piles"), QStringLiteral("admin.pile.list"), {}});
         QCOMPARE(piles.type, QStringLiteral("admin.pile.list.ok"));
         QCOMPARE(piles.payload.value(QStringLiteral("piles")).toArray().size(), initialPileCount + 2);
