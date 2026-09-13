@@ -140,8 +140,10 @@ Item {
                         ColumnLayout {
                             Text {
                                 Layout.alignment: Qt.AlignRight
+                                // 应付合计 = 电费 amount + 占位费明细 occupancy_fee
                                 text: "￥"
-                                      + Number(appController.activeOrder.amount || 0).toFixed(2)
+                                      + Number((appController.activeOrder.amount || 0)
+                                               + (appController.activeOrder.occupancy_fee || 0)).toFixed(2)
                                 color: Theme.primaryDark
                                 font.pixelSize: 18
                                 font.bold: true
@@ -149,7 +151,9 @@ Item {
 
                             Text {
                                 Layout.alignment: Qt.AlignRight
-                                text: "当前费用"
+                                text: Number(appController.activeOrder.occupancy_fee || 0) > 0
+                                      ? "当前费用(含占位费 ￥" + Number(appController.activeOrder.occupancy_fee).toFixed(2) + ")"
+                                      : "当前费用"
                                 color: Theme.textMuted
                                 font.pixelSize: 11
                             }
@@ -260,9 +264,13 @@ Item {
                             }
 
                             Text {
-                                text: "￥" + Number(modelData.amount || 0).toFixed(2)
+                                // 有占位费明细时一并展示:应付合计 = 电费 + 占位费
+                                text: Number(modelData.occupancy_fee || 0) > 0
+                                      ? "￥" + Number(modelData.amount || 0).toFixed(2)
+                                        + "（含占位 ￥" + Number(modelData.occupancy_fee).toFixed(2) + "）"
+                                      : "￥" + Number(modelData.amount || 0).toFixed(2)
                                 color: Theme.primaryDark
-                                font.pixelSize: 17
+                                font.pixelSize: 15
                                 font.bold: true
                             }
                         }
@@ -270,33 +278,14 @@ Item {
                 }
             }
 
-            // 没有历史订单时显示
-            ColumnLayout {
+            // 没有历史订单时显示统一的空状态
+            EmptyState {
                 Layout.fillWidth: true; Layout.minimumWidth: 0
-                Layout.topMargin: 30
+                Layout.topMargin: 12
                 visible: appController.history.length === 0
-                spacing: 8
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "○"
-                    color: Theme.textMuted
-                    font.pixelSize: 34
-                }
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "暂无订单记录"
-                    color: Theme.textMuted
-                    font.pixelSize: 14
-                }
-
-                Text {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "完成一次充电后，订单会显示在这里"
-                    color: Theme.textMuted
-                    font.pixelSize: 11
-                }
+                icon: "order"
+                title: "暂无订单记录"
+                hint: "完成一次充电后，订单会显示在这里"
             }
 
             Item {

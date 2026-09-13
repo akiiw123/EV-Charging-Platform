@@ -23,7 +23,7 @@ sudo apt install \
 在 VS Code Remote SSH 终端中执行：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ~~~
@@ -35,14 +35,14 @@ cmake --build build/admin-qml2 -j2
 先启动管理端和 TCP 服务：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 bash scripts/run-desktop.sh admin
 ~~~
 
 再打开一个 Ubuntu 图形桌面终端启动用户端：
 
 ~~~bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 export CHARGING_SERVER_HOST=127.0.0.1
 export CHARGING_SERVER_PORT=45454
 export TENCENT_MAP_KEY=你的腾讯地图Key
@@ -54,10 +54,17 @@ bash scripts/run-desktop.sh user
 ## 代码结构
 
 - `qml/Main.qml`：应用窗口、页面路由、顶部栏、底部导航和全局反馈。
-- `qml/Theme.qml`：全局颜色、间距、圆角和字体规格。
+- `qml/Theme.qml`：设计令牌适配器——色板/状态色/圆角委托给共享设计系统 `Charging.UI`（与管理端同源），主题名对应：信号蓝=default、云白蓝=porcelain、翡翠绿=emerald。
 - `qml/components/`：按钮、卡片、状态徽标、站点卡片和底部导航。
 - `qml/pages/`：登录、首页、电站详情、充电、个人中心和地图页面。
 - `src/user_app_controller.*`：登录、站点、电桩、预约、充电、订单、钱包、定位和地图业务状态。
+- `src/main.cpp`：窗口映射前按屏幕可用区域设定几何（首选 440×820，小屏自动缩小并居中），并注册共享 `Charging.UI` 静态模块。
+
+## 窗口与屏幕适配
+
+- 首选窗口 440×820；屏幕放不下时按可用区域自动缩小（不低于 390×680 的可滚动布局），并居中显示。
+- 宽窗口下内容列锁定 480px 居中、两侧留背景，组件不做全宽拉伸；顶栏与底部导航的内容列与页面对齐。
+- 首页为整页滚动视图，小屏高度下所有站点卡片均可滚动到达；详情、订单、个人中心页自带滚动容器。
 
 ## 演示账号
 
@@ -76,10 +83,22 @@ bash scripts/run-desktop.sh user
   同一账号只允许一个客户端在线；在另一台设备登录后，本设备会被服务端接管下线，
   自动退回登录页并提示“账号已在其他设备登录，当前设备已下线”。
 - 首页：模拟定位、地址搜索、按距离排序的现代化充电站卡片。
-- 电站详情：站点指标、电桩状态、预约、驾车与步行导航。
-- 充电：活动订单、开始、实时计时、停止、取消和钱包结算。
-- 我的：资料编辑、余额充值、历史订单和退出登录。
+- 电站详情：站点指标、所属区域、计价说明（当前时段电价、分时时段表、占位费规则）、电桩状态、预约、驾车与步行导航。
+- 充电：活动订单、开始、实时计时与按分时电价的估算金额、预约倒计时、停止、取消和钱包结算（含占位费明细）。
+- 我的：资料编辑、余额充值、历史订单（含占位费明细展示）和退出登录。
 - 地图：通过 QML `WebEngineView` 打开腾讯地图路线规划。
+
+## 计价与占位费
+
+- 服务端计费支持**分时电价逐段积分**：一次充电跨越多个时段时，各段电量 × 该段单价求和；
+  站点未配置规则、规则停用或时段未覆盖的时刻回退到电站固定电价（口径与历史版本一致）。
+- **占位费**：从充电结束（`ended_at`）到完成结算的占位分钟数按站点规则计收
+  （免费挪车时间抵扣、每分钟费率、封顶），在结算时并入待支付金额，
+  并作为订单明细字段 `occupancy_fee` 在订单历史中单列展示。
+- 充电中的“已充电量/当前金额”为客户端按当前计价规则逐段估算的**实时参考值**，
+  每 5 秒用服务端时长校准；最终金额以停止充电时的服务端结算为准。
+- 计价规则由管理端在“电站详情 → 计价规则”中维护（见 `docs/protocol.md` 的
+  `admin.pricing.get/set`），1 号站种子数据含完整分时时段与占位费规则可用于演示。
 
 ## 定位说明
 
@@ -97,6 +116,17 @@ bash scripts/run-desktop.sh user
 8. 开启第二个用户端，用同一手机号登录；确认第二个客户端登录成功，
    而第一个客户端在约 1 秒内退回登录页并提示已在其他设备登录；
    在第一个客户端重新登录，应能反向接管第二个客户端。
+
+## 当前限制
+
+- 充电中的电量/金额是客户端估算值（页面已标注“估算”），最终以停止充电时的服务端结算为准；
+  估算与结算在分钟粒度上可能有分位级差异。
+- 预约倒计时的 15 分钟超时窗口为客户端与服务端共享的常量（`kReservationTimeoutMinutes`），
+  两侧需同步修改；倒计时按本机时钟计算，修改系统时间会影响显示。
+- 未配置 `TENCENT_MAP_KEY` 时，地理编码不可用，定位为演示模式：仅支持内置预设城市白名单，
+  其余地址回退默认位置，首页会明确显示“演示定位”提示；地图导航使用腾讯 URI 接口，
+  在桌面 WebEngineView 中的实际呈现需带 Key 人工验证。
+- `station.detail` 服务端接口暂无调用方（详情页使用 `station.list` + `pile.list` 组装），保留待后续统一。
 
 ## 自动验证
 

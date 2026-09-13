@@ -4,7 +4,12 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickWindow>
+#include <QScreen>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+
+// 共享设计系统 Charging.UI 的静态模块注册(与管理端一致)
+extern void qml_register_types_Charging_UI();
 
 int main(int argc, char* argv[])
 {
@@ -16,8 +21,13 @@ int main(int argc, char* argv[])
     QCoreApplication::setApplicationName(QStringLiteral("充电客户端"));
     QCoreApplication::setOrganizationName(QStringLiteral("charging-platform"));
 
+    Q_INIT_RESOURCE(qmake_Charging_UI);
+    Q_INIT_RESOURCE(charging_ui_raw_qml_0);
+    qml_register_types_Charging_UI();
+
     charging::user::UserAppController controller;
     QQmlApplicationEngine engine;
+    engine.addImportPath(QStringLiteral("qrc:/"));
     engine.rootContext()->setContextProperty(QStringLiteral("appController"), &controller);
     const QUrl url(QStringLiteral("qrc:/ChargingUser/qml/Main.qml"));
     QObject::connect(
@@ -26,5 +36,16 @@ int main(int argc, char* argv[])
             if (!object && objectUrl == url) QCoreApplication::exit(-1);
         }, Qt::QueuedConnection);
     engine.load(url);
+    // 在窗口映射前一次性设定几何:首选 440x820,屏幕放不下时按可用区域缩小并居中
+    const auto roots = engine.rootObjects();
+    if (auto* window = qobject_cast<QQuickWindow*>(roots.value(0))) {
+        const QRect avail = window->screen()->availableGeometry();
+        QSize size(qMin(440, avail.width() - 32), qMin(820, avail.height() - 48));
+        size = size.expandedTo(QSize(390, qMin(680, qMax(0, avail.height() - 32))));
+        window->resize(size);
+        window->setPosition(avail.x() + (avail.width() - size.width()) / 2,
+                             avail.y() + (avail.height() - size.height()) / 2);
+        window->show();
+    }
     return app.exec();
 }

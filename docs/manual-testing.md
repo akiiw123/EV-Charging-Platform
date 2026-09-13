@@ -9,7 +9,7 @@
 ### 1.1 构建
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 cmake -S . -B build/admin-qml2 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/admin-qml2 -j2
 ctest --test-dir build/admin-qml2 --output-on-failure
@@ -204,7 +204,7 @@ find /usr/lib/qt6 -name QtWebEngineProcess
 ## 附录 A:自动化测试
 
 ```bash
-cd /home/bit/charging-platform
+cd /home/bit/EV-Charging-Platform
 ctest --test-dir build/admin-qml2 --output-on-failure
 ./build/admin-qml2/tests/tcp-integration-tests
 ```

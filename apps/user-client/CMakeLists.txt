@@ -11,6 +11,7 @@ qt_add_qml_module(charging-user
     VERSION 1.0
     QML_FILES
         qml/components/WheelArea.qml
+        qml/components/EmptyState.qml
         qml/components/AppScrollView.qml
         qml/Main.qml
         qml/Theme.qml
@@ -29,10 +30,14 @@ qt_add_qml_module(charging-user
         qml/pages/OrdersPage.qml
         qml/pages/ProfilePage.qml
         qml/pages/MapPage.qml
+    RESOURCES
+        assets/voltflow-logo.png
 )
 
 target_link_libraries(charging-user PRIVATE
     charging-core
+    charging-ui
+    charging-uiplugin
     Qt6::Core
     Qt6::Network
     Qt6::Qml

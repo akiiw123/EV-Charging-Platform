@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VoltFlow 智充 · 全国灯点地图</title>
+  <link rel="icon" href="data:,">
+  <!-- 组件样式(顶栏/图例/状态栏/缩放按钮/主题令牌)与合并大屏共用 styles.css -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- ECharts 本地化:与大屏首页共用同一份 echarts.min.js,离线可用 -->
+  <script src="echarts.min.js"></script>
+  <style>
+    /* 本页专属:纯地图模式铺满整页(不设 MAP_GEO_INSETS) */
+    #map { width:100vw; height:100vh; }
+    #fx { position:fixed; inset:0; pointer-events:none; z-index:1; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <canvas id="fx"></canvas>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="assets/voltflow-logo.png" alt="VoltFlow">
+      <span>VoltFlow 智充 · 全国总览</span>
+    </div>
+    <span id="clock"></span>
+    <nav class="modes" aria-label="主题模式">
+      <button data-m="auto" class="on">自动</button>
+      <button data-m="day">日间</button>
+      <button data-m="night">夜间</button>
+    </nav>
+  </header>
+
+  <aside class="legend" id="legend">
+    <b>图例</b>
+    <span><i class="dot" data-c="glow"></i>充电中(呼吸灯)</span>
+    <span><i class="dot" data-c="idle"></i>空闲可用</span>
+    <span><i class="dot" data-c="fault"></i>故障</span>
+    <span><i class="dot" data-c="offline"></i>离线</span>
+    <span><i class="ring"></i>演示铺点(示意)</span>
+    <span><i class="line"></i>充电能量流(公转)</span>
+    <span><i class="line faint"></i>站内轨道(示意)</span>
+  </aside>
+
+  <footer class="statusbar">
+    <span id="sourceTag">正在加载数据…</span>
+    <label><input type="checkbox" id="demoToggle"> 显示演示铺点(示意,非本平台站点)</label>
+  </footer>
+
+  <div class="zoomer" aria-label="地图缩放">
+    <button data-z="in" title="放大">＋</button>
+    <button data-z="out" title="缩小">－</button>
+    <button data-z="reset" title="重置视图">⟲</button>
+  </div>
+
+  <script src="map.js"></script>
+</body>
+</html>

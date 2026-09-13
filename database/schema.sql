@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS charging_stations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     address TEXT NOT NULL,
+    -- 行政区划:省/市/区三级,供管理端级联筛选,空串表示未分区(旧数据兼容)
+    province TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    district TEXT NOT NULL DEFAULT '',
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     price_per_kwh REAL NOT NULL CHECK(price_per_kwh >= 0),
@@ -53,6 +57,8 @@ CREATE TABLE IF NOT EXISTS charging_orders (
     ended_at TEXT,
     energy_kwh REAL NOT NULL DEFAULT 0 CHECK(energy_kwh >= 0),
     amount REAL NOT NULL DEFAULT 0 CHECK(amount >= 0),
+    -- 占位费明细:充电结束到完成结算间按站点规则计收,结算扣款 = amount + occupancy_fee
+    occupancy_fee REAL NOT NULL DEFAULT 0 CHECK(occupancy_fee >= 0),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS recharge_records (
@@ -107,3 +113,7 @@ INSERT OR IGNORE INTO schema_versions(version) VALUES (2);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (3);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (4);
 INSERT OR IGNORE INTO schema_versions(version) VALUES (5);
+-- 版本 6(2026-09):charging_stations 增加 province/city/district 行政区划列(见 DatabaseManager::migrate)
+INSERT OR IGNORE INTO schema_versions(version) VALUES (6);
+-- 版本 7(2026-09):charging_orders 增加 occupancy_fee 占位费明细列(见 DatabaseManager::migrate)
+INSERT OR IGNORE INTO schema_versions(version) VALUES (7);

@@ -9,18 +9,19 @@ Rectangle {
     id: root
     property int currentIndex: 0
     signal selected(int index)
+    signal securitySettingsRequested()
     width: adminController.sidebarExpanded?232:76
     color: "#0A112E"
     Behavior on width{NumberAnimation{duration:Theme.durationNormal;easing.type:Easing.OutCubic}}
     ColumnLayout{anchors.fill:parent;spacing:0
         Item{Layout.fillWidth:true;Layout.preferredHeight:72
-            Rectangle{width:36;height:36;radius:11;color:Theme.accent;anchors.left:parent.left;anchors.leftMargin:20;anchors.verticalCenter:parent.verticalCenter
-                LineIcon{anchors.centerIn:parent;name:"pile";strokeColor:"white"}}
+            Image{width:36;height:36;source:"qrc:/ChargingAdmin/assets/voltflow-logo.png";fillMode:Image.PreserveAspectFit;anchors.left:parent.left;anchors.leftMargin:20;anchors.verticalCenter:parent.verticalCenter
+                }
             Column{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:68;anchors.verticalCenter:parent.verticalCenter
-                Text{text:"充电运营平台";color:"#FFFFFF";font.pixelSize:15;font.bold:true}
-                Text{text:"运营管理端";color:"#5E6C8A";font.pixelSize:10}}
+                Text{text:"VoltFlow";color:"#FFFFFF";font.pixelSize:15;font.bold:true}
+                Text{text:"智充管理平台";color:"#5E6C8A";font.pixelSize:10}}
         }
-        Repeater{model:[{t:"数据总览",i:"dashboard"},{t:"电站管理",i:"station"},{t:"电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"主题与设置",i:"settings"}]
+        Repeater{model:[{t:"工作台",i:"dashboard"},{t:"充电站管理",i:"station"},{t:"充电桩管理",i:"pile"},{t:"订单管理",i:"order"},{t:"用户管理",i:"user"},{t:"智能预测",i:"chart"},{t:"系统设置",i:"settings"}]
             delegate:Item{required property var modelData;required property int index;Layout.fillWidth:true;Layout.preferredHeight:48
                 Rectangle{anchors.fill:parent;anchors.margins:6;radius:Theme.radiusSmall
                     color:root.currentIndex===index?Theme.accent:mouse.containsMouse?"#141C3F":"transparent"
@@ -32,6 +33,12 @@ Rectangle {
             }
         }
         Item{Layout.fillHeight:true}
+        Item{Layout.fillWidth:true;Layout.preferredHeight:52
+            LineIcon{anchors.left:parent.left;anchors.leftMargin:27;anchors.verticalCenter:parent.verticalCenter;name:"lock";strokeColor:secMouse.containsMouse?"#C6D0E4":"#8E99B4"}
+            Text{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:58;anchors.verticalCenter:parent.verticalCenter;text:"安全设置";color:secMouse.containsMouse?"#C6D0E4":"#AAB4CC";font.pixelSize:Theme.fontBody}
+            ToolTip.visible:secMouse.containsMouse&&!adminController.sidebarExpanded;ToolTip.text:"安全设置 / 修改密码"
+            MouseArea{id:secMouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:root.securitySettingsRequested()}
+        }
         Item{Layout.fillWidth:true;Layout.preferredHeight:52
             LineIcon{anchors.left:parent.left;anchors.leftMargin:27;anchors.verticalCenter:parent.verticalCenter;name:"logout";strokeColor:"#8E99B4"}
             Text{visible:adminController.sidebarExpanded;anchors.left:parent.left;anchors.leftMargin:58;anchors.verticalCenter:parent.verticalCenter;text:"退出登录";color:"#AAB4CC";font.pixelSize:Theme.fontBody}

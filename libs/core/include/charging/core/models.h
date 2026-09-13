@@ -27,6 +27,10 @@ struct ChargingStation {
     qint64 id = 0;
     QString name;
     QString address;
+    // 行政区划(管理端三级区域筛选数据源);空串表示未分区,由管理端表单维护
+    QString province;
+    QString city;
+    QString district;
     double latitude = 0.0;
     double longitude = 0.0;
     double pricePerKwh = 0.0;
@@ -54,6 +58,8 @@ struct ChargingOrder {
     QDateTime endedAt;
     double energyKwh = 0.0;
     double amount = 0.0;
+    // 占位费明细:充电结束到完成结算期间按站点规则计收;应付合计 = amount + occupancyFee
+    double occupancyFee = 0.0;
     QDateTime createdAt;
 };
 

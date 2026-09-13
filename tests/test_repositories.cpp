@@ -44,11 +44,37 @@ private slots:
             charging::core::ChargingStation input;
             input.name = QStringLiteral("测试站");
             input.address = QStringLiteral("测试地址");
+            // 版本 6 起支持行政区划:create 后 create() 内部会回读,验证整链路落库
+            input.province = QStringLiteral("北京市");
+            input.city = QStringLiteral("北京市");
+            input.district = QStringLiteral("海淀区");
             input.latitude = 41.8;
             input.longitude = 123.4;
             input.pricePerKwh = 1.5;
             const auto station = stations.create(input, &error);
             QVERIFY2(station.has_value(), qPrintable(error));
+            QCOMPARE(station->province, QStringLiteral("北京市"));
+            QCOMPARE(station->city, QStringLiteral("北京市"));
+            QCOMPARE(station->district, QStringLiteral("海淀区"));
+            // 未填区域的旧调用方式:区域字段应保持空串(未分区),不影响创建
+            charging::core::ChargingStation legacyInput;
+            legacyInput.name = QStringLiteral("未分区站");
+            legacyInput.address = QStringLiteral("测试地址2");
+            legacyInput.pricePerKwh = 1.2;
+            const auto legacyStation = stations.create(legacyInput, &error);
+            QVERIFY2(legacyStation.has_value(), qPrintable(error));
+            QCOMPARE(legacyStation->province, QString());
+            QCOMPARE(legacyStation->district, QString());
+            const auto listed = stations.list(&error);
+            QVERIFY2(!listed.isEmpty(), qPrintable(error));
+            bool foundRegionized = false;
+            for (const auto& row : listed) {
+                if (row.id == station->id) {
+                    foundRegionized = row.province == QStringLiteral("北京市")
+                                      && row.district == QStringLiteral("海淀区");
+                }
+            }
+            QVERIFY(foundRegionized);
             charging::core::ChargingPile pile;
             pile.stationId = station->id;
             pile.code = QStringLiteral("TEST-001");
@@ -78,9 +104,35 @@ private slots:
             QCOMPARE(piles.findById(pile.id)->status, QStringLiteral("charging"));
             QVERIFY(orders.finishCharging(order->id, 10.0, 20.0, &error));
             QCOMPARE(piles.findById(pile.id)->status, QStringLiteral("idle"));
-            QVERIFY(orders.settle(order->id, &error));
+            QVERIFY(orders.settle(order->id, 0.0, &error));
             QCOMPARE(orders.findById(order->id)->status, QStringLiteral("completed"));
+            QCOMPARE(orders.findById(order->id)->occupancyFee, 0.0);
             QCOMPARE(users.findById(user->id)->walletBalance, 30.0);
+        });
+    }
+
+    void settleChargesAmountPlusOccupancyFee()
+    {
+        withDatabase([](const QSqlDatabase& database) {
+            charging::core::UserRepository users(database);
+            charging::core::PileRepository piles(database);
+            charging::core::OrderRepository orders(database);
+            QString error;
+            const auto user = users.loginOrCreate(QStringLiteral("13600136000"), &error);
+            QVERIFY(users.recharge(user->id, 100.0, &error));
+            const auto pile = piles.listByStation(1).first();
+            const auto order = orders.createReservation(user->id, pile.id, &error);
+            QVERIFY(orders.startCharging(order->id, &error));
+            QVERIFY(orders.finishCharging(order->id, 10.0, 20.0, &error));
+            // 占位费单列明细,与电费一并扣款
+            QVERIFY(orders.settle(order->id, 5.0, &error));
+            const auto settled = orders.findById(order->id);
+            QCOMPARE(settled->status, QStringLiteral("completed"));
+            QCOMPARE(settled->occupancyFee, 5.0);
+            QCOMPARE(settled->amount, 20.0);
+            QCOMPARE(users.findById(user->id)->walletBalance, 75.0);
+            // 重复结算仍被拒绝
+            QVERIFY(!orders.settle(order->id, 5.0, &error));
         });
     }
 
@@ -96,7 +148,7 @@ private slots:
             const auto order = orders.createReservation(user->id, pile.id, &error);
             QVERIFY(orders.startCharging(order->id, &error));
             QVERIFY(orders.finishCharging(order->id, 5.0, 10.0, &error));
-            QVERIFY(!orders.settle(order->id, &error));
+            QVERIFY(!orders.settle(order->id, 0.0, &error));
             QCOMPARE(orders.findById(order->id)->status, QStringLiteral("awaiting_payment"));
             QCOMPARE(users.findById(user->id)->walletBalance, 0.0);
         });

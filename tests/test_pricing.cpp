@@ -1,3 +1,4 @@
+#include "charging/core/business_rules.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/repositories.h"
 
@@ -66,6 +67,48 @@ private slots:
             QCOMPARE(pricing.pricePerKwhAt(1, localTime(21, 59)).value_or(-1), 1.50);
             QCOMPARE(pricing.pricePerKwhAt(1, localTime(22, 0)).value_or(-1), 0.80);
         });
+    }
+
+    // ---- 分时电价逐段积分(纯函数,不依赖数据库) ----
+
+    void integratedCostFallsBackToFlatPriceWithoutPeriods()
+    {
+        // 无时段(未配置规则/enabled=0/时段未覆盖)时退化为固定电价,
+        // 且与旧口径一致:round3(电量) × 固定单价。60kW × 1h = 60.000 度 × 1.20
+        const double cost = charging::core::integratedChargingCost(
+            localTime(9, 0), 3600, 60.0, 1.20, {});
+        QCOMPARE(cost, 72.0);
+    }
+
+    void integratedCostSpansTwoPeriods()
+    {
+        // 09:50 起充电 20 分钟,前 10 分钟在谷段(分钟 590-600 < 600),
+        // 后 10 分钟进入峰段(600-610):60kW 下各 10.000 度 → 8.00 + 15.00
+        const QList<charging::core::PricingPeriod> periods = {
+            makePeriod(0, 600, QStringLiteral("valley"), 0.80),
+            makePeriod(600, 1440, QStringLiteral("peak"), 1.50)};
+        const double cost = charging::core::integratedChargingCost(
+            localTime(9, 50), 1200, 60.0, 9.99, periods);
+        QCOMPARE(cost, 23.0);
+    }
+
+    void integratedCostUsesFixedPriceForUncoveredMinutes()
+    {
+        // 时段只覆盖凌晨,09:00 起的充电按固定电价计
+        const QList<charging::core::PricingPeriod> periods = {
+            makePeriod(0, 480, QStringLiteral("valley"), 0.80)};
+        const double cost = charging::core::integratedChargingCost(
+            localTime(9, 0), 600, 60.0, 1.20, periods);
+        QCOMPARE(cost, 12.0);
+    }
+
+    void integratedCostRejectsInvalidInput()
+    {
+        QCOMPARE(charging::core::integratedChargingCost(localTime(9, 0), 0, 60.0, 1.2, {}), 0.0);
+        QCOMPARE(charging::core::integratedChargingCost(localTime(9, 0), 600, 0.0, 1.2, {}), 0.0);
+        // 极短充电:电量按 0.001 度精度取整后计价
+        QCOMPARE(charging::core::integratedChargingCost(localTime(9, 0), 1, 7.0, 1.20, {}),
+                 0.002 * 1.20);
     }
 
     void priceFallsBackToFixedPriceWithoutPeriods()
@@ -373,7 +416,7 @@ private slots:
             const double amount = qRound64(energy * station->pricePerKwh * 100.0) / 100.0;
             QCOMPARE(amount, 12.0);
             QVERIFY(orders.finishCharging(order->id, energy, amount, &error));
-            QVERIFY(orders.settle(order->id, &error));
+            QVERIFY(orders.settle(order->id, 0.0, &error));
 
             QCOMPARE(orders.findById(order->id, &error)->amount, 12.0);
             QCOMPARE(users.findById(user->id, &error)->walletBalance, 88.0);

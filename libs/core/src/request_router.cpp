@@ -81,6 +81,10 @@ QJsonObject stationJson(const ChargingStation& station, const QList<ChargingPile
     return {{QStringLiteral("id"), station.id},
             {QStringLiteral("name"), station.name},
             {QStringLiteral("address"), station.address},
+            // 行政区划:纯增量字段,旧客户端未知键自然忽略;空串=未分区
+            {QStringLiteral("province"), station.province},
+            {QStringLiteral("city"), station.city},
+            {QStringLiteral("district"), station.district},
             {QStringLiteral("latitude"), station.latitude},
             {QStringLiteral("longitude"), station.longitude},
             {QStringLiteral("price_per_kwh"), station.pricePerKwh},
@@ -102,26 +106,31 @@ QJsonObject orderJson(const ChargingOrder& order)
             {QStringLiteral("ended_at"), order.endedAt.toString(Qt::ISODate)},
             {QStringLiteral("energy_kwh"), order.energyKwh},
             {QStringLiteral("amount"), order.amount},
+            // 占位费明细:待结算/已完成订单为实际计收值,应付合计 = amount + occupancy_fee
+            {QStringLiteral("occupancy_fee"), order.occupancyFee},
             {QStringLiteral("created_at"), order.createdAt.toString(Qt::ISODate)}};
 }
 
 // 活跃订单额外携带电桩功率、站点单价和持续时长。
 // charging 状态下直接按服务端时间计算实时电量/金额，避免客户端 5 秒轮询后
-// 因时间基准或数据库中尚未落盘的 0 值而出现“计时/金额清零”。
+// 因时间基准或数据库中尚未落盘的 0 值而出现“计时/金额清零”;
+// 金额按分时电价逐段积分计算(未配置规则或 enabled=0 时退化为固定单价)。
 // awaiting_payment 状态继续返回停止充电时已经写入数据库的最终值。
 QJsonObject activeOrderJson(QSqlDatabase database, const ChargingOrder& order)
 {
     QJsonObject result = orderJson(order);
     QSqlQuery query(database);
     query.prepare(QStringLiteral(
-        "SELECT p.power_kw,s.price_per_kwh FROM charging_piles p "
+        "SELECT p.power_kw,s.price_per_kwh,s.id FROM charging_piles p "
         "JOIN charging_stations s ON s.id=p.station_id WHERE p.id=:pile"));
     query.bindValue(QStringLiteral(":pile"), order.pileId);
     if (query.exec() && query.next()) {
         const double powerKw = query.value(0).toDouble();
         const double pricePerKwh = query.value(1).toDouble();
+        const qint64 stationId = query.value(2).toLongLong();
         result.insert(QStringLiteral("power_kw"), powerKw);
         result.insert(QStringLiteral("price_per_kwh"), pricePerKwh);
+        result.insert(QStringLiteral("station_id"), stationId);
 
         qint64 durationSeconds = 0;
         if (order.startedAt.isValid()) {
@@ -134,10 +143,21 @@ QJsonObject activeOrderJson(QSqlDatabase database, const ChargingOrder& order)
         result.insert(QStringLiteral("duration_seconds"), durationSeconds);
 
         if (order.status == QStringLiteral("charging")) {
+            PricingRepository pricing(database);
+            QString pricingError;
+            const auto rule = pricing.findRule(stationId, &pricingError);
+            QList<PricingPeriod> periods;
+            if (rule && rule->enabled && pricingError.isEmpty()) {
+                periods = pricing.listPeriods(stationId, &pricingError);
+            }
+            if (!pricingError.isEmpty()) {
+                periods.clear();   // 计价规则读取失败时按固定单价给出实时参考值
+            }
             const double energy = qMax(0.0, powerKw * durationSeconds / 3600.0);
-            const double amount = qMax(0.0, energy * pricePerKwh);
+            const double cost = integratedChargingCost(order.startedAt, durationSeconds,
+                                                       powerKw, pricePerKwh, periods);
             result.insert(QStringLiteral("energy_kwh"), energy);
-            result.insert(QStringLiteral("amount"), amount);
+            result.insert(QStringLiteral("amount"), qMax(0.0, cost));
         }
     }
     return result;
@@ -464,6 +484,13 @@ Message RequestRouter::route(const Message& request)
         ChargingStation value;
         value.name = request.payload.value(QStringLiteral("name")).toString();
         value.address = request.payload.value(QStringLiteral("address")).toString();
+        // 行政区划为可选字段:缺省为未分区;填写时校验长度,避免脏数据进入级联筛选
+        const auto readRegion = [&request](const char* key) -> QString {
+            return request.payload.value(QLatin1String(key)).toString().trimmed();
+        };
+        value.province = readRegion("province");
+        value.city = readRegion("city");
+        value.district = readRegion("district");
         value.latitude = request.payload.value(QStringLiteral("latitude")).toDouble(999);
         value.longitude = request.payload.value(QStringLiteral("longitude")).toDouble(999);
         value.pricePerKwh = request.payload.value(QStringLiteral("price_per_kwh")).toDouble(-1);
@@ -471,6 +498,9 @@ Message RequestRouter::route(const Message& request)
         if (value.latitude < -90 || value.latitude > 90 || value.longitude < -180 || value.longitude > 180
             || pileCount < 1 || pileCount > 100) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("经纬度或电桩数量无效"));
+        }
+        if (value.province.size() > 32 || value.city.size() > 32 || value.district.size() > 32) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("省/市/区长度不能超过 32 个字符"));
         }
         if (!database_.transaction()) return storageError(request, QStringLiteral("数据库操作"), database_.lastError().text());
         StationRepository stations(database_); PileRepository piles(database_);
@@ -501,6 +531,21 @@ Message RequestRouter::route(const Message& request)
             return error(request, QStringLiteral("INVALID_ARGUMENT"),
                          QStringLiteral("电站状态仅支持 active/disabled"));
         }
+        // 行政区划可选更新:键存在才更新(允许置空=未分区),缺省保持原值,旧调用方不受影响
+        // 绑定值统一规范化为非 null 空串,避免 null 撞 NOT NULL 约束
+        const auto regionValue = [&request](const char* key) -> QString {
+            const QString value = request.payload.value(QLatin1String(key)).toString().trimmed();
+            return value.isNull() ? QStringLiteral("") : value;
+        };
+        const bool hasProvince = request.payload.contains(QStringLiteral("province"));
+        const bool hasCity = request.payload.contains(QStringLiteral("city"));
+        const bool hasDistrict = request.payload.contains(QStringLiteral("district"));
+        const QString province = regionValue("province");
+        const QString city = regionValue("city");
+        const QString district = regionValue("district");
+        if (province.size() > 32 || city.size() > 32 || district.size() > 32) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("省/市/区长度不能超过 32 个字符"));
+        }
         if (!stationId || name.isEmpty() || address.isEmpty() || latitude < -90 || latitude > 90
             || longitude < -180 || longitude > 180 || price < 0) {
             return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("电站表单内容无效"));
@@ -509,12 +554,18 @@ Message RequestRouter::route(const Message& request)
         QString sql = QStringLiteral("UPDATE charging_stations SET name=:name,address=:address,"
                                      "latitude=:lat,longitude=:lng,price_per_kwh=:price");
         if (!status.isEmpty()) sql += QStringLiteral(",status=:status");
+        if (hasProvince) sql += QStringLiteral(",province=:province");
+        if (hasCity) sql += QStringLiteral(",city=:city");
+        if (hasDistrict) sql += QStringLiteral(",district=:district");
         sql += QStringLiteral(" WHERE id=:id");
         query.prepare(sql);
         query.bindValue(QStringLiteral(":name"), name); query.bindValue(QStringLiteral(":address"), address);
         query.bindValue(QStringLiteral(":lat"), latitude); query.bindValue(QStringLiteral(":lng"), longitude);
         query.bindValue(QStringLiteral(":price"), price); query.bindValue(QStringLiteral(":id"), *stationId);
         if (!status.isEmpty()) query.bindValue(QStringLiteral(":status"), status);
+        if (hasProvince) query.bindValue(QStringLiteral(":province"), province);
+        if (hasCity) query.bindValue(QStringLiteral(":city"), city);
+        if (hasDistrict) query.bindValue(QStringLiteral(":district"), district);
         if (!query.exec() || query.numRowsAffected() != 1) return error(request, QStringLiteral("STATION_UPDATE_FAILED"), query.lastError().isValid() ? query.lastError().text() : QStringLiteral("电站不存在"));
         return success(request, {{QStringLiteral("id"), *stationId}});
     }
@@ -525,9 +576,75 @@ Message RequestRouter::route(const Message& request)
         QSqlQuery active(database_); active.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id AND o.status IN ('reserved','charging','awaiting_payment')")); active.bindValue(QStringLiteral(":id"),*stationId);
         if (!active.exec() || !active.next()) return storageError(request, QStringLiteral("附近站点查询"), active.lastError().text());
         if (active.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在进行中或待结算订单，不能删除"));
+        // 历史订单(已完成/已取消)同样通过外键阻止删除,这里预先给出明确原因,避免暴露原始数据库错误
+        QSqlQuery history(database_); history.prepare(QStringLiteral("SELECT COUNT(*) FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id WHERE p.station_id=:id")); history.bindValue(QStringLiteral(":id"),*stationId);
+        if (!history.exec() || !history.next()) return storageError(request, QStringLiteral("历史订单查询"), history.lastError().text());
+        if (history.value(0).toInt()>0) return error(request,QStringLiteral("STATION_DELETE_FAILED"),QStringLiteral("电站存在历史订单记录，为保留订单数据不能删除"));
         QSqlQuery query(database_); query.prepare(QStringLiteral("DELETE FROM charging_stations WHERE id=:id"));query.bindValue(QStringLiteral(":id"),*stationId);
         if(!query.exec()||query.numRowsAffected()!=1)return error(request,QStringLiteral("STATION_DELETE_FAILED"),query.lastError().isValid()?query.lastError().text():QStringLiteral("电站不存在"));
         return success(request,{{QStringLiteral("id"),*stationId}});
+    }
+
+    // 站点计价规则读取:分时电价段 + 占位费参数(未配置规则时 rule 为 null)
+    if (request.type == QStringLiteral("admin.pricing.get")) {
+        const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
+        if (!stationId) return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("station_id 无效"));
+        StationRepository stations(database_);
+        if (!stations.findById(*stationId, &repositoryError)) {
+            return error(request, QStringLiteral("STATION_NOT_FOUND"),
+                         repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
+        }
+        PricingRepository pricing(database_);
+        const auto rule = pricing.findRule(*stationId, &repositoryError);
+        if (!repositoryError.isEmpty()) return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+        const auto periods = pricing.listPeriods(*stationId, &repositoryError);
+        if (!repositoryError.isEmpty()) return error(request, QStringLiteral("DATABASE_ERROR"), repositoryError);
+        QJsonArray periodArray;
+        for (const auto& period : periods) periodArray.append(pricingPeriodJson(period));
+        return success(request, {{QStringLiteral("station_id"), *stationId},
+                                 {QStringLiteral("rule"), rule ? QJsonValue(pricingRuleJson(*rule)) : QJsonValue::Null},
+                                 {QStringLiteral("periods"), periodArray}});
+    }
+
+    // 站点计价规则整组保存:规则参数 + 分时电价段(时段校验由仓储层完成,
+    // 越界/重叠/非法类型时整体失败);保存后立即对后续充电计费生效
+    if (request.type == QStringLiteral("admin.pricing.set")) {
+        const auto stationId = positiveId(request.payload, QStringLiteral("station_id"));
+        const int freeMoveMinutes = request.payload.value(QStringLiteral("free_move_minutes")).toInt(-1);
+        const double feePerMinute = request.payload.value(QStringLiteral("occupancy_fee_per_minute")).toDouble(-1);
+        const double feeCap = request.payload.value(QStringLiteral("occupancy_fee_cap")).toDouble(-1);
+        if (!stationId || freeMoveMinutes < 0 || feePerMinute < 0 || feeCap < 0) {
+            return error(request, QStringLiteral("INVALID_ARGUMENT"), QStringLiteral("计价参数无效"));
+        }
+        StationRepository stations(database_);
+        if (!stations.findById(*stationId, &repositoryError)) {
+            return error(request, QStringLiteral("STATION_NOT_FOUND"),
+                         repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
+        }
+        PricingRule rule;
+        rule.stationId = *stationId;
+        rule.enabled = request.payload.value(QStringLiteral("enabled")).toBool();
+        rule.freeMoveMinutes = freeMoveMinutes;
+        rule.occupancyFeePerMinute = feePerMinute;
+        rule.occupancyFeeCap = feeCap;
+        QList<PricingPeriod> periods;
+        const auto periodArray = request.payload.value(QStringLiteral("periods")).toArray();
+        for (const auto& value : periodArray) {
+            const auto item = value.toObject();
+            PricingPeriod period;
+            period.stationId = *stationId;
+            period.startMinute = item.value(QStringLiteral("start_minute")).toInt(-1);
+            period.endMinute = item.value(QStringLiteral("end_minute")).toInt(-1);
+            period.periodType = item.value(QStringLiteral("period_type")).toString();
+            period.pricePerKwh = item.value(QStringLiteral("price_per_kwh")).toDouble(-1);
+            periods.append(period);
+        }
+        PricingRepository pricing(database_);
+        if (!pricing.saveRule(rule, &repositoryError)
+            || !pricing.replacePeriods(*stationId, periods, &repositoryError)) {
+            return error(request, QStringLiteral("PRICING_SET_FAILED"), repositoryError);
+        }
+        return success(request, {{QStringLiteral("station_id"), *stationId}});
     }
 
     if (request.type == QStringLiteral("admin.pile.list")) {
@@ -855,8 +972,7 @@ Message RequestRouter::route(const Message& request)
         } else if (request.type == QStringLiteral("order.stop")) {
             QSqlQuery calculation(database_);
             calculation.prepare(QStringLiteral(
-                "SELECT p.power_kw, s.price_per_kwh, "
-                "MAX(1, CAST((julianday('now')-julianday(o.started_at))*86400 AS INTEGER)) "
+                "SELECT p.power_kw, s.price_per_kwh, s.id "
                 "FROM charging_orders o JOIN charging_piles p ON p.id=o.pile_id "
                 "JOIN charging_stations s ON s.id=p.station_id "
                 "WHERE o.id=:id AND o.user_id=:user AND o.status='charging'"));
@@ -867,11 +983,30 @@ Message RequestRouter::route(const Message& request)
                              calculation.lastError().isValid() ? calculation.lastError().text()
                                                                : QStringLiteral("订单不处于充电状态"));
             }
-            const double energy = qMax(0.01, calculation.value(0).toDouble()
-                                                     * calculation.value(2).toLongLong() / 3600.0);
+            const double powerKw = calculation.value(0).toDouble();
+            const double fixedPrice = calculation.value(1).toDouble();
+            const qint64 stationId = calculation.value(2).toLongLong();
+            // 计费时长与既有口径一致:至少 1 秒,按服务端当前时间结算
+            const qint64 durationSeconds =
+                qMax<qint64>(1, existing->startedAt.isValid()
+                                    ? existing->startedAt.secsTo(QDateTime::currentDateTime())
+                                    : 1);
+            // 分时电价逐段积分:站点规则启用时按时段取价,否则退化为固定单价
+            PricingRepository pricing(database_);
+            QString pricingError;
+            const auto rule = pricing.findRule(stationId, &pricingError);
+            QList<PricingPeriod> periods;
+            if (rule && rule->enabled && pricingError.isEmpty()) {
+                periods = pricing.listPeriods(stationId, &pricingError);
+            }
+            if (!pricingError.isEmpty()) {
+                return error(request, QStringLiteral("ORDER_STOP_FAILED"), pricingError);
+            }
+            const double energy = qMax(0.01, powerKw * durationSeconds / 3600.0);
             const double roundedEnergy = qRound64(energy * 1000.0) / 1000.0;
-            const double amount = qRound64(roundedEnergy * calculation.value(1).toDouble() * 100.0)
-                / 100.0;
+            const double cost = integratedChargingCost(existing->startedAt, durationSeconds,
+                                                       powerKw, fixedPrice, periods);
+            const double amount = qRound64(cost * 100.0) / 100.0;
             if (!orders.finishCharging(*orderId, roundedEnergy, amount, &repositoryError)) {
                 return error(request, QStringLiteral("ORDER_STOP_FAILED"), repositoryError);
             }
@@ -881,7 +1016,28 @@ Message RequestRouter::route(const Message& request)
                 return error(request, QStringLiteral("ORDER_SETTLE_FAILED"),
                              QStringLiteral("订单已完成结算,请勿重复操作"));
             }
-            if (!orders.settle(*orderId, &repositoryError)) {
+            // 占位费:从充电结束(ended_at)到本次结算的占位分钟数,按站点规则计收
+            // (无规则的站点返回 0);分钟数向下取整,与累计时长的取整口径一致
+            qint64 occupancyStationId = 0;
+            QSqlQuery pileStation(database_);
+            pileStation.prepare(QStringLiteral(
+                "SELECT station_id FROM charging_piles WHERE id=:pile"));
+            pileStation.bindValue(QStringLiteral(":pile"), existing->pileId);
+            if (pileStation.exec() && pileStation.next()) {
+                occupancyStationId = pileStation.value(0).toLongLong();
+            }
+            int occupiedMinutes = 0;
+            if (existing->endedAt.isValid()) {
+                occupiedMinutes = qMax(0, static_cast<int>(
+                    existing->endedAt.secsTo(QDateTime::currentDateTime()) / 60));
+            }
+            PricingRepository pricing(database_);
+            QString pricingError;
+            const auto fee = pricing.occupancyFee(occupancyStationId, occupiedMinutes, &pricingError);
+            if (!fee) {
+                return error(request, QStringLiteral("ORDER_SETTLE_FAILED"), pricingError);
+            }
+            if (!orders.settle(*orderId, *fee, &repositoryError)) {
                 return error(request, QStringLiteral("ORDER_SETTLE_FAILED"), repositoryError);
             }
         } else if (request.type == QStringLiteral("order.cancel")) {
@@ -964,7 +1120,8 @@ Message RequestRouter::route(const Message& request)
         }
         StationRepository stations(database_);
         const auto station = stations.findById(*stationId, &repositoryError);
-        if (!station) {
+        // 逻辑停用的电站对用户端不可见,计价信息同样不再对外提供(与 station.detail 口径一致)
+        if (!station || station->status == QStringLiteral("disabled")) {
             return error(request, QStringLiteral("STATION_NOT_FOUND"),
                          repositoryError.isEmpty() ? QStringLiteral("充电站不存在") : repositoryError);
         }

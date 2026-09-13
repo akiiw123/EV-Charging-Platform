@@ -7,6 +7,7 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QSettings>
+#include <QSet>
 #include <QTimer>
 #include <QHash>
 
@@ -47,6 +48,8 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionLoad6 READ predictionLoad6 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad24 READ predictionLoad24 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionConfidence READ predictionConfidence NOTIFY predictionChanged)
+    // 站点计价规则编辑:{rule:{...}|null, periods:[...]}
+    Q_PROPERTY(QVariantMap pricingDetail READ pricingDetail NOTIFY pricingChanged)
 
 public:
     explicit AdminAppController(bool databaseReady, QObject* parent = nullptr);
@@ -80,20 +83,33 @@ public:
     QString predictionLoad6() const { return predictionLoad6_; }
     QString predictionLoad24() const { return predictionLoad24_; }
     QString predictionConfidence() const { return predictionConfidence_; }
+    QVariantMap pricingDetail() const { return pricingDetail_; }
     bool mustChangePassword() const { return mustChangePassword_; }
     bool loadFailed() const { return loadFailed_; }
 
     Q_INVOKABLE QString displayTime(const QString& value) const;
-    Q_INVOKABLE void setStationRegion(const QString& value);
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshAll();
     // days 为趋势统计区间(7 或 30 日),默认 30
     Q_INVOKABLE void refreshDashboard(int days = 30);
     Q_INVOKABLE void refreshStations(const QString& query = {});
-    Q_INVOKABLE void refreshPiles(const QString& query = {}, const QString& station = {}, const QString& type = {}, const QString& status = {});
+    // stationIds 为电站 id 列表(QVariantList);空列表表示全部电桩
+    Q_INVOKABLE void refreshPiles(const QString& query = {}, const QVariantList& stationIds = {}, const QString& type = {}, const QString& status = {});
     Q_INVOKABLE void refreshOrders(const QString& query = {}, const QString& status = {});
     Q_INVOKABLE void refreshUsers(const QString& phone = {}, const QString& status = {});
+    // 三级区域筛选(电站管理页):任一级为空串表示"该级不限制";
+    // 特殊值 kUnclassified("未分区")匹配区域字段为空的电站
+    Q_INVOKABLE void setStationRegionFilter(const QString& province, const QString& city, const QString& district);
+    // 级联选项:从当前电站数据的去重值生成,保证选了上级后下级选项一定非空
+    Q_INVOKABLE QStringList stationProvinces() const;
+    Q_INVOKABLE QStringList stationCities(const QString& province) const;
+    Q_INVOKABLE QStringList stationDistricts(const QString& province, const QString& city) const;
+    // 电桩管理页"所属电站"多选下拉数据源:全量电站(id/名称/电桩数)
+    Q_INVOKABLE QVariantList allStationSummaries() const;
+    // 常用电站推荐:本机记录的最近管理电站(最多 5 个,不区分管理员账号)
+    Q_INVOKABLE QVariantList recentStations() const;
+    Q_INVOKABLE void noteStationManaged(qint64 stationId);
     Q_INVOKABLE void createStation(const QVariantMap& form);
     Q_INVOKABLE void updateStation(const QVariantMap& form);
     Q_INVOKABLE void deleteStation(qint64 id);
@@ -104,17 +120,22 @@ public:
     // 供"新增电桩"对话框选择所属电站
     Q_INVOKABLE QStringList stationNames() const;
     Q_INVOKABLE void setUserStatus(qint64 id, const QString& status);
+    // 站点计价规则(分时电价段 + 占位费):编辑对话框打开时拉取,保存后立即对计费生效
+    Q_INVOKABLE void loadPricing(qint64 stationId);
+    Q_INVOKABLE void savePricing(const QVariantMap& form);
     Q_INVOKABLE void refreshPredictions();
     // 强制改密流程:校验当前密码并设置新密码(服务端 PBKDF2 落库,清除首登标志)
     Q_INVOKABLE void changePassword(const QString& oldPassword, const QString& newPassword);
     Q_INVOKABLE void clearNotice();
+    // 供 QML 直接使用全局提示条(如"去管理电桩"跳转后的上下文反馈)
+    Q_INVOKABLE void notify(const QString& text, const QString& kind = QStringLiteral("success"));
     Q_INVOKABLE QString savedUsername() const;
     Q_INVOKABLE QVariantMap stationAt(int row) const { return stations_.get(row); }
     Q_INVOKABLE QVariantMap pileAt(int row) const { return piles_.get(row); }
     Q_INVOKABLE QVariantMap orderAt(int row) const { return orders_.get(row); }
     Q_INVOKABLE QVariantMap userAt(int row) const { return users_.get(row); }
-    // 电站详情抽屉:按站名过滤电桩列表
-    Q_INVOKABLE QVariantList pilesOfStation(const QString& stationName) const;
+    // 电站详情抽屉:按电站 id 过滤电桩列表(名称可能重名,id 才是稳定关联)
+    Q_INVOKABLE QVariantList pilesOfStationId(qint64 stationId) const;
 
     void setTheme(const QString& value);
     void setSidebarExpanded(bool value);
@@ -132,9 +153,12 @@ signals:
     void settingsChanged();
     void dashboardChanged();
     void predictionChanged();
+    void pricingChanged();
     void mustChangePasswordChanged();
     void loadFailedChanged();
     void passwordChangeResult(bool success);
+    // 电站原始数据更新(管理端电站列表/编辑后),电桩页下拉等据此刷新
+    void stationDataChanged();
 
 private:
     void request(const QString& type, const QJsonObject& payload = {});
@@ -152,7 +176,12 @@ private:
     QTimer clock_, refreshTimer_, noticeTimer_, requestTimer_;
     QHash<QString, QString> pending_;
     bool connectionNotice_ = false;
-    QString stationRegion_;
+    // 电站管理页三级区域筛选状态(空串=该级不限制)
+    QString stationProvince_, stationCity_, stationDistrict_;
+    // 电桩管理页"所属电站"多选(空集合=全部电桩)
+    QSet<qint64> pileStationIds_;
+    // 最近管理电站 id(本机 QSettings 持久化,新记录在前,最多 5 个)
+    QStringList recentStationIds_;
     int dashboardDays_ = 30;
     bool databaseReady_ = true;
     bool connected_ = false;
@@ -165,6 +194,8 @@ private:
     int pageSize_ = 20;
     QVariantMap dashboard_, pileStatus_;
     QVariantList revenueTrend_, stationEnergy_;
+    // 计价规则编辑数据({rule:{...}|null, periods:[...]})
+    QVariantMap pricingDetail_;
     JsonListModel stations_, piles_, orders_, users_, predictions_;
     QJsonArray rawStations_, rawPiles_, rawOrders_, rawUsers_;
     QString stationQuery_, pileQuery_, pileStation_, pileType_, pileState_, orderQuery_, orderState_, userQuery_, userState_;

@@ -7,14 +7,17 @@ import "pages"
 
 ApplicationWindow {
     id: app
+    // 窗口几何由 main.cpp 在映射前按屏幕可用区域设定(首选 440x820,小屏自动缩小并居中);
+    // 这里保持 visible:false,由 C++ 端 show(),避免映射后二次 resize 导致首帧不渲染
     width: 440
     height: 820
-    minimumWidth: 390
-    minimumHeight: 680
-    visible: true
-    title: "充电客户端"
+    visible: false
+    title: "VoltFlow 智充管理平台"
     color: Theme.background
     font.family: Theme.fontFamily
+
+    // 内容列最大宽度:手机尺寸优先,宽窗口下居中显示、两侧留背景,避免组件被硬拉伸
+    readonly property real contentWidth: Math.min(width, 480)
 
     Binding { target: Theme; property: "currentTheme"; value: appController.theme }
 
@@ -88,16 +91,16 @@ ApplicationWindow {
                 anchors.right: parent.right
                 height: app.currentPage === "map" ? 0 : 64
                 visible: height > 0
-                color: Theme.primaryDark
+                color: Theme.surface
+                // 与管理端一致的轻顶栏:白色表面 + 底部细分隔线 + 深色文字
+                Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: Theme.border }
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    anchors.rightMargin: 20
-                    Rectangle {
-                        width: 38; height: 38; radius: 12; color: "#24FFFFFF"
-                        AppIcon { anchors.centerIn: parent; name: "bolt"; iconColor: "white"; width: 22; height: 22 }
-                    }
-                Text { text: "充电客户端"; color: "white"; font.pixelSize: 18; font.bold: true }
+                    width: Math.min(parent.width, app.contentWidth)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 64
+                Image { Layout.preferredWidth: 26; Layout.preferredHeight: 26; source: "qrc:/ChargingUser/assets/voltflow-logo.png"; fillMode: Image.PreserveAspectFit }
+                Text { text: "VoltFlow 智充管理平台"; color: Theme.text; font.pixelSize: 16; font.bold: true }
                 Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                 Column {
                     Layout.preferredWidth: Math.min(120, app.width * 0.28)
@@ -107,7 +110,7 @@ ApplicationWindow {
                         width: parent.width
                         horizontalAlignment: Text.AlignRight
                         text: appController.user.nickname || "用户"
-                        color: "white"
+                        color: Theme.text
                         font.pixelSize: 13
                         font.bold: true
                         elide: Text.ElideRight
@@ -115,7 +118,7 @@ ApplicationWindow {
                     Text {
                         anchors.right: parent.right
                         text: "￥" + Number(appController.user.wallet_balance || 0).toFixed(2)
-                        color: "#D9FFFFFF"
+                        color: Theme.textMuted
                         font.pixelSize: 11
                     }
                 }
@@ -125,9 +128,9 @@ ApplicationWindow {
         Loader {
             id: pageLoader
             anchors.top: topBar.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
             anchors.bottom: bottomNav.visible ? bottomNav.top : parent.bottom
+            width: Math.min(parent.width, app.contentWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
             active: appController.loggedIn
             sourceComponent: app.currentPage === "home" ? homeComponent
                : app.currentPage === "station" ? stationComponent
@@ -169,7 +172,7 @@ ApplicationWindow {
         width: Math.min(parent.width - 32, noticeText.implicitWidth + 46)
         height: noticeText.implicitHeight + 28
         visible: appController.notice.length > 0
-        radius: 14
+        radius: 6
         z: 100
         color: appController.noticeKind === "error" ? "#FFF0F0"
                : appController.noticeKind === "warning" ? "#FFF7E8"
@@ -228,7 +231,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 320
         padding: 20
-        background: Rectangle { radius: 16; color: Theme.surface }
+        background: Rectangle { radius: 8; color: Theme.surface }
         contentItem: ColumnLayout {
             spacing: 14
             Text {

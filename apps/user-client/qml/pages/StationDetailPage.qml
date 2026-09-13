@@ -10,6 +10,24 @@ Item {
     signal openMap()
     signal openCharging()
 
+    // 计价规则只读视图(来自 station.pricing);未拉到响应前回退固定单价
+    readonly property var rule: appController.pricing.rule || null
+    readonly property string ruleText: {
+        if (!page.rule) return "本站未配置占位费规则，充电结束后不收取占位费。"
+        var cap = Number(page.rule.occupancy_fee_cap) > 0
+            ? "封顶 ￥" + Number(page.rule.occupancy_fee_cap).toFixed(2)
+            : "不封顶"
+        return "充满后未驶离：免费挪车 " + page.rule.free_move_minutes + " 分钟，超出按 ￥"
+               + Number(page.rule.occupancy_fee_per_minute).toFixed(2)
+               + "/分钟计占位费，" + cap + "，结算时并入待支付金额。"
+    }
+    function minuteRange(minute) {
+        var h = Math.floor(minute / 60)
+        var m = minute % 60
+        return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
+    }
+    function periodLabel(type) { return type === "peak" ? "峰" : type === "flat" ? "平" : "谷" }
+
     Connections {
         target: appController
         function onReservationSucceeded() { page.openCharging() }
@@ -50,12 +68,25 @@ Item {
                 spacing: 7
                 Text { Layout.fillWidth: true; Layout.minimumWidth: 0; text: appController.selectedStation.name || ""; color: Theme.text; font.pixelSize: 22; font.bold: true; wrapMode: Text.Wrap }
                 Text { Layout.fillWidth: true; Layout.minimumWidth: 0; text: appController.selectedStation.address || ""; color: Theme.textMuted; font.pixelSize: 13; wrapMode: Text.Wrap }
+                Text {
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                    visible: (appController.selectedStation.province || "") !== ""
+                    text: {
+                        var parts = []
+                        var s = appController.selectedStation
+                        if (s.province) parts.push(s.province)
+                        if (s.city && s.city !== s.province) parts.push(s.city)
+                        if (s.district) parts.push(s.district)
+                        return parts.join(" / ")
+                    }
+                    color: Theme.textMuted; font.pixelSize: 13
+                }
                 Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
                 RowLayout {
                     Layout.fillWidth: true; Layout.minimumWidth: 0
                     Repeater {
                         model: [
-                            { value: "￥" + Number(appController.selectedStation.price_per_kwh || 0).toFixed(2), label: "每度" },
+                            { value: "￥" + Number(appController.pricing.current_price_per_kwh || appController.selectedStation.price_per_kwh || 0).toFixed(2), label: "当前每度" },
                             { value: String(appController.selectedStation.pile_count || 0), label: "总桩" },
                             { value: String(appController.selectedStation.idle_pile_count || 0), label: "空闲" },
                             { value: (Number(appController.selectedStation.pile_count || 0) > 0 ? Math.round(100 * (Number(appController.selectedStation.pile_count) - Number(appController.selectedStation.offline_count || 0)) / Number(appController.selectedStation.pile_count)) : 0) + "%", label: "在线率" }
@@ -68,6 +99,39 @@ Item {
                         }
                     }
                 }
+            }
+        }
+        AppCard {
+            Layout.fillWidth: true; Layout.minimumWidth: 0
+            implicitHeight: pricingContent.implicitHeight + 36
+            ColumnLayout {
+                id: pricingContent
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 6
+                Text { text: "计价说明"; color: Theme.text; font.pixelSize: 15; font.bold: true }
+                Repeater {
+                    model: appController.pricing.periods || []
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
+                        Text {
+                            Layout.fillWidth: true
+                            text: page.minuteRange(modelData.start_minute) + " - " + page.minuteRange(modelData.end_minute)
+                            color: Theme.text; font.pixelSize: 12
+                        }
+                        Text { text: page.periodLabel(modelData.period_type); color: Theme.textMuted; font.pixelSize: 12 }
+                        Text { text: "￥" + Number(modelData.price_per_kwh).toFixed(2) + "/度"; color: Theme.primaryDark; font.bold: true; font.pixelSize: 12 }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                    visible: !(appController.pricing.periods || []).length
+                    text: "本站按固定电价计费，暂无分时时段"
+                    color: Theme.textMuted; font.pixelSize: 12; wrapMode: Text.Wrap
+                }
+                Rectangle { Layout.fillWidth: true; Layout.minimumWidth: 0; height: 1; color: Theme.border }
+                Text { Layout.fillWidth: true; Layout.minimumWidth: 0; text: page.ruleText; color: Theme.textMuted; font.pixelSize: 11; wrapMode: Text.WordWrap }
             }
         }
         RowLayout {
@@ -108,7 +172,7 @@ Item {
                     spacing: 12
                     Rectangle {
                         width: 48; height: 48; radius: 15
-                        color: modelData.status === "idle" ? Theme.primarySoft : "#F1F5F9"
+                        color: modelData.status === "idle" ? Theme.primarySoft : Theme.backgroundSecondary
                         AppIcon { anchors.centerIn: parent; name: "bolt"; width: 24; height: 24; iconColor: modelData.status === "idle" ? Theme.primary : Theme.textMuted }
                     }
                     ColumnLayout {
