@@ -12,7 +12,9 @@ let lastData = null;
 // 主题广播前的兜底令牌(与 map.js 夜间主题一致)
 const FALLBACK = { glow:'#e6be73', idle:'#938777', fault:'#ed7368', offline:'#626b6b',
                    text:'#f4f2ea', muted:'#8b9299', border:'#303638',
-                   tipBg:'rgba(17,19,21,.94)' };
+                   tipBg:'rgba(17,19,21,.94)',
+                   areaTop:'rgba(230,190,115,.55)', areaBottom:'rgba(230,190,115,.06)',
+                   barTop:'rgba(230,190,115,.95)', barBottom:'rgba(230,190,115,.40)' };
 
 const STATUS_NAMES = { idle:'空闲', charging:'充电中', fault:'故障', offline:'离线' };
 const PANEL_STATUS_COLOR_KEY = { charging:'glow', idle:'idle', fault:'fault', offline:'offline' };
