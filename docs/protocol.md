@@ -29,14 +29,24 @@ export CHARGING_SERVER_PORT=45454
   以及 `rule`（`enabled`/`free_move_minutes`/`occupancy_fee_per_minute`/`occupancy_fee_cap`，
   未配置时为 `null`，`occupancy_fee_cap <= 0` 表示占位费不封顶）。
   逻辑停用（disabled）的电站与 `station.detail` 口径一致，返回 `STATION_NOT_FOUND` 错误。
-  该接口为新增类型，旧客户端不受影响；`order.stop` 计费仍使用站点固定电价。
+  该接口为新增类型，旧客户端不受影响。
 - `pile.list`：`payload.station_id` 为电站 ID；返回该站电桩列表。
 - `user.profile` / `user.profile.update`：查询或修改当前连接已登录用户资料。
 - `wallet.recharge`：为当前用户模拟充值，金额范围为 0 到 100000 元。
 - `order.active` / `order.history`：查询当前未完成订单或最近 50 条订单。
+  订单对象自数据库版本 7 起携带占位费明细字段 `occupancy_fee`（纯增量，旧客户端自然忽略）；
+  充电中的活动订单还携带 `power_kw`/`price_per_kwh`/`station_id`/`duration_seconds`
+  及按分时电价实时估算的 `energy_kwh`/`amount`。
 - `order.reserve`：预约空闲电桩；当前用户或电桩已有活动订单时拒绝。
-- `order.start` / `order.stop`：开始或停止充电，停止时由服务端计算电量和费用。
+- `order.start` / `order.stop`：开始或停止充电。停止时由服务端计算电量和费用：
+  电费按**分时电价逐段积分**（充电跨越多个时段时各段电量 × 该段单价求和；
+  站点未配置规则、`enabled=0` 或时段未覆盖的时刻回退到站点固定电价，
+  与旧口径 `round3(电量) × 固定单价` 完全一致），金额保留两位小数。
 - `order.settle` / `order.cancel`：钱包结算待付款订单或取消预约。
+  结算扣款 = 电费 `amount` + **占位费 `occupancy_fee`**；
+  占位费按"充电结束（`ended_at`）到本次结算"的占位分钟数计收
+  （免费挪车时间抵扣、每分钟费率、按 `occupancy_fee_cap` 封顶；分钟数向下取整，
+  无规则的站点为 0），随订单状态一并落库并计入订单 JSON。
 
 用户相关接口绑定当前 TCP 连接的登录身份，不接受客户端提交任意用户 ID。连接重建后必须重新登录。
 
@@ -103,6 +113,12 @@ export CHARGING_SERVER_PORT=45454
   行政区划 `province` / `city` / `district` 为**按键存在才更新**(允许置空表示未分区),
   键缺省时保持原值;单字段长度上限 32,超长返回 `INVALID_ARGUMENT`。
 - `admin.pile.list` / `admin.pile.restart`：电桩明细和模拟远程重启。
+- `admin.pricing.get` / `admin.pricing.set`：站点计价规则读取与整组保存（数据库版本 7 起可用）。
+  `get` 返回 `{station_id, rule, periods}`（未配置规则时 `rule` 为 `null`）；
+  `set` 接收 `{station_id, enabled, free_move_minutes, occupancy_fee_per_minute,
+  occupancy_fee_cap, periods:[{start_minute, end_minute, period_type, price_per_kwh}]}`，
+  时段校验（越界/重叠/非法类型/负价）由仓储层完成，任一失败整体返回 `PRICING_SET_FAILED`，
+  不留下半截数据。保存后立即对后续充电计费生效（分段积分 + 占位费），旧客户端不受影响。
 - `admin.pile.create`：单独新增电桩，`payload.station_id/code/type(fast|slow)/power_kw(0,1000]`；
   编号全局唯一，重复返回 `PILE_CREATE_FAILED`。
 - `admin.pile.update`：编辑类型与功率，`payload.pile_id/type/power_kw`；充电中拒绝（`PILE_UPDATE_FAILED`）。
@@ -127,6 +143,7 @@ export CHARGING_SERVER_PORT=45454
 - `ORDER_START_FAILED` / `ORDER_STOP_FAILED` / `ORDER_SETTLE_FAILED`：订单状态或余额不满足操作条件。
 - `ADMIN_AUTH_REQUIRED` / `ADMIN_LOGIN_FAILED`：管理员未登录或凭据错误。
 - `STATION_CREATE_FAILED`：新增电站或初始化电桩失败。
+- `PRICING_SET_FAILED`：站点计价规则保存失败（时段越界/重叠/类型非法/负值等）。
 - `PILE_RESTART_FAILED`：电桩不存在或处于充电状态。
 - `USER_STATUS_FAILED`：冻结、解冻用户失败。
 - `STATION_NOT_FOUND`：电站不存在。

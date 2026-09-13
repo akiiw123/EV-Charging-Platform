@@ -78,35 +78,50 @@ bool DatabaseManager::initialize(QString* errorMessage)
 // 版本 5(2026-09):charging_stations 增加营业状态 status 列。
 // 版本 6(2026-09):charging_stations 增加行政区划 province/city/district 列
 // (管理端三级区域筛选数据源;空串表示未分区,不回填已有管理员的修改)。
+// 版本 7(2026-09):charging_orders 增加 occupancy_fee 占位费明细列(结算扣款 = amount + occupancy_fee)。
 bool DatabaseManager::migrate(QString* errorMessage)
 {
-    QSqlQuery pragma(database_);
-    if (!pragma.exec(QStringLiteral("PRAGMA table_info(charging_stations)"))) {
-        if (errorMessage) {
-            *errorMessage = pragma.lastError().text();
-        }
-        return false;
-    }
-    QStringList existingColumns;
-    while (pragma.next()) {
-        existingColumns << pragma.value(1).toString();
-    }
     // 待补列定义:与 schema.sql 中 CREATE TABLE 保持一致
-    const QList<QPair<QString, QString>> pendingColumns = {
-        {QStringLiteral("status"),
+    struct PendingColumn
+    {
+        QString table;
+        QString column;
+        QString definition;
+    };
+    const QList<PendingColumn> pendingColumns = {
+        {QStringLiteral("charging_stations"), QStringLiteral("status"),
          QStringLiteral("TEXT NOT NULL DEFAULT 'active' "
                         "CHECK(status IN ('active','disabled'))")},
-        {QStringLiteral("province"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
-        {QStringLiteral("city"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
-        {QStringLiteral("district"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("charging_stations"), QStringLiteral("province"),
+         QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("charging_stations"), QStringLiteral("city"),
+         QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("charging_stations"), QStringLiteral("district"),
+         QStringLiteral("TEXT NOT NULL DEFAULT ''")},
+        {QStringLiteral("charging_orders"), QStringLiteral("occupancy_fee"),
+         QStringLiteral("REAL NOT NULL DEFAULT 0 CHECK(occupancy_fee >= 0)")},
     };
-    for (const auto& [column, definition] : pendingColumns) {
-        if (existingColumns.contains(column)) {
+    for (const auto& pending : pendingColumns) {
+        QSqlQuery pragma(database_);
+        if (!pragma.exec(QStringLiteral("PRAGMA table_info(%1)").arg(pending.table))) {
+            if (errorMessage) {
+                *errorMessage = pragma.lastError().text();
+            }
+            return false;
+        }
+        bool hasColumn = false;
+        while (pragma.next()) {
+            if (pragma.value(1).toString() == pending.column) {
+                hasColumn = true;
+                break;
+            }
+        }
+        if (hasColumn) {
             continue;
         }
         QSqlQuery alter(database_);
-        if (!alter.exec(QStringLiteral("ALTER TABLE charging_stations ADD COLUMN %1 %2")
-                            .arg(column, definition))) {
+        if (!alter.exec(QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3")
+                            .arg(pending.table, pending.column, pending.definition))) {
             if (errorMessage) {
                 *errorMessage = alter.lastError().text();
             }

@@ -58,6 +58,8 @@ struct ChargingOrder {
     QDateTime endedAt;
     double energyKwh = 0.0;
     double amount = 0.0;
+    // 占位费明细:充电结束到完成结算期间按站点规则计收;应付合计 = amount + occupancyFee
+    double occupancyFee = 0.0;
     QDateTime createdAt;
 };
 

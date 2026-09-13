@@ -245,29 +245,29 @@ private slots:
 
             // reserved 状态不能直接结束或结算
             QVERIFY(!orders.finishCharging(order->id, 1.0, 1.0, &error));
-            QVERIFY(!orders.settle(order->id, &error));
+            QVERIFY(!orders.settle(order->id, 0.0, &error));
             QCOMPARE(orders.findById(order->id)->status, QStringLiteral("reserved"));
 
             QVERIFY(orders.startCharging(order->id, &error));
             // charging 状态不能重复启动，也不能取消
             QVERIFY(!orders.startCharging(order->id, &error));
             QVERIFY(!orders.cancel(order->id, &error));
-            QVERIFY(!orders.settle(order->id, &error));
+            QVERIFY(!orders.settle(order->id, 0.0, &error));
             QCOMPARE(orders.findById(order->id)->status, QStringLiteral("charging"));
 
             QVERIFY(!orders.finishCharging(order->id, -1.0, 10.0, &error));
             QVERIFY(!orders.finishCharging(order->id, 10.0, -1.0, &error));
             QVERIFY(orders.finishCharging(order->id, 10.0, 20.0, &error));
-            QVERIFY(orders.settle(order->id, &error));
+            QVERIFY(orders.settle(order->id, 0.0, &error));
 
             // completed 是终态
-            QVERIFY(!orders.settle(order->id, &error));
+            QVERIFY(!orders.settle(order->id, 0.0, &error));
             QVERIFY(!orders.cancel(order->id, &error));
             QVERIFY(!orders.startCharging(order->id, &error));
             QCOMPARE(orders.findById(order->id)->status, QStringLiteral("completed"));
             QCOMPARE(users.findById(user->id)->walletBalance, 80.0);
 
-            QVERIFY(!orders.settle(999999, &error));
+            QVERIFY(!orders.settle(999999, 0.0, &error));
             QVERIFY(!orders.startCharging(999999, &error));
             QVERIFY(!orders.cancel(999999, &error));
         });

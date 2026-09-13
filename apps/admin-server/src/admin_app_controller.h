@@ -48,6 +48,8 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionLoad6 READ predictionLoad6 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad24 READ predictionLoad24 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionConfidence READ predictionConfidence NOTIFY predictionChanged)
+    // 站点计价规则编辑:{rule:{...}|null, periods:[...]}
+    Q_PROPERTY(QVariantMap pricingDetail READ pricingDetail NOTIFY pricingChanged)
 
 public:
     explicit AdminAppController(bool databaseReady, QObject* parent = nullptr);
@@ -81,6 +83,7 @@ public:
     QString predictionLoad6() const { return predictionLoad6_; }
     QString predictionLoad24() const { return predictionLoad24_; }
     QString predictionConfidence() const { return predictionConfidence_; }
+    QVariantMap pricingDetail() const { return pricingDetail_; }
     bool mustChangePassword() const { return mustChangePassword_; }
     bool loadFailed() const { return loadFailed_; }
 
@@ -117,6 +120,9 @@ public:
     // 供"新增电桩"对话框选择所属电站
     Q_INVOKABLE QStringList stationNames() const;
     Q_INVOKABLE void setUserStatus(qint64 id, const QString& status);
+    // 站点计价规则(分时电价段 + 占位费):编辑对话框打开时拉取,保存后立即对计费生效
+    Q_INVOKABLE void loadPricing(qint64 stationId);
+    Q_INVOKABLE void savePricing(const QVariantMap& form);
     Q_INVOKABLE void refreshPredictions();
     // 强制改密流程:校验当前密码并设置新密码(服务端 PBKDF2 落库,清除首登标志)
     Q_INVOKABLE void changePassword(const QString& oldPassword, const QString& newPassword);
@@ -147,6 +153,7 @@ signals:
     void settingsChanged();
     void dashboardChanged();
     void predictionChanged();
+    void pricingChanged();
     void mustChangePasswordChanged();
     void loadFailedChanged();
     void passwordChangeResult(bool success);
@@ -187,6 +194,8 @@ private:
     int pageSize_ = 20;
     QVariantMap dashboard_, pileStatus_;
     QVariantList revenueTrend_, stationEnergy_;
+    // 计价规则编辑数据({rule:{...}|null, periods:[...]})
+    QVariantMap pricingDetail_;
     JsonListModel stations_, piles_, orders_, users_, predictions_;
     QJsonArray rawStations_, rawPiles_, rawOrders_, rawUsers_;
     QString stationQuery_, pileQuery_, pileStation_, pileType_, pileState_, orderQuery_, orderState_, userQuery_, userState_;

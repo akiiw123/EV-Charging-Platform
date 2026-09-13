@@ -7,6 +7,23 @@ import "../components"
 Item {
     id: page
     property var order: appController.activeOrder
+    // 预约倒计时的时间基准,每秒推进一次(与充电中显示的估算共用秒级节拍)
+    property int nowTick: 0
+    readonly property int kReservationTimeoutMinutes: 15
+
+    Timer {
+        interval: 1000
+        running: page.order.status === "reserved"
+        repeat: true
+        onTriggered: page.nowTick++
+    }
+    function remainingReservationMinutes() {
+        page.nowTick   // 引用以建立每秒刷新依赖
+        var created = Date.parse(page.order.created_at || "")
+        if (isNaN(created)) return page.kReservationTimeoutMinutes
+        var remainMs = page.kReservationTimeoutMinutes * 60 * 1000 - (Date.now() - created)
+        return Math.max(0, Math.ceil(remainMs / 60000))
+    }
 
     AppScrollView {
         anchors.fill: parent
@@ -61,6 +78,14 @@ Item {
                     font.pixelSize: 13
                 }
                 Text {
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                    visible: order.status === "reserved"
+                    text: "预约剩余约 " + page.remainingReservationMinutes()
+                          + " 分钟，超时将自动取消并释放电桩"
+                    color: Theme.warning
+                    font.pixelSize: 12
+                }
+                Text {
                     visible: !order.id
                     text: "请前往首页选择空闲电桩"
                     color: Theme.textMuted
@@ -77,8 +102,8 @@ Item {
             rowSpacing: 10
             Repeater {
                 model: [
-                    { value: Number(order.energy_kwh || 0).toFixed(3), label: "已充电量 kWh" },
-                    { value: "￥" + Number(order.amount || 0).toFixed(2), label: "当前金额" }
+                    { value: Number(order.energy_kwh || 0).toFixed(3), label: order.status === "charging" ? "已充电量(估算)" : "已充电量 kWh" },
+                    { value: "￥" + Number(order.amount || 0).toFixed(2), label: order.status === "charging" ? "当前金额(估算)" : "当前金额" }
                 ]
                 delegate: AppCard {
                     Layout.fillWidth: true; Layout.minimumWidth: 0
@@ -119,7 +144,10 @@ Item {
         AppButton {
             Layout.fillWidth: true; Layout.minimumWidth: 0
             visible: order.status === "awaiting_payment"
-            text: "钱包结算 ￥" + Number(order.amount || 0).toFixed(2)
+            // 结算扣款 = 电费 amount + 占位费明细 occupancy_fee
+            text: "钱包结算 ￥" + Number((order.amount || 0) + (order.occupancy_fee || 0)).toFixed(2)
+                  + (Number(order.occupancy_fee || 0) > 0
+                     ? "（含占位费 ￥" + Number(order.occupancy_fee).toFixed(2) + "）" : "")
             enabled: !appController.busy
             onClicked: page.confirm("order.settle", "结算")
         }

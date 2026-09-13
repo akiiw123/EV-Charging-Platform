@@ -105,6 +105,7 @@ ChargingOrder readOrder(const QSqlQuery& query)
             dateTime(query.value(QStringLiteral("ended_at"))),
             query.value(QStringLiteral("energy_kwh")).toDouble(),
             query.value(QStringLiteral("amount")).toDouble(),
+            query.value(QStringLiteral("occupancy_fee")).toDouble(),
             dateTime(query.value(QStringLiteral("created_at")))};
 }
 
@@ -680,24 +681,34 @@ bool OrderRepository::finishCharging(qint64 orderId, double energyKwh, double am
     return database_.commit();
 }
 
-bool OrderRepository::settle(qint64 orderId, QString* errorMessage) const
+bool OrderRepository::settle(qint64 orderId, double occupancyFee, QString* errorMessage) const
 {
+    if (occupancyFee < 0.0) {
+        setError(errorMessage, QStringLiteral("占位费不能为负"));
+        return false;
+    }
     if (!database_.transaction()) {
         setError(errorMessage, database_.lastError().text());
         return false;
     }
+    // 扣款 = 充电电费 amount + 占位费 occupancyFee,余额条件同样按合计校验;
+    // 占位费随状态流转一并落库,作为订单明细字段保留
     QSqlQuery debit(database_);
     debit.prepare(QStringLiteral(
-        "UPDATE users SET wallet_balance=wallet_balance-(SELECT amount FROM charging_orders WHERE id=:id) "
+        "UPDATE users SET wallet_balance=wallet_balance-"
+        "((SELECT amount FROM charging_orders WHERE id=:id)+:fee) "
         "WHERE id=(SELECT user_id FROM charging_orders WHERE id=:id AND status='awaiting_payment') "
-        "AND wallet_balance >= (SELECT amount FROM charging_orders WHERE id=:id)"));
+        "AND wallet_balance >= (SELECT amount FROM charging_orders WHERE id=:id)+:fee"));
     debit.bindValue(QStringLiteral(":id"), orderId);
+    debit.bindValue(QStringLiteral(":fee"), occupancyFee);
     if (!debit.exec() || debit.numRowsAffected() != 1) {
         return rollback(database_, errorMessage, QStringLiteral("余额不足或订单不可结算"));
     }
     QSqlQuery order(database_);
     order.prepare(QStringLiteral(
-        "UPDATE charging_orders SET status='completed' WHERE id=:id AND status='awaiting_payment'"));
+        "UPDATE charging_orders SET status='completed', occupancy_fee=:fee "
+        "WHERE id=:id AND status='awaiting_payment'"));
+    order.bindValue(QStringLiteral(":fee"), occupancyFee);
     order.bindValue(QStringLiteral(":id"), orderId);
     if (!order.exec() || order.numRowsAffected() != 1) {
         return rollback(database_, errorMessage, QStringLiteral("更新订单状态失败"));

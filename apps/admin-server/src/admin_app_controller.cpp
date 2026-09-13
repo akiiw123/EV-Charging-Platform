@@ -168,6 +168,18 @@ void AdminAppController::noteStationManaged(qint64 stationId)
 }
 
 void AdminAppController::notify(const QString& text, const QString& kind) { showNotice(text, kind); }
+
+void AdminAppController::loadPricing(qint64 stationId)
+{
+    if (stationId <= 0) return;
+    request(QStringLiteral("admin.pricing.get"), {{QStringLiteral("station_id"), stationId}});
+}
+
+void AdminAppController::savePricing(const QVariantMap& form)
+{
+    request(QStringLiteral("admin.pricing.set"), QJsonObject::fromVariantMap(form));
+}
+
 void AdminAppController::request(const QString& type, const QJsonObject& payload) {
     if (!api_.isConnected()) { connectionNotice_ = true; showNotice(QStringLiteral("正在连接服务，请稍后重试"), QStringLiteral("info")); return; }
     if (!loggedIn_ && type != QStringLiteral("admin.login")) return;
@@ -257,6 +269,8 @@ void AdminAppController::handleResponse(const charging::core::Message& m){
     else if(m.type=="admin.pile.update.ok"){showNotice(QStringLiteral("电桩信息已更新"));rawPiles_={};request("admin.pile.list");return;}
     else if(m.type=="admin.pile.status.ok"){showNotice(QStringLiteral("电桩状态已更新"));rawPiles_={};request("admin.pile.list");refreshDashboard();return;}
     else if(m.type=="admin.user.status.ok"){showNotice(QStringLiteral("用户状态已更新"));request("admin.user.list",{{"phone",userQuery_}});return;}
+    else if(m.type=="admin.pricing.get.ok"){pricingDetail_=m.payload.toVariantMap();emit pricingChanged();return;}
+    else if(m.type=="admin.pricing.set.ok"){showNotice(QStringLiteral("计价规则已更新,保存后立即对后续充电计费生效"));return;}
     const bool stationsRefreshed = m.type == QStringLiteral("admin.station.list.ok");
     applyClientFilters();
     // 电桩页"所属电站"下拉等依赖电站原始数据,变化时通知 QML 重新拉取

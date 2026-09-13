@@ -1,3 +1,4 @@
+#include "charging/core/business_rules.h"
 #include "charging/core/display_time.h"
 #include "user_app_controller.h"
 
@@ -373,6 +374,16 @@ void UserAppController::selectStation(const QVariantMap& station)
     emit selectedStationChanged();
     emit pilesChanged();
     loadPiles(station.value(QStringLiteral("id")).toLongLong());
+    loadPricing(station.value(QStringLiteral("id")).toLongLong());
+}
+
+// 拉取电站计价规则(分时电价段 + 占位费),供详情页展示与充电实时估算使用
+void UserAppController::loadPricing(qint64 stationId)
+{
+    if (stationId <= 0) return;
+    pricingStationId_ = stationId;
+    sendRequest(QStringLiteral("station.pricing"),
+              {{QStringLiteral("station_id"), stationId}});
 }
 
 void UserAppController::loadPiles(qint64 stationId)
@@ -637,6 +648,10 @@ void UserAppController::updateOrder(const QVariant& value)
     const QString previousStatus = activeOrder_.value(QStringLiteral("status")).toString();
 
     activeOrder_ = value.toMap();
+    // 活动订单换站时同步拉取该站计价规则,实时估算才能按分时电价取价
+    const qint64 orderStationId =
+        activeOrder_.value(QStringLiteral("station_id")).toLongLong();
+    if (orderStationId > 0 && orderStationId != pricingStationId_) loadPricing(orderStationId);
     if (activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("completed")
         || activeOrder_.value(QStringLiteral("status")).toString() == QStringLiteral("cancelled"))
         activeOrder_.clear();
@@ -682,6 +697,32 @@ void UserAppController::updateOrder(const QVariant& value)
     emit activeOrderChanged();
 }
 
+// 充电实时估算金额:站点启用分时电价时按分钟逐段取价(与服务器逐秒口径的
+// 差别仅为估算精度,最终金额以停止充电时的服务端结算为准),否则用固定单价
+double UserAppController::estimatedAmountFor(qint64 durationSeconds) const
+{
+    if (durationSeconds <= 0 || selectedPowerKw_ <= 0.0) return 0.0;
+    QList<charging::core::PricingPeriod> periods;
+    const auto rule = pricing_.value(QStringLiteral("rule")).toMap();
+    if (pricingStationId_ > 0 && rule.value(QStringLiteral("enabled")).toBool()) {
+        const auto rows = pricing_.value(QStringLiteral("periods")).toList();
+        for (const auto& rowValue : rows) {
+            const auto row = rowValue.toMap();
+            charging::core::PricingPeriod period;
+            period.startMinute = row.value(QStringLiteral("start_minute")).toInt();
+            period.endMinute = row.value(QStringLiteral("end_minute")).toInt();
+            period.periodType = row.value(QStringLiteral("period_type")).toString();
+            period.pricePerKwh = row.value(QStringLiteral("price_per_kwh")).toDouble();
+            periods.append(period);
+        }
+    }
+    // 从当前时刻倒推充电起点,各秒的分钟归属与服务器口径一致(本地时区)
+    const QDateTime startedAt =
+        QDateTime::currentDateTime().addSecs(-static_cast<int>(durationSeconds));
+    return qMax(0.0, charging::core::integratedChargingCost(
+                         startedAt, durationSeconds, selectedPowerKw_, selectedPrice_, periods));
+}
+
 void UserAppController::updateChargingEstimate()
 {
     const QString status = activeOrder_.value(QStringLiteral("status")).toString();
@@ -690,10 +731,11 @@ void UserAppController::updateChargingEstimate()
     double amount = 0.0;
     if (status == QStringLiteral("charging")) {
         energy = qMax(0.0, selectedPowerKw_ * chargingSeconds_ / 3600.0);
-        amount = qMax(0.0, energy * selectedPrice_);
+        amount = estimatedAmountFor(chargingSeconds_);
 
         // 顶部摘要和下方指标卡使用同一个 1 秒计时源。
         // 周期刷新只会用服务端时长向前校准，不会把实时值覆盖回数据库中的 0。
+        // 金额按站点计价规则逐段取价估算,最终以停止充电时的服务端结算为准。
         activeOrder_.insert(QStringLiteral("energy_kwh"), energy);
         activeOrder_.insert(QStringLiteral("amount"), amount);
         emit activeOrderChanged();
@@ -755,6 +797,16 @@ void UserAppController::handleResponse(const charging::core::Message& message)
     }
 
     const QVariantMap payload = message.payload.toVariantMap();
+    if (message.type == QStringLiteral("station.pricing.ok")) {
+        const qint64 stationId = payload.value(QStringLiteral("station_id")).toLongLong();
+        if (stationId == pricingStationId_) {
+            pricing_ = payload;
+            emit pricingChanged();
+            // 规则变化影响进行中订单的实时估算,立即重算
+            if (!activeOrder_.isEmpty()) updateChargingEstimate();
+        }
+        return;
+    }
     if (message.type == QStringLiteral("auth.phone_login.ok")) {
         updateUser(payload.value(QStringLiteral("user")).toMap());
         loggedIn_ = true;

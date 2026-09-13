@@ -97,6 +97,7 @@ Item {
                 } }
             // 一键跳转:切到电桩管理页并带上该站预筛选(可在该页清除);同时记入"最近管理"
             AppButton { Layout.fillWidth: true; text: "去管理电桩（" + adminController.pilesOfStationId(Number(root.selected.id || 0)).length + " 台）"; onClicked: { var station = root.selected; adminController.noteStationManaged(Number(station.id || 0)); root.managePilesRequested(station); drawer.close() } }
+            AppButton { Layout.fillWidth: true; text: "计价规则"; variant: "secondary"; onClicked: { pricingDialog.stationId = Number(root.selected.id || 0); pricingDialog.stationName = root.selected.name || ""; pricingDialog.open() } }
             RowLayout { Layout.fillWidth: true; spacing: 8
                 AppButton { Layout.fillWidth: true; text: root.selected.status === "disabled" ? "恢复营业" : "停用电站"; variant: "secondary"
                     onClicked: statusConfirm.open() }
@@ -132,6 +133,7 @@ Item {
             Text { id: validation; color: Theme.danger; font.pixelSize: Theme.fontCaption; visible: text.length > 0 }
             RowLayout { Layout.alignment: Qt.AlignRight; AppButton { text: "取消"; variant: "secondary"; onClicked: editor.close() } AppButton { text: "保存"; onClicked: { var la = Number(lat.text), lo = Number(lng.text), pr = Number(price.text), co = Number(count.text); if (!name.text.trim() || !address.text.trim() || la < -90 || la > 90 || lo < -180 || lo > 180 || pr < 0 || (!editor.editing && (co < 1 || co > 100))) { validation.text = "请完整填写表单，并检查坐标、价格和电桩数量"; return } if (provinceField.text.trim().length > 32 || cityField.text.trim().length > 32 || districtField.text.trim().length > 32) { validation.text = "省/市/区长度不能超过 32 个字符"; return } var f = {id: root.selected.id, name: name.text.trim(), address: address.text.trim(), province: provinceField.text.trim(), city: cityField.text.trim(), district: districtField.text.trim(), latitude: la, longitude: lo, price_per_kwh: pr, pile_count: co}; if (editor.editing) adminController.updateStation(f); else adminController.createStation(f); editor.close() } } }
         } }
+    PricingDialog { id: pricingDialog }
     ConfirmDialog { id: deleteConfirm; heading: "删除电站"; message: "确认删除“" + (root.selected.name || "") + "”？包含活动订单的电站将被服务端拒绝删除。"; confirmText: "确认删除"; dangerous: true; onAcceptedAction: { drawer.close(); adminController.deleteStation(Number(root.selected.id)) } }
     ConfirmDialog { id: statusConfirm
         heading: root.selected.status === "disabled" ? "恢复营业" : "停用电站"

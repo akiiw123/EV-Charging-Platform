@@ -86,7 +86,8 @@ public:
     bool startCharging(qint64 orderId, QString* errorMessage = nullptr) const;
     bool finishCharging(qint64 orderId, double energyKwh, double amount,
                         QString* errorMessage = nullptr) const;
-    bool settle(qint64 orderId, QString* errorMessage = nullptr) const;
+    // occupancyFee 为占位费明细(>=0),与充电电费 amount 一并从钱包扣减
+    bool settle(qint64 orderId, double occupancyFee, QString* errorMessage = nullptr) const;
     bool cancel(qint64 orderId, QString* errorMessage = nullptr) const;
 
 private:

@@ -27,6 +27,9 @@ class UserAppController final : public QObject {
     Q_PROPERTY(QVariantMap user READ user NOTIFY userChanged)
     Q_PROPERTY(QVariantMap activeOrder READ activeOrder NOTIFY activeOrderChanged)
     Q_PROPERTY(QVariantMap selectedStation READ selectedStation NOTIFY selectedStationChanged)
+    // 当前选中电站/活动订单所属电站的计价规则(station.pricing 响应):
+    // {station_id, rule:{...}|null, periods:[...], current_price_per_kwh, fixed_price_per_kwh}
+    Q_PROPERTY(QVariantMap pricing READ pricing NOTIFY pricingChanged)
     Q_PROPERTY(QVariantList stations READ stations NOTIFY stationsChanged)
     Q_PROPERTY(QVariantList piles READ piles NOTIFY pilesChanged)
     Q_PROPERTY(QVariantList history READ history NOTIFY historyChanged)
@@ -58,6 +61,7 @@ public:
     QVariantMap user() const;
     QVariantMap activeOrder() const;
     QVariantMap selectedStation() const;
+    QVariantMap pricing() const { return pricing_; }
     QVariantList stations() const;
     QVariantList piles() const;
     QVariantList history() const;
@@ -80,6 +84,8 @@ public:
     Q_INVOKABLE void locate(const QString& address);
     Q_INVOKABLE QVariantList presetCities() const { return presetCities_; }
     Q_INVOKABLE void selectStation(const QVariantMap& station);
+    // 拉取电站计价规则:选中电站与活动订单换站时自动调用
+    Q_INVOKABLE void loadPricing(qint64 stationId);
     Q_INVOKABLE void reserve(qint64 pileId, double powerKw);
     Q_INVOKABLE void orderAction(const QString& action);
     Q_INVOKABLE void refreshProfile();
@@ -100,6 +106,7 @@ signals:
     void userChanged();
     void activeOrderChanged();
     void selectedStationChanged();
+    void pricingChanged();
     void stationsChanged();
     void pilesChanged();
     void historyChanged();
@@ -136,6 +143,8 @@ private:
     void rebuildStations();
     void loadPiles(qint64 stationId);
     void updateChargingEstimate();
+    // 充电实时估算金额:站点启用分时电价时按时段逐段取价,否则用固定单价
+    double estimatedAmountFor(qint64 durationSeconds) const;
     void applyLocation(const QString& name, double latitude, double longitude);
     void geocodeAddress(const QString& address);
     QNetworkAccessManager network_;
@@ -160,6 +169,9 @@ private:
     QVariantMap user_;
     QVariantMap activeOrder_;
     QVariantMap selectedStation_;
+    // 选中/活动订单电站的计价规则缓存(station.pricing 响应)
+    QVariantMap pricing_;
+    qint64 pricingStationId_ = 0;
     QVariantList rawStations_;
     QVariantList stations_;
     QVariantList piles_;
