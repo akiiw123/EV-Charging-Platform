@@ -1,0 +1,20 @@
+[Unit]
+Description=Charging Platform Analytics Flask API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bit
+Group=bit
+WorkingDirectory=/home/bit/charging-platform/analytics
+EnvironmentFile=/etc/charging-platform/analytics.env
+ExecStart=/home/bit/charging-platform/analytics/.venv/bin/gunicorn -c deploy/gunicorn.conf.py wsgi:app
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
