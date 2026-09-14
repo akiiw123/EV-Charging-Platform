@@ -1,0 +1,59 @@
+"""Flask application factory for the phase-two analytics API."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+
+from flask import Flask, g, request
+from werkzeug.exceptions import HTTPException
+
+from .config import load_config
+from .database import MySQLRepository
+from .responses import failure
+from .routes import api
+
+
+def create_app(config_overrides: dict | None = None, repository=None) -> Flask:
+    app = Flask(__name__)
+    app.config.from_mapping(load_config())
+    if config_overrides:
+        app.config.update(config_overrides)
+
+    app.extensions["analytics_repository"] = repository or MySQLRepository(app.config)
+    app.register_blueprint(api, url_prefix="/api/v1")
+
+    @app.before_request
+    def assign_request_id() -> None:
+        supplied = request.headers.get("X-Request-ID", "").strip()
+        g.request_id = supplied[:128] if supplied else uuid.uuid4().hex
+
+    @app.after_request
+    def add_response_headers(response):
+        response.headers["X-Request-ID"] = g.get("request_id", "")
+        origin = request.headers.get("Origin")
+        allowed = {
+            item.strip()
+            for item in app.config["ANALYTICS_CORS_ORIGINS"].split(",")
+            if item.strip()
+        }
+        if origin and origin in allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Request-ID"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        return response
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(error: HTTPException):
+        code = 40001 if error.code and error.code < 500 else 50001
+        return failure(code, error.description, error.code or 500)
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(error: Exception):
+        app.logger.exception("Unhandled analytics API error", exc_info=error)
+        return failure(50001, "服务器内部错误", 500)
+
+    logging.getLogger("werkzeug").setLevel(logging.INFO)
+    return app
+
