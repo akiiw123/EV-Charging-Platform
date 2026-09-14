@@ -11,7 +11,7 @@
 7. 两端 `qml/Main.qml` 和 `qml/pages/`：理解页面导航及用户操作入口。
 8. `ml/`、`web/dashboard/`：最后看独立预测服务和运营大屏。
 
-每个项目自有源码顶部都有职责说明，先读这两行，再进入实现。第三方 `web/dashboard/echarts.min.js` 不修改、不作为答辩源码讲解。
+每个项目自有源码顶部都有职责说明，先读这两行，再进入实现。前端依赖由 npm 锁定，不修改 `node_modules`，答辩重点讲 `src/` 下的 Vue 组件和数据映射。
 
 ## 2. 核心层逐文件索引
 
@@ -73,8 +73,11 @@ reserved ──开始──> charging ──停止──> awaiting_payment ─�
 - `ml/model.py`：PyTorch 负荷预测模型。
 - `ml/train.py`：训练、验证、早停并保存模型与元数据。
 - `ml/service.py`：加载产物，提供 `/health`、`/stations`、`/predict`。
-- `web/dashboard/server.py`：只读统计 API 和静态文件服务。
-- `web/dashboard/app.js`：每 5 秒更新指标与 ECharts。
+- `analytics/analytics_api/`：MySQL ADS 只读查询、统一 Flask JSON 响应和静态大屏托管。
+- `web/dashboard/src/App.vue`：Vue3 页面编排、接口状态和自动刷新。
+- `web/dashboard/src/lib/dashboard-model.js`：把统一接口的 10 组结果映射为视图模型。
+- `web/dashboard/src/lib/chart-options.js`：九类 ECharts 图表配置。
+- `web/dashboard/src/components/MapPanel.vue`：复用队友 V3 全国 OSM 站点地图。
 
 ## 7. 测试如何对应功能
 

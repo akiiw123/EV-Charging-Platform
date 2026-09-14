@@ -54,10 +54,13 @@ bash scripts/run-desktop.sh user
 python3 ml/service.py --data-dir ml/data --artifacts ml/artifacts --port 8090
 ```
 
-可选 Web 大屏：
+Web 大屏（先完成 `web/dashboard` 的 `npm ci && npm run build`）：
 
 ```bash
-python3 web/dashboard/server.py --database charging_platform.db --host 0.0.0.0 --port 8080
+cd analytics
+set -a && . ./.env && set +a
+.venv/bin/gunicorn -c deploy/gunicorn.conf.py wsgi:app
+# 浏览器访问 http://<虚拟机IP>:8091/dashboard/
 ```
 
 ## 5. 演示前检查清单
@@ -94,7 +97,7 @@ GUI 只发异步 TCP/HTTP 请求，响应通过 Qt 信号进入 Controller，再
 
 ### 项目还有哪些限制？
 
-当前定位不等同于移动设备 GPS；Web 大屏是局域网只读演示服务；服务端分页、TLS、正式部署鉴权和监控仍需工程化；分时电价和占位费尚未完全接入订单结算。
+当前定位不等同于移动设备 GPS；Web 大屏是局域网只读分析服务；服务端分页、TLS、正式部署鉴权和监控仍需工程化；分时电价和占位费尚未完全接入订单结算。
 
 ## 7. 最后熟悉代码的方法
 

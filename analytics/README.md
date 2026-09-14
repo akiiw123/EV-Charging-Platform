@@ -102,6 +102,18 @@ ANALYTICS_BASE_URL=http://127.0.0.1:8091 PYTHONPATH=. python tests/smoke_http.py
 
 ## Gunicorn 部署
 
+先构建 Vue3/DataV 大屏：
+
+```bash
+cd /home/bit/charging-platform/web/dashboard
+npm ci
+npm run test
+npm run build
+```
+
+Flask 会把构建结果挂载到 `/dashboard/`，根路径会重定向到该地址。可用
+`DASHBOARD_DIST_DIR` 覆盖默认的 `web/dashboard/dist`，便于独立部署或测试。
+
 前台联调运行：
 
 ```bash

@@ -8,7 +8,7 @@
 - `apps/admin-server`：Qt Widgets 管理端入口，同时预留 TCP 服务线程。
 - `libs/core`：领域模型、SQLite 初始化、JSON 消息协议等公共能力。
 - `database`：数据库建表与演示数据脚本。
-- `web/dashboard`：ECharts 运营大屏静态页面。
+- `web/dashboard`：Vue3 + DataV + ECharts 运营分析大屏。
 - `ml`：负荷预测模块的 Python 接口占位，不参与默认 C++ 构建。
 - `docs`：架构、协议与开发约定。
 
@@ -39,7 +39,7 @@ ctest --preset dev
 ./build/dev/apps/user-client/charging-user
 ```
 
-Web 大屏开发阶段可直接打开 `web/dashboard/index.html`。接入真实数据时，将其中的演示数据替换为服务端 HTTP/WebSocket 接口。
+Web 大屏由 `analytics/` Flask 服务提供真实 Spark/MySQL ADS 结果。开发与部署命令见 `docs/dashboard.md`。
 
 默认管理员账号仅用于本地开发：`admin / 123456`。已有数据库首次成功登录后会自动将旧版开发占位值升级为带随机盐的 PBKDF2-SHA256 哈希；正式部署前仍应修改初始密码。
 

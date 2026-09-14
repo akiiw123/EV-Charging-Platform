@@ -1,39 +1,70 @@
-# Web 运营大屏
+# Vue3 + DataV 运营分析大屏
 
-大屏使用 Python 标准库提供只读 HTTP API，并直接服务 `web/dashboard` 静态文件，不需要安装额外依赖。
+大屏位于 `web/dashboard`，使用 Vue3、DataV 和 Apache ECharts，将 Spark SQL 产出的 10 组 ADS 结果通过 Flask 统一接口展示。页面不读取 Qt 的 SQLite 业务库，也不在接口失败时伪造运营数据。
 
-先在项目根目录启动或运行一次管理端，使 `charging_platform.db` 存在，然后执行：
-
-```bash
-cd /home/bit/EV-Charging-Platform
-python3 web/dashboard/server.py --database charging_platform.db --host 0.0.0.0 --port 8080
-```
-
-在 Windows 浏览器访问：
+## 数据链路
 
 ```text
-http://192.168.179.128:8080
+CSV -> HDFS/ODS -> Spark SQL DWD/DWS/ADS -> MySQL charging_ads
+    -> Flask /api/v1/dashboard -> Vue3/DataV/ECharts
 ```
 
-页面每5秒从 `/api/dashboard` 刷新今日营收、在线电桩、进行中订单、近7日营收趋势和电桩状态分布。API 只执行查询，不直接修改业务数据。
+Flask 只读查询分析结果；Spark 导出、MySQL 导入和接口配置见 `analytics/README.md`。
 
-正式部署时应使用反向代理限制来源并启用 HTTPS；当前服务用于局域网课程演示。
+## 构建前端
 
-## 运营大屏（index.html）与全国灯点地图（map.html）
+要求 Node.js 23 或更高版本：
 
-两者共用同一 `server.py`、同一份本地 ECharts 与同一套昼夜主题令牌（`styles.css` + `map.js`）。
+```bash
+cd /home/bit/charging-platform/web/dashboard
+npm ci
+npm run test
+npm run build
+```
 
-- **`/`（index.html，合并大屏）**：地图铺满整页做背景，统计卡与图表成为两侧半透明浮层——顶部指标条（今日营收/在线电桩/进行中订单/桩位利用率）、左侧营收趋势与近 7 日时段分布、右侧电桩状态与站点营收排行，底部图例与状态栏；地图通过 `window.MAP_GEO_INSETS` 设置安全区，完整落在浮层之间。运营数据仍每 5 秒读取 `/api/dashboard`，图表配色经 `chargingmap:theme` 事件跟随昼夜主题实时切换。
-- **`/map.html`（纯地图页）**：无浮层的全屏地图视图，其余行为与合并页一致。
+`dist/` 是本地构建产物，不提交 Git。Vite 开发服务器可用 `npm run dev` 启动，默认将 `/api/v1` 代理到 `http://127.0.0.1:8091`；需要连接其他地址时设置 `ANALYTICS_PROXY_TARGET`。
 
-地图细节如下：
+## 启动 Flask/Gunicorn
 
-- 数据：`/api/map` 只读返回站点经纬度与桩级状态（查询 `charging_stations` / `charging_piles`）；接口不可用时自动回退为 `map.js` 内集中管理的演示数据，并在左下角"数据来源"明确标注，不冒充真实业务数据。
-- 演示铺点：底部开关可叠加一批覆盖各省的示意站点（空心环样式，共 31 站，充电中占多数），用于呈现全国灯网效果；真实库中目前仅北京（6 站）、深圳（1 站）。
-- 昼夜主题：默认跟随浏览器所在系统时间（06:00–18:00 日间青蓝，18:00–次日 06:00 夜间暖金），右上角可手动固定"日间/夜间"，选择保存在 localStorage；自动模式每 30 秒复查系统时间，页面从后台切回时立即复查。
-- 站内电子轨道（fx 层绘制）：电桩环绕站心排布在虚线轨道环上；轨道半径自适应 = 最近邻站距 × 45%（0.008~0.12°），仅几乎重合（间距 < 0.02°）的站按簇微错开（质心圆周均匀摆开，只影响绘制），其余保持真实间距——已知取舍：低倍缩放下密集站群桩点会视觉重合，放大后每站轨道环逐渐分离；轨道虚线缓慢旋转，沿环公转的"电子"能量点数量 = 充电中桩数 + 1，环上随机闪过火花弧段（夜间亮金、日间橙红）模拟电流滋滋声；夜间另有桩点星辉光晕。
-- 地图边界：阿里云 DataV.GeoAtlas `100000_full.json`（2026-09-13 下载，34 个省级行政区 + 九段线要素），已本地化为 `web/dashboard/assets/china.json`，离线可用；仅用于教学演示。
-- 已知限制：桩级无心跳/状态变更时间字段，页面不展示心跳时间；同城坐标极近的多座站展示时做微小错位平移避免完全重叠（只影响绘制）。品牌名与 Logo 已接入 VoltFlow 智充（Logo 取自 `apps/user-client/assets/voltflow-logo.png`，缩放为 96px 存于 `web/dashboard/assets/voltflow-logo.png`）。
-- 渲染注意事项（实测 ECharts 5.6.0）：① `lines` 流光的拖尾（`effect.trailLength > 0`）在地图缩放重投影下会留下跨帧幽灵虚线，故固定 `trailLength: 0`，以移动光点表现电流方向；② 全部系列统一放在 `zlevel: 2` 独立叠加层，缩放/平移结束后防抖重建一次 option；③ geo 的 `left/right/top/bottom` 布局键一旦显式传入（即使值为 undefined）就会改变默认居中布局，`map.js` 已用条件展开规避；④ `map.js` 与 `app.js` 同页加载且共享全局作用域，新增顶层常量前注意查重。
-- 视觉体系：日间为低饱和纸感方案（浅灰底 + 雾蓝地图 + 深蓝→天蓝同色系渐变图表 + 橙红 KPI 强调，夜间 KPI 为琥珀金），模块投影、细线分割、KPI 颜色均由昼夜令牌（`--kpi`/`--hairline`/`--shadow`）驱动；夜间另有 `#fx` 透明 Canvas 星辉层，让非故障/离线的桩点按稳定相位轻微闪烁（仅夜间启用、白天静止，亮度上限 0.38 保持安静），fx 画布尺寸由 JS 按视口显式设置，不依赖 CSS 加载时序。
-- 站内电流连线（fx 层绘制）：从站心到各桩为二次贝塞尔曲线（弯向按桩序号交替、弧度由桩 ID 派生，非直线），叠加轻微正弦摆动；"充电中"的线路有沿线流动短划（能量从站点流向桩）并每隔 1.6~5 秒在线段随机位置闪过一截火花（模拟电流滋滋声，夜间亮金、日间橙红），空闲为静态淡曲线，故障为红色虚线；所有相位/节奏由桩 ID 稳定派生，不会齐刷刷动作。
+```bash
+cd /home/bit/charging-platform/analytics
+set -a
+. ./.env
+set +a
+.venv/bin/gunicorn -c deploy/gunicorn.conf.py wsgi:app
+```
+
+浏览器访问：
+
+```text
+http://<bitdev-ip>:8091/dashboard/
+```
+
+Flask 默认托管 `web/dashboard/dist`，可用 `DASHBOARD_DIST_DIR` 覆盖。`/` 会重定向到 `/dashboard/`，接口继续位于 `/api/v1`。
+
+## 展示内容
+
+页面包含核心 KPI、用户等级、用户行为雷达、终端平台、24 小时趋势、站型效率、工作日/周末对比、起始电量健康、区域营收成本利润、站点效率排行，共 10 个分析维度；其中多个面板包含双指标或多指标对比。图表类型包括折线图、柱状图、环形图、雷达图、面积图和组合图。
+
+全国地图复用队友 V3 的 Canvas 交互实现，展示 3460 个 OpenStreetMap 静态站点。它只表达地理站点分布，不冒充实时电桩状态。地图边界来自本地化的 DataV.GeoAtlas 中国 GeoJSON；站点数据依据 OpenStreetMap ODbL 1.0，详见 `web/dashboard/THIRD_PARTY_NOTICES.md`。
+
+## 验证
+
+```bash
+cd /home/bit/charging-platform/web/dashboard
+npm run test
+npm run build
+python3 tests/browser_smoke.py http://127.0.0.1:8091/dashboard/
+
+cd /home/bit/charging-platform/analytics
+PYTHONPATH=. python -m unittest discover -s tests -v
+ANALYTICS_BASE_URL=http://127.0.0.1:8091 PYTHONPATH=. python tests/smoke_http.py
+```
+
+浏览器冒烟脚本需要当前 Python 环境已安装 Playwright 与 Chromium；常规前端单元测试和生产构建不依赖它。
+
+## 已知限制
+
+- 课程环境默认使用局域网 HTTP；正式公网部署需要 HTTPS、鉴权、反向代理和监控。
+- `dist/` 必须先构建，缺失时 `/dashboard/` 返回统一格式的 404。
+- 静态地图站点与 MySQL 运营分析数据来源不同，页面明确区分两者。

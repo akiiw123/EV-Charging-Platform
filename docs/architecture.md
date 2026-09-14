@@ -10,7 +10,7 @@ Qt 用户端（QML） ─┐
 Qt 管理端（QML） ─┘                         │
                                            └─ HTTP JSON ─ Python 预测服务
 
-Web 运营大屏 ─ HTTP JSON ─ Python 只读统计服务 ─ SQLite
+Vue3/DataV 运营大屏 ─ HTTP JSON ─ Flask 只读分析服务 ─ MySQL ADS
 ```
 
 管理端可执行程序同时承担两个角色：显示运营界面，并初始化数据库和启动 TCP 服务。用户端不直接访问数据库，只通过 `ApiClient` 发请求。预测模型在独立 Python 进程运行，避免将 Python 和耗时推理嵌入 GUI 线程。
@@ -26,7 +26,8 @@ Web 运营大屏 ─ HTTP JSON ─ Python 只读统计服务 ─ SQLite
 | 数据访问 | `repositories.*`、`database_manager.*` | SQL、事务、连接和数据库初始化 | 处理 QML 状态 |
 | 公共规则 | `business_rules.h`、`display_time.h`、`password_security.*` | 状态常量、输入边界、时间和密码安全 | 保存界面状态 |
 | 预测 | `ml/` | 数据导出、训练、模型加载和 HTTP 推理 | 修改订单、电桩或用户数据 |
-| 运营大屏 | `web/dashboard` | SQLite 只读统计和浏览器图表 | 写业务数据 |
+| 运营大屏 | `web/dashboard` | Vue3、DataV、ECharts 展示 10 组分析结果 | 写业务数据 |
+| 分析接口 | `analytics/` | Flask 统一 JSON 接口、MySQL ADS 只读查询与大屏静态托管 | 修改 Qt 业务库 |
 
 ## 3. 一次用户操作如何流动
 
@@ -46,7 +47,7 @@ Web 运营大屏 ─ HTTP JSON ─ Python 只读统计服务 ─ SQLite
 - 管理端/TCP 服务：默认 `0.0.0.0:45454`。
 - 用户端：默认连接 `127.0.0.1:45454`，可用 `CHARGING_SERVER_HOST`、`CHARGING_SERVER_PORT` 覆盖。
 - 预测服务：默认 `127.0.0.1:8090`，管理端可用 `CHARGING_ML_URL` 覆盖。
-- Web 大屏：演示命令默认监听 `0.0.0.0:8080`。
+- Web 大屏与分析 API：Gunicorn 默认监听 `0.0.0.0:8091`，大屏路径为 `/dashboard/`。
 - SQLite：schema 事实来源为 `database/schema.sql`，运行库默认在项目根目录生成且不提交 Git。
 - 腾讯地图：Key 仅从 `TENCENT_MAP_KEY` 读取。
 
@@ -63,7 +64,7 @@ Web 运营大屏 ─ HTTP JSON ─ Python 只读统计服务 ─ SQLite
 ## 6. 当前真实限制
 
 - 位置是课程演示定位和地址地理编码组合，不等同于移动设备 GPS。
-- Web 大屏服务为局域网演示用途，直接只读 SQLite，正式部署仍需鉴权、HTTPS 和统一统计服务。
+- Web 大屏服务为局域网课程演示用途，分析接口只读 MySQL ADS；正式公网部署仍需鉴权、HTTPS 和反向代理。
 - 分时电价已有仓储和计算能力；既有订单结算仍保留固定电价口径，占位费尚未接入结算。
 - 数据库没有可靠的电桩心跳时间和电站更新时间字段，界面不伪造这些值。
 - ML 服务必须存在训练数据与模型产物；不可用时管理端明确显示演示数据或失败状态。

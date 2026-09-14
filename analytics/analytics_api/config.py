@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+
+DEFAULT_DASHBOARD_DIST = Path(__file__).resolve().parents[2] / "web" / "dashboard" / "dist"
 
 
 def _positive_int(name: str, default: int) -> int:
@@ -27,5 +31,7 @@ def load_config() -> dict:
         "ANALYTICS_CORS_ORIGINS": os.getenv(
             "ANALYTICS_CORS_ORIGINS", "http://localhost:5173"
         ),
+        "DASHBOARD_DIST_DIR": os.getenv(
+            "DASHBOARD_DIST_DIR", str(DEFAULT_DASHBOARD_DIST)
+        ),
     }
-

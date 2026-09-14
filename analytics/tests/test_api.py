@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from analytics_api import create_app
 
@@ -33,9 +35,14 @@ class FakeRepository:
 
 
 class AnalyticsApiTest(unittest.TestCase):
-    def make_client(self, repository=None):
+    def make_client(self, repository=None, overrides=None):
+        config = {
+            "TESTING": True,
+            "ANALYTICS_CORS_ORIGINS": "http://localhost:5173",
+        }
+        config.update(overrides or {})
         app = create_app(
-            {"TESTING": True, "ANALYTICS_CORS_ORIGINS": "http://localhost:5173"},
+            config,
             repository or FakeRepository(),
         )
         return app.test_client()
@@ -88,6 +95,40 @@ class AnalyticsApiTest(unittest.TestCase):
         self.assertIn("hour_trend", data)
         self.assertIn("top_stations", data)
         self.assertEqual(len(data), 10)
+
+    def test_dashboard_build_is_served_under_stable_path(self):
+        with TemporaryDirectory() as directory:
+            dist = Path(directory)
+            (dist / "assets").mkdir()
+            (dist / "index.html").write_text("<main>VoltFlow</main>", encoding="utf-8")
+            (dist / "assets" / "app.js").write_text("window.ready = true", encoding="utf-8")
+            client = self.make_client(overrides={"DASHBOARD_DIST_DIR": str(dist)})
+
+            root = client.get("/")
+            redirect_response = client.get("/dashboard")
+            index = client.get("/dashboard/")
+            asset = client.get("/dashboard/assets/app.js")
+            history_fallback = client.get("/dashboard/settings")
+
+            self.assertEqual(root.status_code, 302)
+            self.assertTrue(root.headers["Location"].endswith("/dashboard/"))
+            self.assertEqual(redirect_response.status_code, 302)
+            self.assertTrue(redirect_response.headers["Location"].endswith("/dashboard/"))
+            self.assertIn(b"VoltFlow", index.data)
+            self.assertEqual(asset.data, b"window.ready = true")
+            self.assertIn(b"VoltFlow", history_fallback.data)
+            for response in (root, redirect_response, index, asset, history_fallback):
+                response.close()
+
+    def test_missing_dashboard_build_returns_standard_404(self):
+        with TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing"
+            response = self.make_client(
+                overrides={"DASHBOARD_DIST_DIR": str(missing)}
+            ).get("/dashboard/")
+
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.get_json()["code"], 40001)
 
 
 if __name__ == "__main__":
