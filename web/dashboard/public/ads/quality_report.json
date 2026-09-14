@@ -1,0 +1,94 @@
+{
+  "source_file": "china-260913.osm.pbf",
+  "source_bytes": 1593877106,
+  "extracted_at": "2026-09-14T08:02:36.925024+00:00",
+  "pbf_header": {
+    "generator": "osmium/1.16.0",
+    "osmosis_replication_timestamp": "2026-09-13T20:21:20Z",
+    "osmosis_replication_sequence_number": "4908",
+    "osmosis_replication_base_url": "https://download.geofabrik.de/asia/china-updates",
+    "bounds": "(73.4178800/14.2743700 134.8036190/53.6555900)"
+  },
+  "total_features": 3812,
+  "categories": {
+    "station": 3460,
+    "related_candidate": 18,
+    "charge_point": 332,
+    "battery_swap": 2
+  },
+  "osm_types": {
+    "node": 3370,
+    "relation": 7,
+    "way": 435
+  },
+  "lifecycle": {
+    "mapped": 3788,
+    "needs_review": 18,
+    "disused": 1,
+    "construction": 5
+  },
+  "with_coordinates": 3809,
+  "fields_present": {
+    "name": 2268,
+    "address": 16,
+    "province": 2,
+    "city": 5,
+    "operator": 1162,
+    "brand": 1919,
+    "capacity": 643,
+    "opening_hours": 153,
+    "phone": 26,
+    "charge_raw": 89,
+    "power_kw": 0
+  },
+  "features_with_sockets": 408,
+  "features_with_socket_power": 210,
+  "issues": {
+    "missing_address": 3798,
+    "missing_province": 3810,
+    "missing_city": 3807,
+    "missing_name": 1544,
+    "restricted_access": 107,
+    "vehicle_scope_review": 50,
+    "motorcar_excluded": 33,
+    "lifecycle_review": 24,
+    "station_assignment_unknown": 332,
+    "relation_without_area_geometry": 3
+  },
+  "station_link_candidates": 82,
+  "coordinate_system": "EPSG:4326",
+  "attribution": "© OpenStreetMap contributors",
+  "license": "ODbL 1.0",
+  "license_url": "https://www.openstreetmap.org/copyright",
+  "filter_keys": [
+    "amenity",
+    "man_made",
+    "charging_station",
+    "capacity:charging",
+    "service:vehicle:charging",
+    "disused:amenity",
+    "disused:man_made",
+    "abandoned:amenity",
+    "abandoned:man_made",
+    "construction:amenity",
+    "construction:man_made",
+    "proposed:amenity",
+    "proposed:man_made",
+    "demolished:amenity",
+    "demolished:man_made",
+    "removed:amenity",
+    "removed:man_made",
+    "planned:amenity",
+    "planned:man_made"
+  ],
+  "limitations": [
+    "Tag-based extraction, not a complete national charging inventory.",
+    "Station tags may historically represent individual chargers; no physical device count inferred.",
+    "Socket counts and capacity are not physical pile counts.",
+    "No current availability, operational tariff or business orders are supplied.",
+    "Non-multipolygon relations retained without guessed geometry.",
+    "No reverse geocoding or coordinate-system conversion performed."
+  ],
+  "source_sha256": "a80b30ac86f4f58eea3621f174a0aa62e110ffe4b9331932c53d715d21b7ab82",
+  "elapsed_seconds": 117.11
+}

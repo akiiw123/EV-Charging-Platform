@@ -1,98 +1,13 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>VoltFlow 智充 · 运营大屏</title>
-  <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css">
-  <!-- ECharts 本地化:离线环境(无外网)也能正常渲染 -->
-  <script src="echarts.min.js"></script>
-  <!-- 地图安全区:让中国地图完整落在两侧浮层之间(纯地图页 map.html 不设置则铺满) -->
-  <script>window.MAP_GEO_INSETS = { left: 324, right: 324, top: 136, bottom: 48 };</script>
-  <style>
-    /* 本页专属:地图铺满底层;图例横排居中,缩放按钮挪到右侧浮层内侧 */
-    #map { position:fixed; inset:0; }
-    #fx { position:fixed; inset:0; pointer-events:none; z-index:1; }
-    .legend { left:50%; transform:translateX(-50%); bottom:38px; display:flex;
-      flex-wrap:wrap; justify-content:center; gap:4px 14px; max-width:640px; }
-    .legend b { display:none; }
-    .zoomer { right:336px; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <canvas id="fx"></canvas>
-
-  <header class="topbar">
-    <div class="brand">
-      <img class="logo" src="assets/voltflow-logo.png" alt="VoltFlow">
-      <span>VoltFlow 智充 · 运营大屏</span>
-    </div>
-    <span id="clock"></span>
-    <nav class="modes" aria-label="主题模式">
-      <button data-m="auto" class="on">自动</button>
-      <button data-m="day">日间</button>
-      <button data-m="night">夜间</button>
-    </nav>
-  </header>
-
-  <section class="metrics-strip">
-    <article><small>今日营收</small><strong id="todayRevenue">¥ 0.00</strong></article>
-    <article><small>在线电桩</small><strong id="onlinePiles">0</strong></article>
-    <article><small>进行中订单</small><strong id="activeOrders">0</strong></article>
-    <article><small>桩位利用率</small><strong id="utilization">0%</strong></article>
-  </section>
-
-  <aside class="hud" id="hud-left">
-    <article class="grow" style="flex:1.15 0 auto">
-      <h2>营收趋势
-        <span class="range-toggle">
-          <button id="range7" class="on">近 7 日</button>
-          <button id="range30">近 30 日</button>
-        </span>
-      </h2>
-      <div id="revenue" class="chart fill"></div>
-    </article>
-    <article class="grow" style="flex:1 0 auto">
-      <h2>近 7 日充电时段分布</h2>
-      <div id="hourly" class="chart fill"></div>
-    </article>
-  </aside>
-
-  <aside class="hud" id="hud-right">
-    <article>
-      <h2>电桩状态</h2>
-      <div id="status" class="chart"></div>
-    </article>
-    <article class="grow">
-      <h2>站点营收排行</h2>
-      <ol id="ranking" class="ranking"></ol>
-    </article>
-  </aside>
-
-  <aside class="legend" id="legend">
-    <span><i class="dot" data-c="glow"></i>充电中(呼吸灯)</span>
-    <span><i class="dot" data-c="idle"></i>空闲可用</span>
-    <span><i class="dot" data-c="fault"></i>故障</span>
-    <span><i class="dot" data-c="offline"></i>离线</span>
-    <span><i class="ring"></i>演示铺点(示意)</span>
-    <span><i class="line"></i>充电能量流(公转)</span>
-    <span><i class="line faint"></i>站内轨道(示意)</span>
-  </aside>
-
-  <footer class="statusbar">
-    <span id="sourceTag">正在加载数据…</span>
-    <label><input type="checkbox" id="demoToggle"> 显示演示铺点(示意,非本平台站点)</label>
-    <span id="connectionState">正在读取运营数据…</span>
-  </footer>
-
-  <div class="zoomer" aria-label="地图缩放">
-    <button data-z="in" title="放大">＋</button>
-    <button data-z="out" title="缩小">－</button>
-    <button data-z="reset" title="重置视图">⟲</button>
-  </div>
-
-  <script src="map.js"></script>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>VoltFlow 智充 · 大数据运营指挥台</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

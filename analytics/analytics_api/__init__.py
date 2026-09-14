@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 
-from flask import Flask, g, request
+from flask import Flask, abort, g, redirect, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 from .config import load_config
@@ -22,6 +23,44 @@ def create_app(config_overrides: dict | None = None, repository=None) -> Flask:
 
     app.extensions["analytics_repository"] = repository or MySQLRepository(app.config)
     app.register_blueprint(api, url_prefix="/api/v1")
+    dashboard_dist = Path(app.config["DASHBOARD_DIST_DIR"]).resolve()
+
+    def dashboard_file(filename: str):
+        target = (dashboard_dist / filename).resolve()
+        try:
+            target.relative_to(dashboard_dist)
+        except ValueError:
+            abort(404)
+        if not target.is_file():
+            abort(404)
+        return send_from_directory(dashboard_dist, filename)
+
+    @app.get("/")
+    def dashboard_root():
+        if not (dashboard_dist / "index.html").is_file():
+            abort(404, description="大屏尚未构建")
+        return redirect("/dashboard/")
+
+    @app.get("/dashboard")
+    def dashboard_redirect():
+        return redirect("/dashboard/")
+
+    @app.get("/dashboard/")
+    def dashboard_index():
+        return dashboard_file("index.html")
+
+    @app.get("/dashboard/<path:asset_path>")
+    def dashboard_asset(asset_path: str):
+        target = (dashboard_dist / asset_path).resolve()
+        try:
+            target.relative_to(dashboard_dist)
+        except ValueError:
+            abort(404)
+        if target.is_file():
+            return send_from_directory(dashboard_dist, asset_path)
+        if "." not in Path(asset_path).name:
+            return dashboard_file("index.html")
+        abort(404)
 
     @app.before_request
     def assign_request_id() -> None:
@@ -56,4 +95,3 @@ def create_app(config_overrides: dict | None = None, repository=None) -> Flask:
 
     logging.getLogger("werkzeug").setLevel(logging.INFO)
     return app
-

@@ -25,7 +25,7 @@ ctest --test-dir build/admin-qml2 --output-on-failure
 |---|---|---|
 | 管理端+TCP 服务 | `bash scripts/run-desktop.sh admin` | 45454(监听所有网卡) |
 | 用户端 | `bash scripts/run-desktop.sh user` | —(连接 127.0.0.1:45454) |
-| Web 大屏 | `python3 web/dashboard/server.py`(在 web/dashboard 下) | 8080 |
+| Web 大屏 + 分析 API | `analytics/.venv/bin/gunicorn -c analytics/deploy/gunicorn.conf.py --chdir analytics wsgi:app` | 8091 |
 | 预测服务（可选） | python3 ml/service.py ... | 8090 |
 
 **必须先启动管理端**(SQLite 数据库随它初始化),再启动用户端。
@@ -173,13 +173,12 @@ find /usr/lib/qt6 -name QtWebEngineProcess
 
 | # | 步骤 | 预期 |
 |---|---|---|
-| W1 | `cd web/dashboard && python3 server.py` 后浏览器开 `http://127.0.0.1:8080` | 大屏显示今日营收、在线电桩、进行中订单、近 7 日趋势、状态分布 |
-| W2 | 保持页面打开,在用户端完成一笔订单结算 | 约 5 秒内大屏数字自动刷新 |
-| W2a | 查看新增面板:桩位利用率、站点营收排行、近 7 日时段分布 | 数据与数据库一致;排行按营收降序 |
-| W2b | 点击"近 7 日/近 30 日"切换 | 趋势图横轴与数据随选择变化 |
-| W3 | 从 Windows 宿主机访问 `http://<虚拟机IP>:8080` | 同样可访问(需虚拟机网络可达) |
-| W4 | 断网(或拔掉虚拟机外网)刷新大屏 | 图表仍正常渲染(ECharts 已本地化) |
-| W5 | 从项目根目录直接 `python3 web/dashboard/server.py` | 可正常启动(默认数据库路径按脚本位置解析) |
+| W1 | `cd web/dashboard && npm ci && npm run test && npm run build`，再启动 Gunicorn，打开 `http://127.0.0.1:8091/dashboard/` | 页面加载，接口状态显示在线，出现 5 个 KPI、9 个图表与全国地图 |
+| W2 | 核对用户等级、终端平台、时段、站型、周类型、电量、区域与站点排行 | 10 组 ADS 结果全部来自 `/api/v1/dashboard`，多指标图例和单位正确 |
+| W3 | 从 Windows 宿主机访问 `http://<虚拟机IP>:8091/dashboard/` | 同样可访问且无横向溢出 |
+| W4 | 断开 MySQL 后手动刷新 | 页面显示接口错误并保留上一次成功数据，不生成虚构指标 |
+| W5 | 缩放到约 390×680 | 单列响应式布局正常，图表和地图可继续查看 |
+| W6 | 打开浏览器开发者工具 | 控制台无脚本错误，所有 API 请求均走 `/api/v1` |
 
 ## 5. 异常与边界汇总
 
