@@ -1,6 +1,6 @@
 <script setup>
 import { Decoration5 } from '@kjgl77/datav-vue3'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import DashboardCard from './components/DashboardCard.vue'
 import EChartPanel from './components/EChartPanel.vue'
 import MapPanel from './components/MapPanel.vue'
@@ -8,10 +8,13 @@ import { fetchDashboard, fetchStations } from './api/analytics.js'
 import { buildChartOptions } from './lib/chart-options.js'
 import { chartMissingReason, hasVerifiedSource } from './lib/dashboard-model.js'
 
+const chartGroup = ref('overview')
 const dashboard = ref(null)
 const metadata = ref({})
 const assetBase = import.meta.env.BASE_URL
 const stationData = ref(null)
+const leftRailOpen = ref(false)
+const rightRailOpen = ref(false)
 const dashboardError = ref('')
 const stationError = ref('')
 const loading = ref(false)
@@ -19,6 +22,7 @@ const stationLoading = ref(false)
 const updatedAt = ref(null)
 const clock = ref(new Date())
 const theme = ref(localStorage.getItem('voltflow-dashboard-theme') === 'day' ? 'day' : 'night')
+provide('dashboardTheme', theme)
 let refreshController
 let stationController
 let refreshTimer
@@ -44,6 +48,9 @@ const rightCharts = computed(() => [
   { key: 'areaCosts', title: '区域收益与估算成本', eyebrow: 'AREA PROFIT', badge: 'TOP 10' },
 ])
 
+const visibleLeftCharts = computed(() => leftCharts.value.slice(chartGroup.value === 'overview' ? 0 : 2, chartGroup.value === 'overview' ? 2 : 4))
+const visibleRightCharts = computed(() => rightCharts.value.slice(chartGroup.value === 'overview' ? 0 : 2, chartGroup.value === 'overview' ? 2 : 4))
+
 const kpis = computed(() => {
   const overview = dashboard.value?.overview
   return [
@@ -54,6 +61,24 @@ const kpis = computed(() => {
     { label: '订单剔除比例', value: overview ? formatDecimal(overview.abnormal_rate) : '—', unit: '%' },
   ]
 })
+
+let railCloseTimer
+
+function openRail(side) {
+  window.clearTimeout(railCloseTimer)
+  leftRailOpen.value = side === 'left'
+  rightRailOpen.value = side === 'right'
+}
+
+function closeRails() {
+  leftRailOpen.value = false
+  rightRailOpen.value = false
+}
+
+function scheduleClose() {
+  window.clearTimeout(railCloseTimer)
+  railCloseTimer = window.setTimeout(closeRails, 280)
+}
 
 function formatInteger(value) {
   if (value == null || value === '') return '—'
@@ -130,6 +155,7 @@ onBeforeUnmount(() => {
   stationController?.abort()
   clearInterval(refreshTimer)
   clearInterval(clockTimer)
+  clearTimeout(railCloseTimer)
 })
 </script>
 
@@ -143,7 +169,7 @@ onBeforeUnmount(() => {
       <div class="title-block">
         <h1>充电网络大数据运营指挥台</h1>
         <Decoration5 class="title-decoration" :color="['#1de9c4', '#48a8ff']" :dur="3" />
-        <p>SPARK SQL · MYSQL ADS · FLASK API · VUE 3 + DATAV</p>
+        <p>看见充电网络，读懂每一次能量流动</p>
       </div>
       <div class="top-actions">
         <time>{{ clock.toLocaleString('zh-CN', { hour12: false }) }}</time>
@@ -156,54 +182,122 @@ onBeforeUnmount(() => {
       <span class="live-dot" :class="{ error: dashboardError, ok: hasDashboard }"></span>
       <strong>{{ dashboardError ? '分析接口异常' : hasDashboard ? '分析接口在线' : '正在连接分析接口' }}</strong>
       <span v-if="updatedAt">最近读取 {{ updatedAt.toLocaleTimeString('zh-CN', { hour12: false }) }}</span>
-      <span>ADS 分析维度 10 组</span>
+      <div class="analysis-switch" role="group" aria-label="分析图表分组">
+        <button type="button" :aria-pressed="chartGroup === 'overview'" @click="chartGroup = 'overview'">用户与时段</button>
+        <button type="button" :aria-pressed="chartGroup === 'structure'" @click="chartGroup = 'structure'">结构与收益</button>
+      </div>
       <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors · ODbL</a>
-    </div>
-
-    <div v-if="hasDashboard" class="analysis-source" :class="{ unknown: !verifiedSource }">
-      <template v-if="verifiedSource">
-        <strong>数据来自统一 PySpark 分析</strong>
-        <span>分析生成：{{ analysisTime }}</span>
-        <span>批次：{{ metadata.batch_id }}</span>
-        <span>原始 {{ metadata.quality?.raw_count }} 条 / 有效 {{ metadata.quality?.valid_count }} 条 / 剔除 {{ metadata.quality?.rejected_count }} 条</span>
-        <details><summary>查看分析来源</summary><p>输入：{{ metadata.analysis?.raw_source }}</p><p>模块：{{ metadata.analysis?.module }}</p><p>脚本校验：{{ metadata.analysis?.script_sha256 }}</p><p>分析编号：{{ metadata.analysis?.analysis_id }}</p></details>
-      </template>
-      <template v-else>接口返回了数据，但没有统一分析的批次信息；不能确认数据来自你的新版脚本。请完成新版 ADS 导入。</template>
     </div>
 
     <p v-if="dashboardError" class="error-banner" role="alert">
       Flask 数据读取失败：{{ dashboardError }}。页面保留最近一次成功结果，不使用伪造数据。
     </p>
 
-    <section class="kpi-grid" aria-label="核心指标">
+    <section tabindex="0" class="kpi-grid" aria-label="核心指标">
       <DashboardCard v-for="item in kpis" :key="item.label" :title="item.label" eyebrow="CORE KPI" class="kpi-card">
         <div class="kpi-value"><strong>{{ item.value }}</strong><span>{{ item.unit }}</span></div>
       </DashboardCard>
     </section>
 
-    <section class="analytics-grid">
-      <aside class="chart-column">
-        <DashboardCard v-for="item in leftCharts" :key="item.key" :title="item.title" :eyebrow="item.eyebrow" :badge="item.badge">
+    <section
+      class="analytics-grid"
+      :class="{
+        'left-open': leftRailOpen,
+        'right-open': rightRailOpen
+      }"
+    >
+      <aside
+        class="chart-column chart-column--left"
+        @mouseenter="openRail('left')"
+        @mouseleave="scheduleClose"
+        @focusin="openRail('left')"
+        tabindex="0"
+        @focusout="scheduleClose"
+        @keydown.esc="closeRails"
+        aria-label="左侧分析卡片"
+      >
+        <DashboardCard v-for="item in visibleLeftCharts" :key="item.key" :title="item.title" :eyebrow="item.eyebrow" :badge="item.badge">
           <EChartPanel :option="chartOptions[item.key] || {}" :empty="Boolean(missingReason(item.key))" :empty-message="missingReason(item.key)" />
         </DashboardCard>
       </aside>
 
       <div class="center-column">
-        <MapPanel :station-data="stationData" :theme="theme" :loading="stationLoading" :error="stationError" />
-        <DashboardCard title="充电次数 TOP10 站点的营收" eyebrow="STATION PERFORMANCE" badge="按营收展示" class="ranking-card">
-          <EChartPanel :option="chartOptions.topStations || {}" :empty="Boolean(missingReason('topStations'))" :empty-message="missingReason('topStations')" />
-        </DashboardCard>
-      </div>
+  <MapPanel
+    :station-data="stationData"
+    :theme="theme"
+    :loading="stationLoading"
+    :error="stationError"
+  />
 
-      <aside class="chart-column">
-        <DashboardCard v-for="item in rightCharts" :key="item.key" :title="item.title" :eyebrow="item.eyebrow" :badge="item.badge">
+  <div class="performance-docks" aria-label="站点绩效快捷分析">
+    <DashboardCard
+      title="站点充电次数 TOP10"
+      eyebrow="SESSION RANKING"
+      badge="按充电会话次数"
+      tabindex="0"
+      class="performance-dock performance-dock--left"
+    >
+      <EChartPanel
+        :option="chartOptions.topStations || {}"
+        :empty="Boolean(missingReason('topStations'))"
+        :empty-message="missingReason('topStations')"
+      />
+    </DashboardCard>
+
+    <DashboardCard
+      title="站点负荷与收入关系"
+      eyebrow="LOAD & REVENUE"
+      badge="负载率 / 收入"
+      tabindex="0"
+      class="performance-dock performance-dock--right"
+    >
+      <EChartPanel
+        :option="chartOptions.stationLoad || {}"
+        :empty="Boolean(missingReason('stationLoad'))"
+        :empty-message="missingReason('stationLoad')"
+      />
+    </DashboardCard>
+  </div>
+</div>
+
+      <aside
+        class="chart-column chart-column--right"
+        @mouseenter="openRail('right')"
+        @mouseleave="scheduleClose"
+        @focusin="openRail('right')"
+        tabindex="0"
+        @focusout="scheduleClose"
+        @keydown.esc="closeRails"
+        aria-label="右侧分析卡片"
+      >
+        <DashboardCard v-for="item in visibleRightCharts" :key="item.key" :title="item.title" :eyebrow="item.eyebrow" :badge="item.badge">
           <EChartPanel :option="chartOptions[item.key] || {}" :empty="Boolean(missingReason(item.key))" :empty-message="missingReason(item.key)" />
         </DashboardCard>
       </aside>
     </section>
 
+    <details class="metric-notes">
+      <summary>指标口径与数据来源 · {{ verifiedSource ? '已提供分析批次' : '分析批次待核验' }}</summary>
+      <div v-if="hasDashboard" class="analysis-source">
+        <template v-if="verifiedSource">
+          <strong>分析生成：{{ analysisTime }}</strong>
+          <p>批次：{{ metadata.batch_id }} · 原始 {{ metadata.quality?.raw_count }} 条 / 有效 {{ metadata.quality?.valid_count }} 条 / 剔除 {{ metadata.quality?.rejected_count }} 条</p>
+        </template>
+        <p v-else>当前数据缺少新版分析批次信息，统计口径尚未核验，需完成新版分析结果导入。</p>
+      </div>
+      <ul>
+        <li>以下为新版分析口径；无批次信息时，不能据此认定旧数据已更新。</li>
+        <li>充电会话包含充电中、待结算与已完成订单；营收仅统计已完成订单金额及占位费。</li>
+        <li>订单剔除比例：原始订单中被清洗、去重或关联校验剔除的比例，不是 SOC 缺失率。</li>
+        <li>站点排行按充电次数、累计电量降序；右侧关系图使用同一 TOP10 站点，横轴为相对负载率，纵轴为已结算营收，不代表全体站点。</li>
+        <li>相对负载率为充电次数除以同组最大次数，不代表设备时间利用率。起始 SOC 分布不代表电池健康状态。</li>
+        <li>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；估算利润为营收减电量成本，未计设备和人工等成本。</li>
+        <li>平台按下单用户去重，同一用户可出现在多个平台；周末按上海时区的周六、周日划分，不含调休。</li>
+      </ul>
+    </details>
+
     <footer>
-      <span>运营数据：Spark SQL → MySQL `charging_ads` → Flask</span>
+      <span>运营指标来自分析结果 · 站点灯光仅表示位置</span>
       <span>地理资料：OSM 静态站点 {{ stationData?.stations.length?.toLocaleString('zh-CN') || 0 }} 条</span>
       <span>VOLTFlow V3 / 数据不全时明确显示未知</span>
       <span>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；周末指周六、周日</span>

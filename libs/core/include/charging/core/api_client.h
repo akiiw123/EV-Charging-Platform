@@ -14,6 +14,7 @@ class ApiClient final : public QObject {
 
 public:
     explicit ApiClient(QObject* parent = nullptr);
+    ~ApiClient() override;
 
     void connectToServer(const QString& host, quint16 port);
     QString send(const QString& type, const QJsonObject& payload = {});
