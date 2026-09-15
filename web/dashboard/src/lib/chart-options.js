@@ -1,4 +1,4 @@
-const number = value => Number(value) || 0
+const number = value => value == null || value === '' ? null : Number.isFinite(Number(value)) ? Number(value) : null
 
 const PALETTES = {
   night: {
@@ -60,7 +60,7 @@ export function buildChartOptions(data, mode = 'night') {
 
   const radarDimensions = [...new Set(data.user_radar.map(row => row.dim_name))]
   const radarLevels = [...new Set(data.user_radar.map(row => row.user_level))]
-  const radarMax = Math.max(1, ...data.user_radar.map(row => number(row.dim_value)))
+  const radarMax = 100
   const radarSeries = radarLevels.map(level => ({
     name: level,
     value: radarDimensions.map(dimension => number(
@@ -90,12 +90,12 @@ export function buildChartOptions(data, mode = 'night') {
       ...common, legend,
       radar: {
         center: ['50%', '56%'], radius: '59%', splitNumber: 4,
-        indicator: radarDimensions.map(name => ({ name, max: Math.ceil(radarMax * 1.1) })),
+        indicator: radarDimensions.map(name => ({ name, max: radarMax })),
         axisName: { color: palette.muted, fontSize: 9 },
         splitLine: { lineStyle: { color: palette.grid } }, splitArea: { show: false },
         axisLine: { lineStyle: { color: palette.grid } },
       },
-      series: [{ type: 'radar', data: radarSeries, symbolSize: 3, areaStyle: { opacity: .12 } }],
+      series: [{ type: 'radar', data: radarSeries.filter(row => row.value.every(value => value !== null)), symbolSize: 3, areaStyle: { opacity: .12 } }],
     },
     platforms: {
       ...common,
@@ -130,9 +130,9 @@ export function buildChartOptions(data, mode = 'night') {
       yAxis: [categoryAxes(mode, []).yAxis, { type: 'value', name: '元/kWh', position: 'right',
         axisLabel: { color: palette.muted, fontSize: 9 }, splitLine: { show: false } }],
       series: [
-        { name: '利用率', type: 'bar', barMaxWidth: 16, data: data.station_types.map(row => number(row.utilization_rate)),
+        { name: '相对负载(%)', type: 'bar', barMaxWidth: 16, data: data.station_types.map(row => number(row.utilization_rate)),
           itemStyle: barStyle(palette.colors[0]) },
-        { name: '平均电价', type: 'line', yAxisIndex: 1, data: data.station_types.map(row => number(row.avg_fee_per_kwh)),
+        { name: '结算收入/电量', type: 'line', yAxisIndex: 1, data: data.station_types.map(row => number(row.avg_fee_per_kwh)),
           symbolSize: 6, lineStyle: { color: palette.colors[3], width: 2 } },
       ],
     },

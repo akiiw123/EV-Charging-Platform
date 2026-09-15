@@ -5,7 +5,7 @@ umask 077
 : "${MYSQL_DATABASE:=charging_ads}"
 : "${MYSQL_PORT:=3306}"
 : "${MYSQL_ADMIN_USER:=root}"
-: "${SECRETS_DIR:=/home/hadoop/ncs_data/secrets}"
+: "${MYSQL_API_HOST:=127.0.0.1}"
 
 case "${MYSQL_DATABASE}" in
   *[!A-Za-z0-9_]*|'') echo "MYSQL_DATABASE may contain only letters, digits, and underscores" >&2; exit 2 ;;
@@ -15,6 +15,7 @@ command -v mysql >/dev/null 2>&1 || { echo "mysql client is required" >&2; exit 
 command -v openssl >/dev/null 2>&1 || { echo "openssl is required" >&2; exit 1; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+: "${SECRETS_DIR:=${SCRIPT_DIR}/../.secrets}"
 SCHEMA_FILE=$(cd "${SCRIPT_DIR}/../sql" && pwd)/mysql_schema.sql
 mkdir -p "${SECRETS_DIR}"
 chmod 700 "${SECRETS_DIR}"
@@ -67,7 +68,7 @@ FLUSH PRIVILEGES;
 SQL
 
 printf '%s\n' \
-  'MYSQL_HOST=192.168.176.100' \
+  "MYSQL_HOST=${MYSQL_API_HOST}" \
   "MYSQL_PORT=${MYSQL_PORT}" \
   'MYSQL_USER=charging_api' \
   "MYSQL_PASSWORD=${api_password}" \
@@ -83,7 +84,7 @@ printf '%s\n' \
   'MYSQL_USER=charging_etl' \
   "MYSQL_PASSWORD=${etl_password}" \
   "MYSQL_DATABASE=${MYSQL_DATABASE}" \
-  'ADS_EXPORT_DIR=/home/hadoop/temp/charging_ads_export' > "${ETL_ENV}"
+  "ADS_EXPORT_DIR=${SCRIPT_DIR}/../runtime/ads_export" > "${ETL_ENV}"
 
 chmod 600 "${API_ENV}" "${ETL_ENV}"
 echo "MySQL analytics users are ready"

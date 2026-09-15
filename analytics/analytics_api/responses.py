@@ -30,10 +30,12 @@ def _envelope(code: int, message: str, data):
     }
 
 
-def success(data=None, status: int = 200):
-    return jsonify(_envelope(0, "ok", data)), status
+def success(data=None, status: int = 200, metadata=None):
+    envelope = _envelope(0, "ok", data)
+    if metadata is not None:
+        envelope["metadata"] = _json_value(metadata)
+    return jsonify(envelope), status
 
 
 def failure(code: int, message: str, status: int, data=None):
     return jsonify(_envelope(code, message, data)), status
-

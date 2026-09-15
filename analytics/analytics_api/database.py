@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from threading import Lock
+from contextlib import contextmanager
 from typing import Any, Iterable
 
 
@@ -45,6 +46,17 @@ class MySQLRepository:
     def fetch_all(self, query: str, params: Iterable[Any] = ()) -> list[dict]:
         return self._execute(query, params)
 
+    @contextmanager
+    def snapshot(self):
+        """Read all dashboard tables/metadata from the same committed batch."""
+        connection = self._pool().get_connection()
+        try:
+            connection.start_transaction(isolation_level="REPEATABLE READ", readonly=True, consistent_snapshot=True)
+            yield SnapshotRepository(connection)
+        finally:
+            connection.rollback()
+            connection.close()
+
     def _execute(self, query: str, params: Iterable[Any]) -> list[dict]:
         connection = self._pool().get_connection()
         cursor = connection.cursor(dictionary=True)
@@ -55,3 +67,19 @@ class MySQLRepository:
             cursor.close()
             connection.close()
 
+
+class SnapshotRepository:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def fetch_all(self, query, params=()):
+        cursor = self.connection.cursor(dictionary=True)
+        try:
+            cursor.execute(query, tuple(params))
+            return list(cursor.fetchall())
+        finally:
+            cursor.close()
+
+    def fetch_one(self, query, params=()):
+        rows = self.fetch_all(query, params)
+        return rows[0] if rows else None

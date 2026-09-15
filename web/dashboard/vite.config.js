@@ -21,6 +21,9 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 4173,
       strictPort: true,
+      proxy: {
+        '/api/v1': { target: env.ANALYTICS_PROXY_TARGET || 'http://127.0.0.1:8091', changeOrigin: true },
+      },
     },
   }
 })

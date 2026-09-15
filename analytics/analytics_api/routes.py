@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from flask import Blueprint, current_app, request
+from contextlib import nullcontext
 
 from .responses import failure, success
+from .metrics import metadata
 
 api = Blueprint("analytics_api", __name__)
 
@@ -105,15 +107,28 @@ def station_top():
 
 @api.get("/dashboard")
 def dashboard():
-    overview_row = _repository().fetch_one(
+    repository = _repository()
+    context = repository.snapshot() if hasattr(repository, "snapshot") else nullcontext(repository)
+    with context as snapshot:
+        data = _dashboard_data(snapshot)
+        batch_metadata = metadata(snapshot)
+    return success(data, metadata=batch_metadata)
+
+
+@api.get("/metadata")
+def batch_metadata():
+    return success(metadata(_repository()))
+
+
+def _dashboard_data(repository):
+    overview_row = repository.fetch_one(
         "SELECT sessions, total_kwh, total_fee, station_count, abnormal_rate FROM ads_kpi_overview LIMIT 1"
     )
-    top_stations = _repository().fetch_all(
+    top_stations = repository.fetch_all(
         "SELECT rn, station_name, station_area, total_sessions, total_kwh, total_fee, utilization_rate "
         "FROM ads_station_topn ORDER BY rn LIMIT %s",
         (10,),
     )
     data = {"overview": overview_row or {}, "top_stations": top_stations}
-    data.update({key: _repository().fetch_all(query) for key, query in QUERIES.items()})
-    return success(data)
-
+    data.update({key: repository.fetch_all(query) for key, query in QUERIES.items()})
+    return data
