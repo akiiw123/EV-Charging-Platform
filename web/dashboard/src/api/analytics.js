@@ -1,4 +1,4 @@
-import { normalizeDashboard, normalizeStations } from '../lib/dashboard-model.js'
+import { normalizeDashboard, normalizeMetadata, normalizeStations } from '../lib/dashboard-model.js'
 
 async function getJson(url, signal) {
   const response = await fetch(url, {
@@ -11,7 +11,8 @@ async function getJson(url, signal) {
 }
 
 export async function fetchDashboard(signal) {
-  return normalizeDashboard(await getJson('/api/v1/dashboard', signal))
+  const payload = await getJson('/api/v1/dashboard', signal)
+  return { data: normalizeDashboard(payload), metadata: normalizeMetadata(payload.metadata) }
 }
 
 export async function fetchStations(signal) {

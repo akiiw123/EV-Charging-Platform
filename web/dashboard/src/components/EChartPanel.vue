@@ -20,6 +20,7 @@ echarts.use([
 const props = defineProps({
   option: { type: Object, required: true },
   empty: { type: Boolean, default: false },
+  emptyMessage: { type: String, default: '暂无可信分析数据' },
 })
 
 const host = ref(null)
@@ -27,7 +28,8 @@ let chart
 let observer
 
 function render() {
-  if (!chart || props.empty) return
+  if (!chart) return
+  if (props.empty) { chart.clear(); return }
   chart.setOption(props.option, { notMerge: true, lazyUpdate: true })
 }
 
@@ -55,6 +57,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="chart-host">
     <div ref="host" class="chart-canvas" :aria-hidden="empty"></div>
-    <p v-if="empty" class="empty-state">暂无可信分析数据</p>
+    <p v-if="empty" class="empty-state">{{ emptyMessage }}</p>
   </div>
 </template>

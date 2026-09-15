@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { normalizeDashboard, normalizeStations } from '../src/lib/dashboard-model.js'
+import { normalizeDashboard, normalizeStations, hasVerifiedSource, chartMissingReason } from '../src/lib/dashboard-model.js'
 import { buildChartOptions } from '../src/lib/chart-options.js'
 
 const groups = {
@@ -39,4 +39,27 @@ test('all packaged OSM station IDs and coordinates remain valid', () => {
   assert.equal(new Set(normalized.stations.map(station => station.id)).size, 3460)
   assert.equal(normalized.stations.filter(station => !station.coord).length, 0)
   assert.ok(normalized.stations.every(station => station.piles.length === 0))
+})
+
+test('missing numeric values remain null instead of fabricated zero', () => {
+  const data = structuredClone(groups)
+  data.user_radar[0].dim_value = null
+  data.area_costs[0].profit_rate = null
+  const normalized = normalizeDashboard({ code: 0, data })
+  assert.equal(normalized.user_radar[0].dim_value, null)
+  assert.equal(normalized.area_costs[0].profit_rate, null)
+  assert.match(chartMissingReason('userRadar', normalized, {}), /无法完整归一化/)
+})
+
+test('missing optional source columns explain empty panels', () => {
+  assert.match(chartMissingReason('platforms', groups, { quality: { platform_rows: 0 } }), /platform/)
+  assert.match(chartMissingReason('battery', groups, { quality: { soc_rows: 0 } }), /SOC/)
+})
+
+test('source banner requires imported batch and unified script identity', () => {
+  assert.equal(hasVerifiedSource({}), false)
+  const source = { batch_id: 'test-batch', analysis: { module: 'analytics/scripts/evcharging_analysis.py', script_sha256: 'a'.repeat(64) } }
+  assert.equal(hasVerifiedSource(source), true)
+  source.analysis.module = 'other.py'
+  assert.equal(hasVerifiedSource(source), false)
 })

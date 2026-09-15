@@ -1,6 +1,8 @@
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
 function finite(value, field) {
+  if (value === null || (typeof value === 'string' && value.trim() === '')) return null
+  if (typeof value !== 'string' && typeof value !== 'number') throw new TypeError(`${field} 不是有效数字`)
   const number = Number(value)
   if (!Number.isFinite(number)) throw new TypeError(`${field} 不是有效数字`)
   return number
@@ -8,7 +10,43 @@ function finite(value, field) {
 
 function rows(data, key) {
   if (!Array.isArray(data[key])) throw new TypeError(`${key} 数据缺失`)
-  return data[key]
+  const numericFields = {
+    user_levels: ['user_count'], user_radar: ['dim_value'], platforms: ['user_count'],
+    hour_trend: ['hour', 'sessions', 'total_kwh', 'is_peak'],
+    station_types: ['utilization_rate', 'daily_kwh', 'avg_fee_per_kwh'],
+    week_compare: ['sessions', 'total_kwh', 'pct'], battery_health: ['sess_count', 'ratio'],
+    area_costs: ['revenue', 'cost', 'profit', 'profit_rate'],
+    top_stations: ['rn', 'total_sessions', 'total_kwh', 'total_fee', 'utilization_rate'],
+  }
+  return data[key].map(row => {
+    if (!isObject(row)) throw new TypeError(`${key} 行格式不正确`)
+    const normalized = { ...row }
+    for (const field of numericFields[key] || []) normalized[field] = finite(row[field], `${key}.${field}`)
+    return normalized
+  })
+}
+
+export function normalizeMetadata(value) {
+  return isObject(value) ? value : {}
+}
+
+export function hasVerifiedSource(metadata) {
+  return typeof metadata?.batch_id === 'string' && metadata.batch_id.length > 0
+    && metadata.analysis?.module === 'analytics/scripts/evcharging_analysis.py'
+    && /^[a-f0-9]{64}$/.test(metadata.analysis?.script_sha256 || '')
+}
+
+const chartGroups = { userLevels: 'user_levels', userRadar: 'user_radar', platforms: 'platforms',
+  battery: 'battery_health', hourly: 'hour_trend', stationTypes: 'station_types',
+  weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations' }
+export function chartMissingReason(key, data, metadata) {
+  if (!data) return '等待可信分析结果'
+  const group = data[chartGroups[key]] || []
+  if (key === 'platforms' && metadata?.quality?.platform_rows === 0) return '原始订单缺少有效 platform，暂不能统计平台偏好'
+  if (key === 'battery' && metadata?.quality?.soc_rows === 0) return '原始订单缺少有效起始 SOC，暂不能统计电量分布'
+  if (!group.length) return '此维度没有可用的分析数据'
+  if (key === 'userRadar' && group.some(row => row.dim_value == null)) return '存在无差异或缺失维度，无法完整归一化，不绘制为零'
+  return ''
 }
 
 export function normalizeDashboard(payload) {
