@@ -16,7 +16,7 @@ Flask 只读查询分析结果；Spark 导出、MySQL 导入和接口配置见 `
 要求 Node.js 23 或更高版本：
 
 ```bash
-cd /home/bit/charging-platform/web/dashboard
+cd /home/bit/EV-Charging-Platform/web/dashboard
 npm ci
 npm run test
 npm run build
@@ -27,7 +27,7 @@ npm run build
 ## 启动 Flask/Gunicorn
 
 ```bash
-cd /home/bit/charging-platform/analytics
+cd /home/bit/EV-Charging-Platform/analytics
 set -a
 . ./.env
 set +a
@@ -44,19 +44,19 @@ Flask 默认托管 `web/dashboard/dist`，可用 `DASHBOARD_DIST_DIR` 覆盖。`
 
 ## 展示内容
 
-页面包含核心 KPI、用户等级、用户行为雷达、终端平台、24 小时趋势、站型效率、工作日/周末对比、起始电量健康、区域营收成本利润、站点效率排行，共 10 个分析维度；其中多个面板包含双指标或多指标对比。图表类型包括折线图、柱状图、环形图、雷达图、面积图和组合图。
+页面包含核心 KPI、用户等级、用户行为雷达、终端平台、24 小时趋势、站型相对负载与金额、工作日/周末对比、起始电量（SOC）分布、区域已结算营收、估算电量成本与估算利润、站点充电次数 TOP10，共 10 个分析维度；其中多个面板包含双指标或多指标对比。图表类型包括折线图、柱状图、环形图、雷达图、面积图和组合图。
 
 全国地图复用队友 V3 的 Canvas 交互实现，展示 3460 个 OpenStreetMap 静态站点。它只表达地理站点分布，不冒充实时电桩状态。地图边界来自本地化的 DataV.GeoAtlas 中国 GeoJSON；站点数据依据 OpenStreetMap ODbL 1.0，详见 `web/dashboard/THIRD_PARTY_NOTICES.md`。
 
 ## 验证
 
 ```bash
-cd /home/bit/charging-platform/web/dashboard
+cd /home/bit/EV-Charging-Platform/web/dashboard
 npm run test
 npm run build
 python3 tests/browser_smoke.py http://127.0.0.1:8091/dashboard/
 
-cd /home/bit/charging-platform/analytics
+cd /home/bit/EV-Charging-Platform/analytics
 PYTHONPATH=. python -m unittest discover -s tests -v
 ANALYTICS_BASE_URL=http://127.0.0.1:8091 PYTHONPATH=. python tests/smoke_http.py
 ```
@@ -68,3 +68,12 @@ ANALYTICS_BASE_URL=http://127.0.0.1:8091 PYTHONPATH=. python tests/smoke_http.py
 - 课程环境默认使用局域网 HTTP；正式公网部署需要 HTTPS、鉴权、反向代理和监控。
 - `dist/` 必须先构建，缺失时 `/dashboard/` 返回统一格式的 404。
 - 静态地图站点与 MySQL 运营分析数据来源不同，页面明确区分两者。
+
+## 指标口径（PR #23）
+
+- 充电会话为 charging / awaiting_payment / completed 订单；已结算营收仅计 completed 的 amount + occupancy_fee。
+- abnormal_rate 表示清洗、去重及关联校验剔除订单的比例，不再是 SOC 缺失率。
+- 相对负载为充电次数 / 同组最大次数，非设备时间利用率；SOC 为起始电量分布，非电池健康诊断。
+- 成本使用分析批次 quality.cost_per_kwh，不在页面写死；周末按上海时区的周六、周日划分。
+- TOP10 沿用 rn 排序并显示次数；负载与营收关系图使用同组 TOP10 的 utilization_rate 与 total_fee，缺失值不绘制为零。
+- 页面“指标口径与数据来源”显示批次及生成时间；缺少元数据时明确提示待核验。需要完成新版分析导入，旧服务返回数据不等于新链路验证通过。

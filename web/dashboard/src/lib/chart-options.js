@@ -2,8 +2,8 @@ const number = value => value == null || value === '' ? null : Number.isFinite(N
 
 const PALETTES = {
   night: {
-    text: '#dcecff', muted: '#7896b7', grid: 'rgba(80, 126, 168, .18)',
-    tooltip: '#07182b', colors: ['#1de9c4', '#48a8ff', '#f3c86a', '#a881ff', '#ff7c8a', '#5ed27b'],
+    text: '#edf6ff', muted: '#afc3d6', grid: 'rgba(157, 187, 211, .22)',
+    tooltip: '#20394f', colors: ['#1de9c4', '#48a8ff', '#f3c86a', '#a881ff', '#ff7c8a', '#5ed27b'],
   },
   day: {
     text: '#16334a', muted: '#668397', grid: 'rgba(41, 94, 127, .16)',
@@ -76,7 +76,8 @@ export function buildChartOptions(data, mode = 'night') {
   const stationTypes = data.station_types.map(row => row.gun_type)
   const weekLabels = data.week_compare.map(row => row.day_type)
   const areaRows = [...data.area_costs].sort((a, b) => number(b.revenue) - number(a.revenue)).slice(0, 10).reverse()
-  const topRows = [...data.top_stations].sort((a, b) => number(a.total_fee) - number(b.total_fee)).slice(-10)
+  // Preserve the ADS ranking: sessions descending, then kWh descending.
+  const topRows = [...data.top_stations].sort((a, b) => number(a.rn) - number(b.rn)).slice(0, 10)
 
   return {
     userLevels: {
@@ -127,7 +128,7 @@ export function buildChartOptions(data, mode = 'night') {
     stationTypes: {
       ...common, legend, grid,
       ...categoryAxes(mode, stationTypes),
-      yAxis: [categoryAxes(mode, []).yAxis, { type: 'value', name: '元/kWh', position: 'right',
+      yAxis: [{ ...categoryAxes(mode, [], '%').yAxis, min: 0, max: 100 }, { type: 'value', name: '元/kWh', position: 'right',
         axisLabel: { color: palette.muted, fontSize: 9 }, splitLine: { show: false } }],
       series: [
         { name: '相对负载(%)', type: 'bar', barMaxWidth: 16, data: data.station_types.map(row => number(row.utilization_rate)),
@@ -153,18 +154,31 @@ export function buildChartOptions(data, mode = 'night') {
       yAxis: { type: 'category', data: areaRows.map(row => row.station_area),
         axisLabel: { color: palette.muted, fontSize: 9, width: 58, overflow: 'truncate' }, axisTick: { show: false } },
       series: [
-        { name: '营收', type: 'bar', data: areaRows.map(row => number(row.revenue)), itemStyle: { color: palette.colors[1] } },
-        { name: '成本', type: 'bar', data: areaRows.map(row => number(row.cost)), itemStyle: { color: palette.colors[4] } },
-        { name: '利润', type: 'bar', data: areaRows.map(row => number(row.profit)), itemStyle: { color: palette.colors[0] } },
+        { name: '已结算营收', type: 'bar', data: areaRows.map(row => number(row.revenue)), itemStyle: { color: palette.colors[1] } },
+        { name: '估算电量成本', type: 'bar', data: areaRows.map(row => number(row.cost)), itemStyle: { color: palette.colors[4] } },
+        { name: '估算利润', type: 'bar', data: areaRows.map(row => number(row.profit)), itemStyle: { color: palette.colors[0] } },
       ],
     },
-    topStations: {
-      ...common, grid: { left: 110, right: 28, top: 18, bottom: 20 },
-      xAxis: { type: 'value', axisLabel: { color: palette.muted, fontSize: 9 },
+    stationLoad: {
+      ...common, grid: { left: 65, right: 30, top: 30, bottom: 36 },
+      tooltip: { ...common.tooltip, trigger: 'item' },
+      xAxis: { type: 'value', name: '相对负载(%)', min: 0, max: 100, nameLocation: 'middle', nameGap: 23,
+        axisLabel: { color: palette.muted }, splitLine: { lineStyle: { color: palette.grid } } },
+      yAxis: { type: 'value', name: '已结算营收(元)', axisLabel: { color: palette.muted },
         splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
-      yAxis: { type: 'category', data: topRows.map(row => row.station_name),
+      series: [{ type: 'scatter', name: 'TOP10 站点', symbolSize: 12,
+        dimensions: ['相对负载(%)', '已结算营收(元)'], encode: { x: 0, y: 1, tooltip: [0, 1] },
+        data: topRows.filter(row => number(row.utilization_rate) !== null && number(row.total_fee) !== null)
+          .map(row => ({ name: row.station_name, value: [number(row.utilization_rate), number(row.total_fee)] })),
+        itemStyle: { color: palette.colors[0] } }],
+    },
+    topStations: {
+      ...common, grid: { left: 110, right: 48, top: 18, bottom: 20 },
+      xAxis: { type: 'value', name: '次', minInterval: 1, nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted, fontSize: 9 },
+        splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
+      yAxis: { type: 'category', inverse: true, data: topRows.map(row => `${row.rn}. ${row.station_name}`),
         axisLabel: { color: palette.muted, fontSize: 9, width: 96, overflow: 'truncate' }, axisTick: { show: false } },
-      series: [{ name: '累计金额', type: 'bar', data: topRows.map(row => number(row.total_fee)),
+      series: [{ name: '充电次数', type: 'bar', data: topRows.map(row => number(row.total_sessions)),
         itemStyle: { color: palette.colors[2], borderRadius: [0, 5, 5, 0] },
         label: { show: true, position: 'right', color: palette.text, fontSize: 9 } }],
     },

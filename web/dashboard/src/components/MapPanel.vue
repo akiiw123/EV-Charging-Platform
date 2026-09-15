@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch } from 'vue'
 import DashboardCard from './DashboardCard.vue'
 import { createMap } from '../lib/map-view.js'
 
@@ -14,14 +14,16 @@ const selectedStation = ref(null)
 const stationDialog = ref(null)
 const scope = ref({ name: '全国', stations: 0 })
 const view = ref('2d')
-const layout = ref('panels')
-const links = ref(false)
-const motion = ref(false)
-let map
+const layout = ref('immersive')
+const links = ref(true)
+const motion = ref(true)
+const map = shallowRef(null)
 
 const sourceLink = computed(() => {
   const value = selectedStation.value?.sourceUrl || ''
-  return /^https:\/\/www\.openstreetmap\.org\/(node|way|relation)\/\d+$/.test(value) ? value : ''
+  return /^https:\/\/www\.openstreetmap\.org\/(node|way|relation)\/\d+$/.test(value)
+    ? value
+    : ''
 })
 
 function openStation(station) {
@@ -30,54 +32,97 @@ function openStation(station) {
 }
 
 function selectProvince(event) {
-  map?.selectProvince(event.target.value || null)
+  map.value?.selectProvince(event.target.value || null)
+}
+
+function returnNational() {
+  map.value?.selectProvince(null)
 }
 
 function setView(next) {
   view.value = next
-  map?.setView(next)
+  map.value?.setView(next)
 }
 
 function setLayout(next) {
   layout.value = next
-  map?.setLayout(next)
+  map.value?.setLayout(next)
 }
 
-function toggleLinks() {
-  links.value = !links.value
-  map?.setLinks(links.value)
+function zoomMap(factor) {
+  map.value?.zoom(factor)
 }
 
-function toggleMotion() {
-  motion.value = !motion.value
-  map?.setMotion(motion.value)
+function fitMap() {
+  map.value?.fit()
 }
 
 onMounted(async () => {
   await nextTick()
-  map = createMap(null, openStation, { onScopeChange: state => { scope.value = state } })
-  map.setLayout(layout.value)
-  if (props.stationData) map.update(props.stationData)
+
+  map.value = createMap(null, openStation, {
+    onScopeChange: state => {
+      scope.value = state
+    },
+  })
+
+  map.value.setLayout(layout.value)
+  map.value.setLinks(links.value)
+  map.value.setMotion(motion.value)
+
+  if (props.stationData) {
+    map.value.update(props.stationData)
+  }
 })
 
-watch(() => props.stationData, value => { if (value) map?.update(value) })
-watch(() => props.theme, () => map?.theme())
+watch(
+  () => props.stationData,
+  value => {
+    if (value) map.value?.update(value)
+  },
+)
 
-onBeforeUnmount(() => map?.dispose())
+watch(
+  () => props.theme,
+  () => {
+    map.value?.theme()
+  },
+)
+
+onBeforeUnmount(() => {
+  map.value?.dispose()
+})
 </script>
 
 <template>
   <DashboardCard title="全国充电网络" eyebrow="GEOGRAPHIC ASSET VIEW" :badge="`${scope.stations || 0} 站`" class="map-card">
     <div class="map-panel">
       <div class="map-toolbar">
-        <select id="provinceSelect" aria-label="选择省份" @change="selectProvince"></select>
-        <button id="backNational" type="button" hidden @click="map?.selectProvince(null)">返回全国</button>
+        <select
+          id="provinceSelect"
+          aria-label="选择省份"
+          @change.stop="selectProvince"
+        ></select>
+        <button
+          id="backNational"
+          type="button"
+          hidden
+          @click.stop="returnNational"
+        >
+          返回全国
+        </button>
         <div class="segmented" aria-label="地图视角">
-          <button v-for="item in ['2d', '2.5d']" :key="item" type="button" :data-view="item"
-                  :aria-pressed="view === item" @click="setView(item)">{{ item.toUpperCase() }}</button>
+          <button
+            v-for="item in ['2d', '2.5d']"
+            :key="item"
+            type="button"
+            :data-view="item"
+            :aria-pressed="view === item"
+            @click.stop="setView(item)"
+          >
+            {{ item.toUpperCase() }}
+          </button>
         </div>
-        <button id="toggleLinks" type="button" :aria-pressed="links" @click="toggleLinks">近邻连线</button>
-        <button id="toggleMotion" type="button" :aria-pressed="motion" @click="toggleMotion">静态灯光</button>
       </div>
 
       <div class="map-meta">
@@ -90,22 +135,9 @@ onBeforeUnmount(() => map?.dispose())
         <div id="map" role="application" tabindex="0" aria-label="全国充电站交互地图"></div>
         <p id="mapMessage" class="map-message" :hidden="!loading && !error">{{ error || '正在加载站点资料…' }}</p>
         <div class="map-zoom">
-          <button type="button" aria-label="放大地图" @click="map?.zoom(1.5)">＋</button>
-          <button type="button" aria-label="缩小地图" @click="map?.zoom(1 / 1.5)">－</button>
-          <button type="button" aria-label="复位地图" @click="map?.fit()">⌂</button>
-        </div>
-      </div>
-
-      <div class="map-footer">
-        <span id="lightCount">0 个站点灯光</span>
-        <span id="linkCount" hidden>近邻连线已关闭</span>
-        <span class="legend-disclaimer" hidden>近邻线仅表示空间接近，不代表电网连接</span>
-        <span id="scopeHint">点击省域下钻 · 点击站点查看详情 · 拖动 / 缩放</span>
-        <span id="geometryNote">省级底图</span>
-        <span id="layoutHint"></span>
-        <div class="layout-controls" hidden>
-          <button v-for="item in ['panels', 'immersive']" :key="item" type="button" :data-layout="item"
-                  :aria-pressed="layout === item" @click="setLayout(item)">{{ item }}</button>
+            <button type="button" aria-label="放大地图" @click.stop="zoomMap(1.5)">＋</button>
+            <button type="button" aria-label="缩小地图" @click.stop="zoomMap(1 / 1.5)">－</button>
+            <button type="button" aria-label="复位地图" @click.stop="fitMap"> ⌂</button>
         </div>
       </div>
     </div>

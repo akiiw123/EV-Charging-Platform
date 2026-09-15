@@ -4,7 +4,7 @@ import {polygons, boundsOf, prepareRegions, pointInFeature, locateProvince, spli
 
 /** Two projection modes share one geometry / picking pipeline.
  * Three cached canvas layers: terrain (static), nearby links (static), station lights (animated).
- * Every gold light is a supplied station. No random fill, generated city texture, or API fallback.
+ * Every light is a supplied station. No random fill, generated city texture, or API fallback.
  */
 export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
   const $=id=>document.getElementById(id);
@@ -62,8 +62,8 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
   function candidates(){return scopedStations().filter(s=>filter!=='attention'||s.attention>0||s.issues?.length>0);}
   function activeFeatures(){return selected?[regions.find(r=>r.id===selected).feature]:geo?.features??[];}
   function color(){return document.documentElement.dataset.theme==='day'?{
-    land:'#d3e6f0',land2:'#e9f3f6',border:'#719aaf',rim:'#438ea7',wall:'#86b6ca',wallBottom:'#47788e',label:'#456577',line:'126,89,29',hover:'#b3d8e7',gold:'#805813',day:true
-  }:{land:'#092542',land2:'#08152a',border:'#254666',rim:'#61b9ee',wall:'#1e6492',wallBottom:'#07263f',label:'#6586a5',line:'244,201,119',hover:'#133d5d',gold:'#ffde9e',day:false};}
+    land:'#d3e6f0',land2:'#e9f3f6',border:'#719aaf',rim:'#438ea7',wall:'#86b6ca',wallBottom:'#47788e',label:'#456577',line:'0,157,135',hover:'#b3d8e7',gold:'#008f7d',day:true
+  }:{land:'#092542',land2:'#08152a',border:'#254666',rim:'#61b9ee',wall:'#1e6492',wallBottom:'#07263f',label:'#9eb6cc',line:'244,201,119',hover:'#133d5d',gold:'#ffde9e',day:false};}
   function makePath(feature,project){
     const path=new Path2D();
     for(const poly of polygons(feature))for(const ring of poly){
@@ -79,12 +79,12 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
     $('provinceSelect').value=selected??'';
     $('backNational').hidden=!selected;
     $('mapViewName').textContent=view==='2.5d'?'2.5D 立体地图':'2D 俯瞰地图';
-    $('lightCount').textContent=`${points.length.toLocaleString('zh-CN')} 个站点灯光`;
-    $('linkCount').hidden=!showLinks;document.querySelector('.legend-disclaimer').hidden=!showLinks;
-    $('linkCount').textContent=showLinks?`${displayEdges.length.toLocaleString('zh-CN')} 条近邻线 · ≤ ${CONFIG.network.maxKm} km`:'近邻连线已关闭';
+    if ($('lightCount')) $('lightCount').textContent=`${points.length.toLocaleString('zh-CN')} 个站点灯光`;
+    if ($('linkCount')) $('linkCount').hidden=!showLinks;if (document.querySelector('.legend-disclaimer')) document.querySelector('.legend-disclaimer').hidden=!showLinks;
+    if ($('linkCount')) $('linkCount').textContent=showLinks?`${displayEdges.length.toLocaleString('zh-CN')} 条近邻线 · ≤ ${CONFIG.network.maxKm} km`:'近邻连线已关闭';
     const unlocated=visible.filter(s=>!s.coord||!provinceFor.get(s.id)).length;
-    $('scopeHint').textContent=selected?'仅地图与巡检列表切换到本省；经营指标仍为全平台':'点击省域进入 · 点站点查看详情 · 拖动 / 缩放';
-    $('geometryNote').textContent=unlocated?`${unlocated} 个站点省域未匹配，按原始坐标显示`:'省级底图 · 无地市 / 道路分界';
+    if ($('scopeHint')) $('scopeHint').textContent=selected?'地图显示本省站点；分析指标仍为全平台':'点击省域进入 · 点站点查看详情 · 拖动 / 缩放';
+    if ($('geometryNote')) $('geometryNote').textContent=unlocated?`${unlocated} 个站点省域未匹配，按原始坐标显示`:'省级底图 · 无地市 / 道路分界';
     const fingerprint=JSON.stringify([selected,stations.length,filter]);
     if(fingerprint!==lastPublished){lastPublished=fingerprint;onScopeChange(state);}
     if(loaded&&(!visible.length||!points.length)){
@@ -114,7 +114,7 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
     const key=day?'day':'night';if(sprites.has(key))return sprites.get(key);
     const c=document.createElement('canvas');c.width=c.height=80;const x=c.getContext('2d');
     const g=x.createRadialGradient(40,40,0,40,40,40);
-    if(day){g.addColorStop(0,'rgba(147,92,18,.65)');g.addColorStop(.2,'rgba(174,113,32,.24)');g.addColorStop(1,'rgba(174,113,32,0)');}
+    if(day){g.addColorStop(0,'rgba(159,255,220,.98)');g.addColorStop(.13,'rgba(0,189,145,.8)');g.addColorStop(.38,'rgba(0,169,164,.38)');g.addColorStop(1,'rgba(0,169,164,0)');}
     else{g.addColorStop(0,'rgba(255,246,199,1)');g.addColorStop(.10,'rgba(255,218,136,.95)');g.addColorStop(.26,'rgba(255,183,66,.40)');g.addColorStop(.53,'rgba(239,150,35,.13)');g.addColorStop(1,'rgba(239,150,35,0)');}
     x.fillStyle=g;x.fillRect(0,0,80,80);sprites.set(key,c);return c;
   }
@@ -232,18 +232,18 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
     const started=performance.now();
     clear(lights);if(!projection)return;
     const c=color(),glow=sprite(c.day),reduced=motion.matches||!animate;
-    // Additive golden bloom is baked into the small sprite, not shadowBlur per station/frame.
+    // Theme-aware station bloom is baked into the small sprite, not shadowBlur per station/frame.
     lights.globalCompositeOperation=c.day?'source-over':'lighter';
     for(const {station,pos:[x,y],gain} of points){
       const pulse=stationPulse(station.id,seconds,reduced);
-      const size=pulse.glow*(points.length>CONFIG.lighting.denseThreshold?.62:.85);
-      lights.globalAlpha=pulse.alpha*CONFIG.lighting.exposure*gain;lights.drawImage(glow,x-size,y-size,size*2,size*2);
+      const size=pulse.glow*(points.length>CONFIG.lighting.denseThreshold?.62:.85)*(c.day?1.35:1);
+      lights.globalAlpha=pulse.alpha*(c.day?.92:CONFIG.lighting.exposure)*gain;lights.drawImage(glow,x-size,y-size,size*2,size*2);
     }
     lights.globalCompositeOperation='source-over';
     for(const {station,pos:[x,y],gain} of points){
       const pulse=stationPulse(station.id,seconds,reduced);
       lights.globalAlpha=pulse.alpha*(.35+.5*gain);
-      lights.fillStyle=c.day?'#95631f':'#ffe7a9';lights.beginPath();lights.arc(x,y,points.length>CONFIG.lighting.denseThreshold?.5+pulse.radius*.18:pulse.radius*.58,0,Math.PI*2);lights.fill();
+      lights.fillStyle=c.day?'#008f79':'#ffe7a9';lights.beginPath();lights.arc(x,y,points.length>CONFIG.lighting.denseThreshold?.5+pulse.radius*.18:pulse.radius*.58,0,Math.PI*2);lights.fill();
       if(station.attention&&points.length<260){lights.strokeStyle='#fb8c84';lights.lineWidth=.8;lights.beginPath();lights.arc(x,y,4.7,0,Math.PI*2);lights.stroke();}
       // A small minority gets a slow star glint, not a synchronized strobe.
       if(!reduced&&hash(station.id)%11===0&&pulse.shimmer>.35){
@@ -276,7 +276,7 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
     const target=effectiveImmersive()?backdrop:stage;
     if(host.parentElement!==target)target.prepend(host);
     document.documentElement.dataset.layout=layout;
-    $('layoutHint').textContent=layout==='immersive'&&!desktop.matches?'窄屏自动使用面板布局':'';
+    if ($('layoutHint')) $('layoutHint').textContent=layout==='immersive'&&!desktop.matches?'窄屏自动使用面板布局':'';
     document.querySelectorAll('button[data-layout]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layout===layout)));
     // Changing portal size is observed; stage position changes are also measured explicitly.
     syncSize();requestAnimationFrame(syncSize);
@@ -348,8 +348,8 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
     if(delta){e.preventDefault();camera.pan=camera.pan.map((v,i)=>v+delta[i]);moveGesture();endSoon();}
   },{signal});
   function motionChange(){
-    $('toggleMotion').textContent=motion.matches?'静态 · 系统偏好':animate?'呼吸灯光':'静态灯光';
-    $('toggleMotion').title=motion.matches?'系统要求减少动态效果，灯光保持静态':'';
+    if ($('toggleMotion')) $('toggleMotion').textContent=motion.matches?'静态 · 系统偏好':animate?'呼吸灯光':'静态灯光';
+    if ($('toggleMotion')) $('toggleMotion').title=motion.matches?'系统要求减少动态效果，灯光保持静态':'';
     if(raf)cancelAnimationFrame(raf);raf=0;drawLights(0);schedule();}
   motion.addEventListener('change',motionChange);
   const desktopChange=()=>applyLayout();desktop.addEventListener('change',desktopChange);

@@ -21,7 +21,7 @@ function rows(data, key) {
   return data[key].map(row => {
     if (!isObject(row)) throw new TypeError(`${key} 行格式不正确`)
     const normalized = { ...row }
-    for (const field of numericFields[key] || []) normalized[field] = finite(row[field], `${key}.${field}`)
+    for (const field of numericFields[key] || []) normalized[field] = finite(row[field] ?? null, `${key}.${field}`)
     return normalized
   })
 }
@@ -38,12 +38,14 @@ export function hasVerifiedSource(metadata) {
 
 const chartGroups = { userLevels: 'user_levels', userRadar: 'user_radar', platforms: 'platforms',
   battery: 'battery_health', hourly: 'hour_trend', stationTypes: 'station_types',
-  weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations' }
+  weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations', stationLoad: 'top_stations' }
 export function chartMissingReason(key, data, metadata) {
   if (!data) return '等待可信分析结果'
   const group = data[chartGroups[key]] || []
   if (key === 'platforms' && metadata?.quality?.platform_rows === 0) return '原始订单缺少有效 platform，暂不能统计平台偏好'
   if (key === 'battery' && metadata?.quality?.soc_rows === 0) return '原始订单缺少有效起始 SOC，暂不能统计电量分布'
+  if (key === 'topStations' && !group.some(row => row.total_sessions != null)) return '站点充电次数字段缺失，暂不能绘制排行'
+  if (key === 'stationLoad' && !group.some(row => row.utilization_rate != null && row.total_fee != null)) return '站点负载或营收数据缺失，暂不能绘制关系图'
   if (!group.length) return '此维度没有可用的分析数据'
   if (key === 'userRadar' && group.some(row => row.dim_value == null)) return '存在无差异或缺失维度，无法完整归一化，不绘制为零'
   return ''
