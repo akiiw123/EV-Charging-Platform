@@ -1,0 +1,2 @@
+# Match the existing Hadoop VM Spark 3.4.1.
+pyspark==3.4.1

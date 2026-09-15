@@ -1,0 +1,23 @@
+"""Explain compatibility field names without misrepresenting metrics."""
+import json
+
+DEFINITIONS = {
+    "sessions": "状态为 charging/awaiting_payment/completed 的充电订单数",
+    "total_fee": "仅已完成订单 amount + occupancy_fee；未完成金额不计入营收",
+    "abnormal_rate": "原始订单中被清洗、去重或关联校验剔除的比例",
+    "utilization_rate": "相对充电负载：充电次数 / 同组最大次数 ×100，非时间利用率",
+    "daily_kwh": "桩型总电量 / 实际桩数 / 观测日期跨度天数",
+    "battery_health": "起始 SOC 分布，不代表电池健康诊断；缺 SOC 时无数据",
+    "platforms": "各下单平台的去重用户数；同一用户可出现在多个平台",
+    "area_costs": "成本按配置的电量单价估算，并非实测经营成本",
+    "user_radar": "等级均值的 min-max 归一化；无差异维度为 null，不伪造为0",
+    "week_compare": "按 Asia/Shanghai 的周六/周日区分，不含法定节假日和调休",
+}
+
+
+def metadata(repository):
+    row = repository.fetch_one("SELECT batch_id,payload FROM etl_metadata WHERE singleton=1")
+    result = json.loads(row["payload"]) if row else {}
+    result["batch_id"] = row["batch_id"] if row else None
+    result["definitions"] = DEFINITIONS
+    return result

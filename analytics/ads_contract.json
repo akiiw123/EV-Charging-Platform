@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tables": {
+    "ads_kpi_overview": {"min_rows": 1, "max_rows": 1, "columns": [["sessions","bigint"],["total_kwh","decimal(18,3)"],["total_fee","decimal(18,2)"],["station_count","bigint"],["abnormal_rate","decimal(8,3)"]]},
+    "ads_user_level_dist": {"columns": [["user_level","varchar(20)"],["user_count","bigint"]], "key": ["user_level"]},
+    "ads_user_radar": {"columns": [["user_level","varchar(20)"],["dim_name","varchar(20)"],["dim_value","decimal(8,3)"]], "nullable": ["dim_value"], "key": ["user_level","dim_name"]},
+    "ads_platform_dist": {"columns": [["phone_type","varchar(20)"],["user_count","bigint"]], "key": ["phone_type"]},
+    "ads_hour_trend": {"min_rows": 24, "max_rows": 24, "columns": [["hour","tinyint"],["sessions","bigint"],["total_kwh","decimal(18,3)"],["is_peak","tinyint"]], "key": ["hour"]},
+    "ads_station_type_eff": {"columns": [["gun_type","varchar(20)"],["utilization_rate","decimal(8,3)"],["daily_kwh","decimal(18,3)"],["avg_fee_per_kwh","decimal(18,4)"]], "nullable": ["daily_kwh","avg_fee_per_kwh"], "key": ["gun_type"]},
+    "ads_week_compare": {"min_rows": 2, "max_rows": 2, "columns": [["day_type","varchar(10)"],["sessions","bigint"],["total_kwh","decimal(18,3)"],["pct","decimal(8,3)"]], "key": ["day_type"]},
+    "ads_battery_health": {"columns": [["health_level","varchar(30)"],["sess_count","bigint"],["ratio","decimal(8,3)"]], "key": ["health_level"]},
+    "ads_area_cost": {"columns": [["station_area","varchar(50)"],["revenue","decimal(18,2)"],["cost","decimal(18,2)"],["profit","decimal(18,2)"],["profit_rate","decimal(8,3)"]], "nullable": ["profit_rate"], "key": ["station_area"]},
+    "ads_station_topn": {"max_rows": 10, "columns": [["rn","int"],["station_name","varchar(100)"],["station_area","varchar(50)"],["total_sessions","bigint"],["total_kwh","decimal(18,3)"],["total_fee","decimal(18,2)"],["utilization_rate","decimal(8,3)"]], "key": ["rn"]}
+  }
+}

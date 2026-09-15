@@ -21,13 +21,16 @@ def _positive_int(name: str, default: int) -> int:
 
 
 def load_config() -> dict:
+    pool_size = _positive_int("MYSQL_POOL_SIZE", 5)
+    if pool_size > 32:
+        raise RuntimeError("MYSQL_POOL_SIZE must not exceed 32")
     return {
         "MYSQL_HOST": os.getenv("MYSQL_HOST", "127.0.0.1"),
         "MYSQL_PORT": _positive_int("MYSQL_PORT", 3306),
         "MYSQL_USER": os.getenv("MYSQL_USER", "charging_api"),
         "MYSQL_PASSWORD": os.getenv("MYSQL_PASSWORD", ""),
         "MYSQL_DATABASE": os.getenv("MYSQL_DATABASE", "charging_ads"),
-        "MYSQL_POOL_SIZE": _positive_int("MYSQL_POOL_SIZE", 5),
+        "MYSQL_POOL_SIZE": pool_size,
         "ANALYTICS_CORS_ORIGINS": os.getenv(
             "ANALYTICS_CORS_ORIGINS", "http://localhost:5173"
         ),
