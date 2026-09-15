@@ -13,15 +13,28 @@ ApiClient::ApiClient(QObject* parent) : QObject(parent)
         reconnectTimer_.stop();
         emit connected();
     });
-    connect(&socket_, &QTcpSocket::disconnected, this, [this] {
-        emit disconnected();
-        if (!host_.isEmpty()) {
+    connect(&socket_, &QTcpSocket::disconnected, this, &ApiClient::disconnected);
+    connect(&socket_, &QTcpSocket::stateChanged, this,
+            [this](QAbstractSocket::SocketState state) {
+        // Initial refusal has no established connection to disconnect from.
+        // Schedule retries for both failed attempts and lost connections.
+        if (state == QAbstractSocket::UnconnectedState && !host_.isEmpty()
+                && port_ != 0 && !reconnectTimer_.isActive()) {
             reconnectTimer_.start();
         }
     });
     connect(&socket_, &QTcpSocket::readyRead, this, &ApiClient::readAvailable);
     connect(&socket_, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) { emit clientError(socket_.errorString()); });
+}
+
+ApiClient::~ApiClient()
+{
+    // QTcpSocket can emit state changes while closing. Disconnect callbacks
+    // before member timers and connection settings begin destruction.
+    QObject::disconnect(&socket_, nullptr, this, nullptr);
+    reconnectTimer_.stop();
+    socket_.abort();
 }
 
 void ApiClient::connectToServer(const QString& host, quint16 port)

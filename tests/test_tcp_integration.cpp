@@ -53,9 +53,29 @@ private slots:
         QSignalSpy errors(&client, &charging::core::ApiClient::clientError);
         QSignalSpy connected(&client, &charging::core::ApiClient::connected);
         client.connectToServer(QStringLiteral("127.0.0.1"), port);
-        QTRY_VERIFY_WITH_TIMEOUT(!errors.isEmpty(), 3000);
+        // Keep the server down through a retry: failures must keep retrying.
+        QTRY_VERIFY_WITH_TIMEOUT(errors.size() >= 2, 5000);
         QVERIFY(portProbe.listen(QHostAddress::LocalHost, port));
         QTRY_VERIFY_WITH_TIMEOUT(!connected.isEmpty(), 5000);
+    }
+
+    void reconnectAfterEstablishedDisconnect()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        charging::core::ApiClient client;
+        QSignalSpy connected(&client, &charging::core::ApiClient::connected);
+        QSignalSpy disconnected(&client, &charging::core::ApiClient::disconnected);
+        client.connectToServer(QStringLiteral("127.0.0.1"), server.serverPort());
+        QTRY_COMPARE_WITH_TIMEOUT(connected.size(), 1, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 3000);
+        auto* peer = server.nextPendingConnection();
+        QVERIFY(peer);
+        peer->abort();
+        delete peer;
+        QTRY_COMPARE_WITH_TIMEOUT(disconnected.size(), 1, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(connected.size(), 2, 5000);
+        QVERIFY(client.isConnected());
     }
 
     void loginAndListStations()
