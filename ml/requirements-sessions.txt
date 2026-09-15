@@ -1,0 +1,5 @@
+# Sparse order-data backend; the existing LSTM requirements remain unchanged.
+numpy>=2.0,<3
+pandas>=2.2,<3
+scikit-learn==1.9.1
+joblib>=1.4,<2
