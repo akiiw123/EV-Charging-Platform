@@ -19,5 +19,15 @@ def metadata(repository):
     row = repository.fetch_one("SELECT batch_id,payload FROM etl_metadata WHERE singleton=1")
     result = json.loads(row["payload"]) if row else {}
     result["batch_id"] = row["batch_id"] if row else None
-    result["definitions"] = DEFINITIONS
+    definitions = dict(DEFINITIONS)
+    if result.get("metric_profile") == "ncs_teacher_dataset_v1":
+        definitions.update({
+            "sessions": "DWD 清洗后保留的充电订单数",
+            "total_fee": "源数据 charging_fees 合计；零值按真实数据保留",
+            "abnormal_rate": "清洗后订单中缺少 SOC/BMS 过程明细的比例",
+            "daily_kwh": "桩型总电量 / 源数据设备数，数据日期不可靠时不解释为日均",
+            "platforms": "各下单平台的充电会话数",
+            "week_compare": "按源数据 weekday 划分工作日与周末，不含节假日调休",
+        })
+    result["definitions"] = definitions
     return result

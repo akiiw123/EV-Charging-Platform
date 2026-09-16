@@ -46,7 +46,7 @@ Flask 默认托管 `web/dashboard/dist`，可用 `DASHBOARD_DIST_DIR` 覆盖。`
 
 页面包含核心 KPI、用户等级、用户行为雷达、终端平台、24 小时趋势、站型相对负载与金额、工作日/周末对比、起始电量（SOC）分布、区域已结算营收、估算电量成本与估算利润、站点充电次数 TOP10，共 10 个分析维度；其中多个面板包含双指标或多指标对比。图表类型包括折线图、柱状图、环形图、雷达图、面积图和组合图。
 
-全国地图复用队友 V3 的 Canvas 交互实现，展示 3460 个 OpenStreetMap 静态站点。它只表达地理站点分布，不冒充实时电桩状态。地图边界来自本地化的 DataV.GeoAtlas 中国 GeoJSON；站点数据依据 OpenStreetMap ODbL 1.0，详见 `web/dashboard/THIRD_PARTY_NOTICES.md`。
+全国地图复用 Canvas 交互实现，站点通过 `/api/v1/live/stations` 从 SQLite 业务库只读加载。地图站点数量、覆盖站点 KPI 和站点排行使用同一业务数据源；底图边界来自本地化的中国 GeoJSON。
 
 ## 验证
 

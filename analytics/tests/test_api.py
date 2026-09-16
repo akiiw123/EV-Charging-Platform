@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -129,6 +130,50 @@ class AnalyticsApiTest(unittest.TestCase):
 
             self.assertEqual(response.status_code, 404)
             self.assertEqual(response.get_json()["code"], 40001)
+
+    def test_live_endpoints_use_read_only_business_database(self):
+        with TemporaryDirectory() as directory:
+            database = Path(directory) / "business.db"
+            connection = sqlite3.connect(database)
+            connection.executescript("""
+                CREATE TABLE users (id INTEGER PRIMARY KEY);
+                CREATE TABLE charging_stations (
+                    id INTEGER PRIMARY KEY, name TEXT, address TEXT, province TEXT,
+                    city TEXT, district TEXT, latitude REAL, longitude REAL, status TEXT);
+                CREATE TABLE charging_piles (
+                    id INTEGER PRIMARY KEY, station_id INTEGER, code TEXT, type TEXT, status TEXT);
+                CREATE TABLE charging_orders (
+                    id INTEGER PRIMARY KEY, user_id INTEGER, pile_id INTEGER, status TEXT,
+                    created_at TEXT, started_at TEXT, ended_at TEXT, energy_kwh REAL,
+                    amount REAL, occupancy_fee REAL);
+                INSERT INTO users VALUES (1);
+                INSERT INTO charging_stations VALUES
+                    (1,'测试业务站','测试地址','上海市','上海市','浦东新区',31.2,121.4,'active');
+                INSERT INTO charging_piles VALUES (1,1,'P-1','fast','idle');
+                INSERT INTO charging_piles VALUES (2,1,'P-2','slow','fault');
+                INSERT INTO charging_orders VALUES
+                    (1,1,1,'completed','2026-09-16 01:00:00','2026-09-16 01:00:00',
+                     '2026-09-16 02:00:00',12.5,15.0,1.0);
+            """)
+            connection.commit()
+            connection.close()
+            client = self.make_client(overrides={"BUSINESS_DB_PATH": str(database)})
+
+            orders = client.get("/api/v1/live/orders")
+            dashboard = client.get("/api/v1/live/dashboard")
+            stations = client.get("/api/v1/live/stations")
+
+            self.assertEqual(orders.status_code, 200)
+            self.assertEqual(orders.get_json()["data"]["total_orders"], 1)
+            self.assertEqual(dashboard.status_code, 200)
+            live_data = dashboard.get_json()["data"]
+            self.assertEqual(live_data["overview"]["station_count"], 1)
+            self.assertEqual(sum(row["pile_count"] for row in live_data["pile_status"]), 2)
+            self.assertEqual(stations.status_code, 200)
+            station_data = stations.get_json()["data"]
+            self.assertEqual(station_data["source"], "platform_sqlite")
+            self.assertEqual(len(station_data["stations"]), 1)
+            self.assertEqual(station_data["stations"][0]["counts"]["fault"], 1)
 
 
 if __name__ == "__main__":

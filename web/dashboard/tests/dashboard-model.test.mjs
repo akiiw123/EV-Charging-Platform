@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import { normalizeDashboard, normalizeStations, hasVerifiedSource, chartMissingReason } from '../src/lib/dashboard-model.js'
+import { normalizeBusinessStations, normalizeDashboard, hasVerifiedSource, chartMissingReason } from '../src/lib/dashboard-model.js'
 import { buildChartOptions } from '../src/lib/chart-options.js'
 
 const groups = {
@@ -15,14 +14,16 @@ const groups = {
   battery_health: [{ health_level: '健康', sess_count: 80, ratio: 80 }],
   area_costs: [{ station_area: '华东', revenue: 100, cost: 60, profit: 40, profit_rate: 40 }],
   top_stations: [{ rn: 1, station_name: '测试站', station_area: '华东', total_sessions: 8, total_kwh: 40, total_fee: 35, utilization_rate: 55 }],
+  pile_status: [{ pile_status: 'idle', pile_count: 13 }, { pile_status: 'fault', pile_count: 1 }],
+  pile_types: [{ pile_type: 'fast', pile_count: 9 }, { pile_type: 'slow', pile_count: 5 }],
 }
 
-test('unified Flask envelope maps all ten ADS result groups', () => {
+test('unified Flask envelope maps batch groups and optional live pile groups', () => {
   const normalized = normalizeDashboard({ code: 0, data: groups })
-  assert.equal(Object.keys(normalized).length, 10)
+  assert.equal(Object.keys(normalized).length, 12)
   assert.equal(normalized.overview.sessions, 100)
   const options = buildChartOptions(normalized)
-  assert.equal(Object.keys(options).length, 10)
+  assert.equal(Object.keys(options).length, 12)
   assert.equal(options.hourly.series[0].data.length, 24)
   assert.equal(options.hourly.series[0].data[8], 12)
 })
@@ -32,13 +33,17 @@ test('invalid or failed Flask response is never treated as real analytics data',
   assert.throws(() => normalizeDashboard({ code: 0, data: { overview: {} } }), /不是有效数字/)
 })
 
-test('all packaged OSM station IDs and coordinates remain valid', () => {
-  const raw = JSON.parse(fs.readFileSync(new URL('../public/ads/stations.json', import.meta.url), 'utf8'))
-  const normalized = normalizeStations(raw)
-  assert.equal(normalized.stations.length, 3460)
-  assert.equal(new Set(normalized.stations.map(station => station.id)).size, 3460)
-  assert.equal(normalized.stations.filter(station => !station.coord).length, 0)
-  assert.ok(normalized.stations.every(station => station.piles.length === 0))
+test('business stations retain coordinates and pile state counts', () => {
+  const payload = { code: 0, data: { source: 'platform_sqlite', generated_at: '2026-09-16T00:00:00Z', stations: [
+    { id: 1, name: '业务站', longitude: 121.4, latitude: 31.2, province: '上海市', city: '上海市',
+      counts: { idle: 2, charging: 1, fault: 1, offline: 0 } },
+  ] } }
+  const normalized = normalizeBusinessStations(payload)
+  assert.equal(normalized.stations.length, 1)
+  assert.deepEqual(normalized.stations[0].coord, [121.4, 31.2])
+  assert.equal(normalized.stations[0].counts.idle, 2)
+  assert.equal(normalized.stations[0].attention, 1)
+  assert.equal(normalized.source, 'platform_sqlite')
 })
 
 test('missing numeric values remain null instead of fabricated zero', () => {
@@ -62,6 +67,9 @@ test('source banner requires imported batch and unified script identity', () => 
   assert.equal(hasVerifiedSource(source), true)
   source.analysis.module = 'other.py'
   assert.equal(hasVerifiedSource(source), false)
+  const teacher = { batch_id: 'ncs-spark-20260916', metric_profile: 'ncs_teacher_dataset_v1',
+    analysis: { module: 'ncs_data/spark_sql/03_ads_dashboard.sql', script_sha256: 'b'.repeat(64) } }
+  assert.equal(hasVerifiedSource(teacher), true)
 })
 
 test('station ranking preserves ADS ranks and displays sessions even when fees disagree', () => {

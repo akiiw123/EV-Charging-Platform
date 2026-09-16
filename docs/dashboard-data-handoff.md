@@ -10,7 +10,7 @@
 2. 当前分支是 `glm`。PR #23（`4c65d2c`）已同步，保留新布局的整合提交为 `1bbaff9`。接手时重新检查分支、工作区和远程，本文不是实时状态。
 3. **当前布局是用户希望保留的版本：**中央沉浸地图、折叠 KPI、两侧展开卡片、“用户与时段 / 结构与收益”分组、左下排行和右上负载/收入关系图。修功能时不要直接用 `main` 的旧 App.vue/styles.css 覆盖。
 4. **页面能打开不等于真实分析链路已打通。** 最近检查中，8091 的旧进程没有新版 metadata 接口，响应与测试样例一致；独立读取私有 `.env` 后连接 MySQL 未成功。真实数据仍待核验。
-5. SQLite 业务库、MySQL 分析库、OSM 静态地图是三种不同来源。地图上的 3460 个灯光是静态站点位置，不是实时充电状态，也不保证与业务站点一一对应。
+5. 地图站点来自 SQLite 业务库的 `/api/v1/live/stations`，与实时 KPI 使用同一来源；Spark/MySQL 历史批次仍是独立分析来源。
 6. 本次工作没有替换旧 Qt 大屏入口、重启分析后端或修改真实数据库；前端构建已更新，可在既有静态路径预览。尚未推送远程。
 
 建议先读仓库 [AGENTS.md](../AGENTS.md)，再看本文。历史同步证据见 [PR #23 验收记录](pr23-sync-validation.md)。
@@ -62,7 +62,7 @@ git remote -v
 | `src/api/analytics.js` | 读取 dashboard 与站点静态 JSON；dashboard 返回 `{ data, metadata }` |
 | `src/components/MapPanel.vue` | 地图工具栏、视角、省份、站点详情弹窗 |
 | `src/lib/map-view.js` | Canvas 绘制、拾取、缩放/平移、动态效果；部分旧信息栏已移除，访问可选元素必须判空 |
-| `public/ads/stations.json` | 3460 个 OSM 静态站点；不是运营分析结果或实时桩数据 |
+| `/api/v1/live/stations` | SQLite 业务站点、经纬度以及空闲/充电/故障/离线桩数量 |
 | `vite.config.js` | `/dashboard/` 基础路径及开发/预览接口代理 |
 
 本节 `src/`、`public/` 路径均相对 `web/dashboard/`。

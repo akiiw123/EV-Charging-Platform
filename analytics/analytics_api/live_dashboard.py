@@ -32,14 +32,16 @@ def dashboard_snapshot(database_path, cost_per_kwh=None):
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA query_only=ON')
         db.execute('BEGIN')
-        stations = {r['id']: dict(r) for r in db.execute('SELECT id,name,city FROM charging_stations')}
-        piles = {r['id']: dict(r) for r in db.execute('SELECT id,station_id,type FROM charging_piles')}
+        stations = {r['id']: dict(r) for r in db.execute(
+            'SELECT id,name,address,province,city,district,latitude,longitude,status FROM charging_stations')}
+        piles = {r['id']: dict(r) for r in db.execute('SELECT id,station_id,type,status FROM charging_piles')}
         users = {r['id']: [0, Decimal(0), Decimal(0)] for r in db.execute('SELECT id FROM users')}
         orders = [dict(r) for r in db.execute('SELECT id,user_id,pile_id,status,created_at,started_at,ended_at,energy_kwh,amount,occupancy_fee FROM charging_orders')]
     # The lists above were read in one transaction; aggregate after releasing the read lock.
     station_stats = {sid: [0, Decimal(0), Decimal(0)] for sid in stations}
     type_stats = {r['type']: [0, Decimal(0), Decimal(0)] for r in piles.values()}
     type_piles = Counter(r['type'] for r in piles.values())
+    pile_statuses = Counter(r['status'] for r in piles.values())
     hours = [[0, Decimal(0)] for _ in range(24)]
     week = [[0, Decimal(0)] for _ in range(2)]
     areas = defaultdict(lambda: [Decimal(0), Decimal(0)])
@@ -97,6 +99,10 @@ def dashboard_snapshot(database_path, cost_per_kwh=None):
                      'station_count': len(stations), 'abnormal_rate': None},
         'user_levels': [{'user_level': level, 'user_count': len(rows)} for level, rows in sorted(groups.items())],
         'user_radar': radar, 'platforms': [], 'battery_health': [],
+        'pile_status': [{'pile_status': status, 'pile_count': count}
+                        for status, count in sorted(pile_statuses.items())],
+        'pile_types': [{'pile_type': kind, 'pile_count': count}
+                       for kind, count in sorted(type_piles.items())],
         'hour_trend': [{'hour': h, 'sessions': row[0], 'total_kwh': float(row[1]),
                         'is_peak': int(row[0] > 0 and row[0] >= sessions/24)} for h, row in enumerate(hours)],
         'week_compare': [{'day_type': ('工作日','周末')[i], 'sessions': row[0], 'total_kwh': float(row[1]),
@@ -125,3 +131,46 @@ def dashboard_snapshot(database_path, cost_per_kwh=None):
                                 'abnormal_rate': '未运行 Spark 清洗，不提供剔除比例',
                                 'energy': '订单已保存电量，不估算正在充电的瞬时电量'}}
     return data, metadata
+
+
+def station_snapshot(database_path):
+    """Return business stations and pile state counts from one read-only snapshot."""
+    if not database_path:
+        raise ValueError('Missing business database')
+    path = Path(database_path).expanduser().resolve(strict=True)
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)) as db:
+        db.row_factory = sqlite3.Row
+        db.execute('PRAGMA query_only=ON')
+        db.execute('BEGIN')
+        rows = db.execute("""
+            SELECT s.id,s.name,s.address,s.province,s.city,s.district,
+                   s.latitude,s.longitude,s.status,
+                   COUNT(p.id) AS pile_count,
+                   SUM(CASE WHEN p.status='idle' THEN 1 ELSE 0 END) AS idle_count,
+                   SUM(CASE WHEN p.status='charging' THEN 1 ELSE 0 END) AS charging_count,
+                   SUM(CASE WHEN p.status='fault' THEN 1 ELSE 0 END) AS fault_count,
+                   SUM(CASE WHEN p.status='offline' THEN 1 ELSE 0 END) AS offline_count
+            FROM charging_stations s
+            LEFT JOIN charging_piles p ON p.station_id=s.id
+            GROUP BY s.id,s.name,s.address,s.province,s.city,s.district,
+                     s.latitude,s.longitude,s.status
+            ORDER BY s.id
+        """).fetchall()
+    stations = []
+    for row in rows:
+        latitude, longitude = row['latitude'], row['longitude']
+        if latitude is not None and not -90 <= float(latitude) <= 90:
+            raise ValueError('Invalid station latitude')
+        if longitude is not None and not -180 <= float(longitude) <= 180:
+            raise ValueError('Invalid station longitude')
+        stations.append({
+            'id': row['id'], 'name': row['name'], 'address': row['address'],
+            'province': row['province'], 'city': row['city'], 'district': row['district'],
+            'latitude': latitude, 'longitude': longitude, 'status': row['status'],
+            'pile_count': row['pile_count'],
+            'counts': {'idle': row['idle_count'], 'charging': row['charging_count'],
+                       'fault': row['fault_count'], 'offline': row['offline_count']},
+        })
+    return {'source': 'platform_sqlite', 'scope': 'business_stations',
+            'generated_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'stations': stations}

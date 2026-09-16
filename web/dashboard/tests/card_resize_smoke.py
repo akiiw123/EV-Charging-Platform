@@ -21,8 +21,11 @@ with sync_playwright() as p:
                 && Math.abs(box.height-(card.clientHeight-5))<=1;
             })''', arg=selector)
         for theme in ['day', 'night']:
-            if page.evaluate('document.documentElement.dataset.theme') != theme:
-                page.get_by_role('button', name='日间' if theme=='day' else '夜间', exact=True).click()
+            for _ in range(3):
+                if page.evaluate('document.documentElement.dataset.theme') == theme:
+                    break
+                page.locator('button[data-theme-mode]').click()
+            assert page.evaluate('document.documentElement.dataset.theme') == theme
             for repeat in range(3):
                 page.locator('.kpi-grid').hover()
                 page.wait_for_timeout(320)
