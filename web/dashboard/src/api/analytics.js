@@ -10,8 +10,8 @@ async function getJson(url, signal) {
   return response.json()
 }
 
-export async function fetchDashboard(signal) {
-  const payload = await getJson('/api/v1/dashboard', signal)
+export async function fetchDashboard(signal, mode = 'batch') {
+  const payload = await getJson(mode === 'live' ? '/api/v1/live/dashboard' : '/api/v1/dashboard', signal)
   return { data: normalizeDashboard(payload), metadata: normalizeMetadata(payload.metadata) }
 }
 
