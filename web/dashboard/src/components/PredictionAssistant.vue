@@ -1,5 +1,6 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { fetchMlPrediction, fetchMlStations } from '../api/analytics.js'
 import { buildPredictionModel } from '../lib/prediction-model.js'
 
 const props = defineProps({
@@ -10,15 +11,78 @@ const props = defineProps({
 const open = ref(false)
 const orb = ref(null)
 const panel = ref(null)
-const prediction = computed(() => buildPredictionModel(props.dashboard))
+const fallbackPrediction = computed(() => buildPredictionModel(props.dashboard))
+const mlState = ref('idle')
+const mlError = ref('')
+const mlStations = ref([])
+const selectedStationId = ref('')
+const mlPrediction = ref(null)
+let controller = null
+
+const usingMl = computed(() => mlState.value === 'ready' && mlPrediction.value)
+const prediction = computed(() => usingMl.value ? normalizeMlPrediction(mlPrediction.value) : fallbackPrediction.value)
 const sourceLabel = computed(() => props.mode === 'live' ? '实时业务统计' : 'Spark 历史批次')
 const maxSignal = computed(() => Math.max(...prediction.value.distribution, 1))
+const statusLabel = computed(() => ({
+  idle: '等待连接', loading: '模型加载中', ready: '历史预测', unavailable: '历史估算', failed: '推理失败',
+})[mlState.value])
+
+function hourText(value) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '--:--' : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function normalizeMlPrediction(payload) {
+  const curve = Array.isArray(payload?.curve) ? payload.curve : []
+  const distribution = curve.map((row) => Number(row.load_kwh) || 0)
+  const peak = distribution.length ? Math.max(...distribution) : 0
+  const peakIndex = distribution.indexOf(peak)
+  const peakRow = curve[peakIndex] || {}
+  const total = distribution.reduce((sum, value) => sum + value, 0)
+  return {
+    available: curve.length > 0,
+    distribution,
+    peakWindow: `${hourText(peakRow.interval_start)}–${hourText(peakRow.interval_end)}`,
+    peakRatio: peak / Math.max(total / Math.max(distribution.length, 1), 0.001),
+    peakSessions: Math.max(0, (Number(payload.total_piles) || 0) * (1 - (Number(peakRow.busy_ratio) || 0))),
+    peakKwh: peak,
+    attentionCount: Number(payload.total_piles) || 0,
+    leadStation: payload.station_name || payload.station_id || '',
+  }
+}
+
+async function loadPrediction() {
+  controller?.abort()
+  controller = new AbortController()
+  mlState.value = 'loading'
+  mlError.value = ''
+  mlPrediction.value = null
+  let stationsLoaded = false
+  try {
+    const listing = await fetchMlStations(controller.signal)
+    mlStations.value = Array.isArray(listing.stations) ? listing.stations : []
+    stationsLoaded = true
+    if (!mlStations.value.length) throw new Error('模型没有可回放站点')
+    if (!mlStations.value.some((item) => String(item.station_id) === selectedStationId.value)) {
+      selectedStationId.value = String(mlStations.value[0].station_id)
+    }
+    mlPrediction.value = await fetchMlPrediction(selectedStationId.value, controller.signal)
+    mlState.value = 'ready'
+  } catch (error) {
+    if (error.name === 'AbortError') return
+    mlError.value = error.message || '模型服务不可用'
+    mlState.value = stationsLoaded ? 'failed' : 'unavailable'
+  }
+}
 
 async function openPanel() {
   open.value = true
+  if (mlState.value === 'idle') loadPrediction()
   await nextTick()
   panel.value?.focus()
 }
+
+onBeforeUnmount(() => controller?.abort())
 
 async function closePanel() {
   open.value = false
@@ -71,26 +135,35 @@ function togglePanel() {
             <small>VOLT AI · OPERATIONS FORECAST</small>
             <h3>智能预测</h3>
           </div>
-          <span class="prediction-card__status"><i></i>规则推演</span>
+          <span class="prediction-card__status"><i></i>{{ statusLabel }}</span>
           <button type="button" class="prediction-card__close" aria-label="收起智能预测" @click="closePanel">×</button>
         </header>
 
-        <template v-if="prediction.available">
+        <div v-if="mlStations.length" class="prediction-card__station">
+          <label for="predictionStation">预测站点</label>
+          <select id="predictionStation" v-model="selectedStationId" :disabled="mlState === 'loading'" @change="loadPrediction">
+            <option v-for="station in mlStations" :key="station.station_id" :value="String(station.station_id)">
+              {{ station.station_name || station.station_id }}
+            </option>
+          </select>
+        </div>
+
+        <template v-if="prediction.available && mlState !== 'failed'">
           <div class="prediction-card__lead">
             <span>预计高负荷窗口</span>
             <strong>{{ prediction.peakWindow }}</strong>
-            <p>该时段充电会话强度约为全天均值的 {{ prediction.peakRatio.toFixed(1) }} 倍。</p>
+            <p>{{ usingMl ? '历史回放模型' : '统计规则' }}显示该时段负荷约为全天均值的 {{ prediction.peakRatio.toFixed(1) }} 倍。</p>
           </div>
 
           <div class="prediction-card__metrics">
             <article>
-              <span>高峰会话</span><strong>{{ prediction.peakSessions.toLocaleString('zh-CN') }}</strong><small>次</small>
+              <span>{{ usingMl ? '预计空闲桩' : '高峰会话' }}</span><strong>{{ prediction.peakSessions.toLocaleString('zh-CN') }}</strong><small>{{ usingMl ? '个' : '次' }}</small>
             </article>
             <article>
-              <span>参考负荷</span><strong>{{ prediction.peakKwh.toLocaleString('zh-CN', { maximumFractionDigits: 1 }) }}</strong><small>kWh</small>
+              <span>峰值小时电量</span><strong>{{ prediction.peakKwh.toLocaleString('zh-CN', { maximumFractionDigits: 1 }) }}</strong><small>kWh</small>
             </article>
             <article>
-              <span>高负载站点</span><strong>{{ prediction.attentionCount }}</strong><small>个</small>
+              <span>{{ usingMl ? '站点充电桩' : '高负载站点' }}</span><strong>{{ prediction.attentionCount }}</strong><small>个</small>
             </article>
           </div>
 
@@ -105,14 +178,21 @@ function togglePanel() {
           </div>
         </template>
 
+        <div v-else-if="mlState === 'loading'" class="prediction-card__empty">
+          <strong>正在连接模型服务</strong><span>加载可回放站点和 24 小时预测。</span>
+        </div>
+
         <div v-else class="prediction-card__empty">
-          <strong>等待有效统计数据</strong>
-          <span>数据加载完成后，将自动生成高峰时段与负荷提示。</span>
+          <strong>{{ mlState === 'failed' ? '模型推理失败' : '等待有效统计数据' }}</strong>
+          <span>{{ mlError || '数据加载完成后，将自动生成高峰时段与负荷提示。' }}</span>
+          <button v-if="mlState === 'failed'" type="button" @click="loadPrediction">重新预测</button>
         </div>
 
         <footer class="prediction-card__footer">
-          <span>数据源：{{ sourceLabel }}</span>
-          <span>当前为统计规则推演，接入训练模型后可替换为 ML 预测结果</span>
+          <span>数据源：{{ usingMl ? '2025 年历史回放模型' : sourceLabel }}</span>
+          <span v-if="usingMl">日期经历史平移；结果为 seasonal 季节性模型，不代表实时可预约桩数</span>
+          <span v-else-if="mlState === 'unavailable'">模型服务不可用：{{ mlError }}；当前显示统计规则估算</span>
+          <span v-else>模型结果不可用时不会沿用旧预测值</span>
         </footer>
       </section>
     </Transition>
