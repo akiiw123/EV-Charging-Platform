@@ -41,9 +41,10 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionSource READ predictionSource NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionStatus READ predictionStatus NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionUpdatedAt READ predictionUpdatedAt NOTIFY predictionChanged)
+    Q_PROPERTY(bool predictionLoading READ predictionLoading NOTIFY predictionChanged)
     Q_PROPERTY(bool mustChangePassword READ mustChangePassword NOTIFY mustChangePasswordChanged)
     Q_PROPERTY(bool loadFailed READ loadFailed NOTIFY loadFailedChanged)
-    // 真实预测聚合值(全部站点合计);演示模式为 "—"
+    // 真实预测聚合值(当前展示站点合计);不可用时为 "—"
     Q_PROPERTY(QString predictionLoad1 READ predictionLoad1 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad6 READ predictionLoad6 NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionLoad24 READ predictionLoad24 NOTIFY predictionChanged)
@@ -79,6 +80,7 @@ public:
     QString predictionSource() const { return predictionSource_; }
     QString predictionStatus() const { return predictionStatus_; }
     QString predictionUpdatedAt() const { return predictionUpdatedAt_; }
+    bool predictionLoading() const { return predictionLoading_; }
     QString predictionLoad1() const { return predictionLoad1_; }
     QString predictionLoad6() const { return predictionLoad6_; }
     QString predictionLoad24() const { return predictionLoad24_; }
@@ -166,8 +168,8 @@ private:
     void showNotice(const QString& text, const QString& kind = QStringLiteral("success"));
     void applyClientFilters();
     void usePredictionDemo(const QString& reason);
-    void requestStationForecasts(const QJsonArray& stations);
-    void applyForecastReply(int row, const QJsonObject& payload);
+    void requestStationForecasts(const QJsonObject& catalog, int generation);
+    bool applyForecastReply(int row, const QJsonObject& payload);
     void finishForecasts();
 
     charging::core::ApiClient api_;
@@ -199,13 +201,16 @@ private:
     JsonListModel stations_, piles_, orders_, users_, predictions_;
     QJsonArray rawStations_, rawPiles_, rawOrders_, rawUsers_;
     QString stationQuery_, pileQuery_, pileStation_, pileType_, pileState_, orderQuery_, orderState_, userQuery_, userState_;
-    QString predictionSource_ = QStringLiteral("演示数据"), predictionStatus_ = QStringLiteral("未连接预测服务"), predictionUpdatedAt_;
+    QString predictionSource_ = QStringLiteral("未连接"), predictionStatus_ = QStringLiteral("未连接预测服务"), predictionUpdatedAt_;
     // /predict 请求的进行中状态与聚合结果
     QList<QVariantMap> pendingForecastRows_;
     int pendingForecastCount_ = 0;
     int forecastOkCount_ = 0;
     double forecastLoadSum_[3] = {0.0, 0.0, 0.0};   // 1/6/24h 合计 kWh
     double forecastConfidence_ = 0.0;               // 由 quantiles 推出,如 90
+    bool predictionLoading_ = false;
+    int forecastRequestGeneration_ = 0;
+    QString forecastMode_, forecastReplayAt_;
     QString predictionLoad1_ = QStringLiteral("—"), predictionLoad6_ = QStringLiteral("—"),
             predictionLoad24_ = QStringLiteral("—"), predictionConfidence_ = QStringLiteral("—");
     bool mustChangePassword_ = false;
@@ -213,4 +218,3 @@ private:
 };
 
 } // namespace charging::admin
-
