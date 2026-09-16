@@ -29,3 +29,6 @@ Thumbs.db
 # ML training artifacts and external UrbanEV dataset
 ml/artifacts/
 ml/data/
+
+# Local ML runtime
+.venv-ml/
