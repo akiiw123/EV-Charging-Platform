@@ -57,6 +57,14 @@ export function buildChartOptions(data, mode = 'night') {
 
   const levelData = data.user_levels.map(row => ({ name: row.user_level, value: number(row.user_count) }))
   const platformData = data.platforms.map(row => ({ name: row.phone_type, value: number(row.user_count) }))
+  const pileStatusLabels = { idle: '空闲', charging: '充电中', fault: '故障', offline: '离线' }
+  const pileTypeLabels = { fast: '快充', slow: '慢充' }
+  const pileStatusData = (data.pile_status || []).map(row => ({
+    name: pileStatusLabels[row.pile_status] || row.pile_status, value: number(row.pile_count),
+  }))
+  const pileTypeData = (data.pile_types || []).map(row => ({
+    name: pileTypeLabels[row.pile_type] || row.pile_type, value: number(row.pile_count),
+  }))
 
   const radarDimensions = [...new Set(data.user_radar.map(row => row.dim_name))]
   const radarLevels = [...new Set(data.user_radar.map(row => row.user_level))]
@@ -113,6 +121,19 @@ export function buildChartOptions(data, mode = 'night') {
       series: [{ type: 'bar', barWidth: 11, data: data.battery_health.map(row => number(row.ratio)),
         label: { show: true, position: 'right', color: palette.text, formatter: '{c}%' },
         itemStyle: { color: palette.colors[2], borderRadius: 6 } }],
+    },
+    pileStatus: {
+      ...common,
+      tooltip: { ...common.tooltip, trigger: 'item', formatter: '{b}<br/>{c} 个 · {d}%' },
+      legend: { ...legend, bottom: 0, top: 'auto' },
+      series: [{ type: 'pie', radius: ['42%', '70%'], center: ['50%', '45%'],
+        label: { color: palette.text, fontSize: 10, formatter: '{b}\n{c} 个' }, data: pileStatusData }],
+    },
+    pileTypes: {
+      ...common,
+      tooltip: { ...common.tooltip, trigger: 'item', formatter: '{b}<br/>{c} 个 · {d}%' },
+      series: [{ type: 'pie', roseType: 'radius', radius: ['24%', '72%'], center: ['50%', '52%'],
+        label: { color: palette.text, fontSize: 10, formatter: '{b}\n{c} 个' }, data: pileTypeData }],
     },
     hourly: {
       ...common, legend, grid,

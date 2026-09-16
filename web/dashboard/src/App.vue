@@ -24,7 +24,10 @@ const loading = ref(false)
 const stationLoading = ref(false)
 const updatedAt = ref(null)
 const clock = ref(new Date())
-const theme = ref(localStorage.getItem('voltflow-dashboard-theme') === 'day' ? 'day' : 'night')
+const storedThemeMode = localStorage.getItem('voltflow-dashboard-theme-mode')
+const themeMode = ref(['auto', 'day', 'night'].includes(storedThemeMode) ? storedThemeMode : 'auto')
+const theme = ref('night')
+const isFullscreen = ref(Boolean(document.fullscreenElement))
 provide('dashboardTheme', theme)
 let refreshController
 let stationController
@@ -34,14 +37,23 @@ let clockTimer
 const chartOptions = computed(() => buildChartOptions(dashboard.value, theme.value))
 const hasDashboard = computed(() => Boolean(dashboard.value))
 const verifiedSource = computed(() => hasVerifiedSource(metadata.value))
+const isTeacherBatch = computed(() => metadata.value.metric_profile === 'ncs_teacher_dataset_v1')
 const missingReason = key => chartMissingReason(key, dashboard.value, metadata.value)
 const analysisTime = computed(() => metadata.value.generated_at ? new Date(metadata.value.generated_at).toLocaleString('zh-CN', { hour12: false }) : '未知')
+const themeButtonLabel = computed(() => {
+  if (themeMode.value === 'auto') return `自动·${theme.value === 'day' ? '日间' : '夜间'}`
+  return themeMode.value === 'day' ? '日间' : '夜间'
+})
 
 const leftCharts = computed(() => [
   { key: 'userLevels', title: '用户等级分布', eyebrow: 'USER SEGMENT', badge: `${dashboard.value?.user_levels.length || 0} 类` },
   { key: 'userRadar', title: '用户行为雷达', eyebrow: 'BEHAVIOR COMPARISON', badge: '多维对比' },
-  { key: 'platforms', title: '终端平台偏好', eyebrow: 'PLATFORM SHARE', badge: `${dashboard.value?.platforms.length || 0} 类` },
-  { key: 'battery', title: '起始 SOC 电量分布', eyebrow: 'STARTING SOC', badge: '非健康诊断' },
+  isLive.value
+    ? { key: 'pileStatus', title: '充电桩状态分布', eyebrow: 'PILE STATUS', badge: `${dashboard.value?.pile_status.length || 0} 类` }
+    : { key: 'platforms', title: '终端平台偏好', eyebrow: 'PLATFORM SHARE', badge: `${dashboard.value?.platforms.length || 0} 类` },
+  isLive.value
+    ? { key: 'pileTypes', title: '快充与慢充数量', eyebrow: 'PILE TYPE', badge: `${dashboard.value?.pile_types.length || 0} 类` }
+    : { key: 'battery', title: '起始 SOC 电量分布', eyebrow: 'STARTING SOC', badge: '非健康诊断' },
 ])
 
 const rightCharts = computed(() => [
@@ -56,13 +68,21 @@ const visibleRightCharts = computed(() => rightCharts.value.slice(chartGroup.val
 
 const kpis = computed(() => {
   const overview = dashboard.value?.overview
-  return [
+  const items = [
     { label: '充电会话', value: formatInteger(overview?.sessions), unit: '次' },
     { label: '累计充电量', value: formatDecimal(overview?.total_kwh), unit: 'kWh' },
-    { label: '已结算营收（含占位费）', value: formatMoney(overview?.total_fee), unit: '元' },
-    { label: '覆盖站点', value: formatInteger(overview?.station_count), unit: '站' },
-    { label: '订单剔除比例', value: overview ? formatDecimal(overview.abnormal_rate) : '—', unit: '%' },
+    { label: !isLive.value && isTeacherBatch.value ? '充电费用合计' : '已结算营收（含占位费）',
+      value: formatMoney(overview?.total_fee), unit: '元' },
+    { label: isLive.value ? '业务站点总数' : '分析站点总数', value: formatInteger(overview?.station_count), unit: '站' },
   ]
+  if (isLive.value) {
+    const piles = dashboard.value?.pile_status.reduce((sum, row) => sum + Number(row.pile_count || 0), 0)
+    items.push({ label: '充电桩总数', value: formatInteger(piles), unit: '个' })
+  } else {
+    items.push({ label: isTeacherBatch.value ? 'BMS 明细缺失比例' : '订单剔除比例',
+      value: overview ? formatDecimal(overview.abnormal_rate) : '—', unit: '%' })
+  }
+  return items
 })
 
 let railCloseTimer
@@ -128,32 +148,65 @@ async function refreshDashboard() {
 async function loadStationData() {
   stationController?.abort()
   stationController = new AbortController()
-  const timeout = setTimeout(() => stationController.abort(), 15000)
+  const controller = stationController
+  const timeout = setTimeout(() => controller.abort(), 15000)
   stationLoading.value = true
   try {
-    stationData.value = await fetchStations(stationController.signal)
+    const value = await fetchStations(controller.signal)
+    if (stationController !== controller) return
+    stationData.value = value
     stationError.value = ''
   } catch (error) {
-    stationError.value = error.name === 'AbortError' ? '站点静态资料加载超时' : error.message
+    if (stationController !== controller) return
+    stationError.value = error.name === 'AbortError' ? '业务站点加载超时' : error.message
   } finally {
     clearTimeout(timeout)
-    stationLoading.value = false
+    if (stationController === controller) stationLoading.value = false
   }
 }
 
-function toggleTheme() {
-  theme.value = theme.value === 'night' ? 'day' : 'night'
+function resolveAutoTheme(date = new Date()) {
+  const hour = date.getHours()
+  return hour >= 7 && hour < 18 ? 'day' : 'night'
 }
 
-watch(theme, value => {
-  document.documentElement.dataset.theme = value
-  localStorage.setItem('voltflow-dashboard-theme', value)
+function syncTheme() {
+  theme.value = themeMode.value === 'auto' ? resolveAutoTheme(clock.value) : themeMode.value
+  document.documentElement.dataset.theme = theme.value
+}
+
+function cycleThemeMode() {
+  themeMode.value = themeMode.value === 'auto' ? 'day' : themeMode.value === 'day' ? 'night' : 'auto'
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await document.documentElement.requestFullscreen()
+  } catch (error) {
+    console.warn('浏览器未能切换全屏模式', error)
+  } finally {
+    isFullscreen.value = Boolean(document.fullscreenElement)
+  }
+}
+
+function syncFullscreen() {
+  isFullscreen.value = Boolean(document.fullscreenElement)
+}
+
+watch(themeMode, value => {
+  localStorage.setItem('voltflow-dashboard-theme-mode', value)
+  syncTheme()
 }, { immediate: true })
 
 onMounted(() => {
   refreshDashboard()
   loadStationData()
-  clockTimer = setInterval(() => { clock.value = new Date() }, 1000)
+  document.addEventListener('fullscreenchange', syncFullscreen)
+  clockTimer = setInterval(() => {
+    clock.value = new Date()
+    if (themeMode.value === 'auto') syncTheme()
+  }, 1000)
 })
 
 watch(chartDataMode, () => {
@@ -162,6 +215,7 @@ watch(chartDataMode, () => {
   updatedAt.value = null
   dashboardError.value = ''
   refreshDashboard()
+  loadStationData()
 })
 
 onBeforeUnmount(() => {
@@ -172,6 +226,7 @@ onBeforeUnmount(() => {
   clearTimeout(refreshTimer)
   clearInterval(clockTimer)
   clearTimeout(railCloseTimer)
+  document.removeEventListener('fullscreenchange', syncFullscreen)
 })
 </script>
 
@@ -189,8 +244,10 @@ onBeforeUnmount(() => {
       </div>
       <div class="top-actions">
         <time>{{ clock.toLocaleString('zh-CN', { hour12: false }) }}</time>
-        <button type="button" @click="toggleTheme">{{ theme === 'night' ? '日间' : '夜间' }}</button>
-        <button type="button" :disabled="loading" @click="refreshDashboard">{{ loading ? '刷新中' : '刷新数据' }}</button>
+        <button type="button" :data-theme-mode="themeMode" :title="`主题模式：${themeButtonLabel}；点击切换`" @click="cycleThemeMode">
+          {{ themeButtonLabel }}
+        </button>
+        <button type="button" :aria-pressed="isFullscreen" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</button>
       </div>
     </header>
 
@@ -208,7 +265,6 @@ onBeforeUnmount(() => {
         <button type="button" :aria-pressed="chartGroup === 'overview'" @click="chartGroup = 'overview'">用户与时段</button>
         <button type="button" :aria-pressed="chartGroup === 'structure'" @click="chartGroup = 'structure'">结构与收益</button>
       </div>
-      <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors · ODbL</a>
     </div>
 
     <p v-if="dashboardError" class="error-banner" role="alert">
@@ -311,23 +367,28 @@ onBeforeUnmount(() => {
         <template v-else-if="verifiedSource">
           <strong>分析生成：{{ analysisTime }}</strong>
           <p>批次：{{ metadata.batch_id }} · 原始 {{ metadata.quality?.raw_count }} 条 / 有效 {{ metadata.quality?.valid_count }} 条 / 剔除 {{ metadata.quality?.rejected_count }} 条</p>
+          <p v-if="isTeacherBatch">Spark {{ metadata.analysis?.spark_version }} / Hadoop {{ metadata.analysis?.hadoop_version }} · 费用取源数据 charging_fees；BMS 明细缺失比例单独展示。</p>
         </template>
         <p v-else>当前数据缺少新版分析批次信息，统计口径尚未核验，需完成新版分析结果导入。</p>
       </div>
       <ul>
         <li v-if="!isLive">以下为新版分析口径；无批次信息时，不能据此认定旧数据已更新。</li>
-        <li>充电会话包含充电中、待结算与已完成订单；营收仅统计已完成订单金额及占位费。</li>
-        <li v-if="!isLive">订单剔除比例：原始订单中被清洗、去重或关联校验剔除的比例，不是 SOC 缺失率。</li>
+        <li v-if="isLive">充电会话包含充电中、待结算与已完成订单；营收仅统计已完成订单金额及占位费。</li>
+        <li v-else-if="isTeacherBatch">充电会话为 DWD 清洗后保留的订单；费用来自源数据 charging_fees，其中大量记录为 0，按原始数据如实展示。</li>
+        <li v-else>充电会话包含充电中、待结算与已完成订单；营收仅统计已完成订单金额及占位费。</li>
+        <li v-if="!isLive && isTeacherBatch">BMS 明细缺失比例：清洗后订单中没有 SOC/BMS 过程记录的占比，不代表订单被剔除。</li>
+        <li v-else-if="!isLive">订单剔除比例：原始订单中被清洗、去重或关联校验剔除的比例，不是 SOC 缺失率。</li>
         <li>站点排行按充电次数、累计电量降序；右侧关系图使用同一 TOP10 站点，横轴为相对负载率，纵轴为已结算营收，不代表全体站点。</li>
         <li>相对负载率为充电次数除以同组最大次数，不代表设备时间利用率。起始 SOC 分布不代表电池健康状态。</li>
         <li>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；估算利润为营收减电量成本，未计设备和人工等成本。</li>
-        <li>平台按下单用户去重，同一用户可出现在多个平台；周末按上海时区的周六、周日划分，不含调休。</li>
+        <li v-if="isTeacherBatch">平台图按清洗后充电会话数统计；工作日/周末取源数据 weekday，不含节假日调休。</li>
+        <li v-else>平台按下单用户去重，同一用户可出现在多个平台；周末按上海时区的周六、周日划分，不含调休。</li>
       </ul>
     </details>
 
     <footer>
-      <span>{{ isLive ? "运营指标来自实时业务汇总" : "运营指标来自 Spark 分析批次" }} · 站点灯光仅表示位置</span>
-      <span>地理资料：OSM 静态站点 {{ stationData?.stations.length?.toLocaleString('zh-CN') || 0 }} 条</span>
+      <span>{{ isLive ? "运营指标来自实时业务汇总" : "运营指标来自 Spark 分析批次" }} · 地图来自业务数据库</span>
+      <span>业务站点：{{ stationData?.stations.length?.toLocaleString('zh-CN') || 0 }} 个</span>
       <span>VOLTFlow V3 / 数据不全时明确显示未知</span>
       <span>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；周末指周六、周日</span>
     </footer>

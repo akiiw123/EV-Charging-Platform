@@ -31,11 +31,12 @@ with sync_playwright() as p:
   errors=[]
   page.on('pageerror',lambda error:errors.append(str(error)))
   page.goto(args.url,wait_until='networkidle')
-  page.wait_for_function("document.querySelector('#map')?.dataset.renderedStations === '3460'")
-  assert page.get_by_text('分析接口在线',exact=True).is_visible()
+  page.wait_for_function("Number(document.querySelector('#map')?.dataset.renderedStations) > 0")
+  live_station_count=page.evaluate("Number(document.querySelector('#map')?.dataset.renderedStations)")
+  assert page.get_by_text('实时业务统计在线',exact=True).is_visible()
   live_source=page.locator('.metric-notes summary').inner_text()
   page.screenshot(path=str(out/'live-night.png'),full_page=True)
-  print('PASS live service: data loads, 3460 static stations; source status: '+live_source,flush=True)
+  print(f'PASS live service: data loads, {live_station_count} business stations; source status: '+live_source,flush=True)
   state={'failure':False,'missing':False}
   def handle(route):
    if state['failure']: route.fulfill(status=503,json={'code':50301,'message':'test unavailable'}); return
@@ -45,8 +46,8 @@ with sync_playwright() as p:
     data['platforms']=[];data['battery_health']=[];data['user_radar'][0]['dim_value']=None
    route.fulfill(json={'code':0,'data':data,'metadata':meta})
   page.route('**/api/v1/dashboard',handle)
-  page.reload(wait_until='networkidle')
-  page.wait_for_function("document.querySelector('#map')?.dataset.renderedStations === '3460'")
+  page.get_by_label('图表数据来源').select_option('batch')
+  page.wait_for_function("document.querySelector('.metric-notes summary')?.textContent.includes('已提供分析批次')")
   assert page.locator('.chart-canvas canvas').count()==6
   assert '已提供分析批次' in page.locator('.metric-notes summary').inner_text()
   page.locator('.metric-notes summary').click()
@@ -66,12 +67,22 @@ with sync_playwright() as p:
    dock=page.locator(f'.performance-dock--{side}')
    dock.focus();page.wait_for_timeout(350)
    assert dock.bounding_box()['height']>=295
-  page.get_by_role('button',name='日间',exact=True).click()
+  theme_button=page.locator('button[data-theme-mode]')
+  assert theme_button.get_attribute('data-theme-mode')=='auto'
+  theme_button.click()
+  assert theme_button.get_attribute('data-theme-mode')=='day'
   assert page.evaluate('document.documentElement.dataset.theme')=='day'
   page.screenshot(path=str(out/'fixture-day.png'),full_page=True)
   page.reload(wait_until='networkidle')
+  theme_button=page.locator('button[data-theme-mode]')
+  assert theme_button.get_attribute('data-theme-mode')=='day'
   assert page.evaluate('document.documentElement.dataset.theme')=='day'
-  page.get_by_role('button',name='夜间',exact=True).click()
+  page.get_by_label('图表数据来源').select_option('batch')
+  page.wait_for_function("document.querySelector('.metric-notes summary')?.textContent.includes('已提供分析批次')")
+  theme_button.click()
+  assert theme_button.get_attribute('data-theme-mode')=='night'
+  assert page.evaluate('document.documentElement.dataset.theme')=='night'
+  assert page.get_by_role('button',name='全屏',exact=True).is_visible()
   page.get_by_role('button',name='2.5D',exact=True).click()
   assert page.get_by_role('button',name='2.5D',exact=True).get_attribute('aria-pressed')=='true'
   page.get_by_role('button',name='2D',exact=True).click()
@@ -96,16 +107,18 @@ with sync_playwright() as p:
     assert right['y']>=cards[1].bounding_box()['y']+cards[1].bounding_box()['height']
    if width==390:
     page.locator('#map').scroll_into_view_if_needed()
-    page.wait_for_function("Number(document.querySelector('#map')?.dataset.renderedStations)>3000")
+    page.wait_for_function("Number(document.querySelector('#map')?.dataset.renderedStations)>0")
    page.screenshot(path=str(out/f'fixture-{width}.png'),full_page=True)
   page.set_viewport_size(dict(width=1440,height=900))
   state['failure']=True
-  page.get_by_role('button',name='刷新数据',exact=True).click()
+  page.get_by_label('图表数据来源').select_option('live')
+  page.get_by_label('图表数据来源').select_option('batch')
   page.get_by_role('alert').wait_for()
   assert 'HTTP 503' in page.get_by_role('alert').inner_text()
   assert page.locator('.kpi-value strong').first.inner_text()=='100'
   state['failure']=False;state['missing']=True
-  page.get_by_role('button',name='刷新数据',exact=True).click()
+  page.get_by_label('图表数据来源').select_option('live')
+  page.get_by_label('图表数据来源').select_option('batch')
   page.wait_for_function("!document.querySelector('.error-banner')")
   page.get_by_role('button',name='结构与收益',exact=True).click()
   assert 'platform' in page.locator('.chart-column--left').inner_text()

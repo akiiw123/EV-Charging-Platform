@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch } from 'vue'
 import DashboardCard from './DashboardCard.vue'
 import { createMap } from '../lib/map-view.js'
 
@@ -18,13 +18,6 @@ const layout = ref('immersive')
 const links = ref(true)
 const motion = ref(true)
 const map = shallowRef(null)
-
-const sourceLink = computed(() => {
-  const value = selectedStation.value?.sourceUrl || ''
-  return /^https:\/\/www\.openstreetmap\.org\/(node|way|relation)\/\d+$/.test(value)
-    ? value
-    : ''
-})
 
 function openStation(station) {
   selectedStation.value = station
@@ -95,7 +88,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <DashboardCard title="全国充电网络" eyebrow="GEOGRAPHIC ASSET VIEW" :badge="`${scope.stations || 0} 站`" class="map-card">
+  <DashboardCard title="业务充电站分布" eyebrow="BUSINESS STATION MAP" :badge="`${scope.stations || 0} 站`" class="map-card">
     <div class="map-panel">
       <div class="map-toolbar">
         <select
@@ -126,13 +119,13 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="map-meta">
-        <strong><span id="mapScope">全国</span> / 充电网络</strong>
+        <strong><span id="mapScope">全国</span> / 业务站点</strong>
         <span id="mapViewName">2D 俯瞰地图</span>
       </div>
 
       <div class="map-stage">
         <div id="mapBackdrop"></div>
-        <div id="map" role="application" tabindex="0" aria-label="全国充电站交互地图"></div>
+        <div id="map" role="application" tabindex="0" aria-label="业务充电站交互地图"></div>
         <p id="mapMessage" class="map-message" :hidden="!loading && !error">{{ error || '正在加载站点资料…' }}</p>
         <div class="map-zoom">
             <button type="button" aria-label="放大地图" @click.stop="zoomMap(1.5)">＋</button>
@@ -146,16 +139,14 @@ onBeforeUnmount(() => {
   <dialog ref="stationDialog" class="station-dialog" @close="selectedStation = null">
     <template v-if="selectedStation">
       <button class="dialog-close" type="button" aria-label="关闭" @click="stationDialog.close()">×</button>
-      <small>OSM STATIC STATION</small>
+      <small>PLATFORM BUSINESS STATION</small>
       <h2>{{ selectedStation.name }}</h2>
       <p>{{ [selectedStation.province, selectedStation.city].filter(Boolean).join(' / ') || '行政区域未知' }}</p>
       <dl>
-        <div><dt>运营商</dt><dd>{{ selectedStation.operator || '未知' }}</dd></div>
-        <div><dt>品牌</dt><dd>{{ selectedStation.brand || '未知' }}</dd></div>
         <div><dt>地址</dt><dd>{{ selectedStation.address || '未提供' }}</dd></div>
-        <div><dt>设备状态</dt><dd>静态资料未提供，不能推断</dd></div>
+        <div><dt>充电桩</dt><dd>{{ Object.values(selectedStation.counts).reduce((sum, value) => sum + value, 0) }} 个</dd></div>
+        <div><dt>空闲 / 充电 / 故障 / 离线</dt><dd>{{ selectedStation.counts.idle }} / {{ selectedStation.counts.charging }} / {{ selectedStation.counts.fault }} / {{ selectedStation.counts.offline }}</dd></div>
       </dl>
-      <a v-if="sourceLink" :href="sourceLink" target="_blank" rel="noopener noreferrer">查看 OpenStreetMap 来源</a>
     </template>
   </dialog>
 </template>

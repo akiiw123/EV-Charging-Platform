@@ -17,6 +17,7 @@ function rows(data, key) {
     week_compare: ['sessions', 'total_kwh', 'pct'], battery_health: ['sess_count', 'ratio'],
     area_costs: ['revenue', 'cost', 'profit', 'profit_rate'],
     top_stations: ['rn', 'total_sessions', 'total_kwh', 'total_fee', 'utilization_rate'],
+    pile_status: ['pile_count'], pile_types: ['pile_count'],
   }
   return data[key].map(row => {
     if (!isObject(row)) throw new TypeError(`${key} 行格式不正确`)
@@ -31,14 +32,19 @@ export function normalizeMetadata(value) {
 }
 
 export function hasVerifiedSource(metadata) {
+  const module = metadata?.analysis?.module
+  const supported = module === 'analytics/scripts/evcharging_analysis.py'
+    || (metadata?.metric_profile === 'ncs_teacher_dataset_v1'
+      && module === 'ncs_data/spark_sql/03_ads_dashboard.sql')
   return typeof metadata?.batch_id === 'string' && metadata.batch_id.length > 0
-    && metadata.analysis?.module === 'analytics/scripts/evcharging_analysis.py'
+    && supported
     && /^[a-f0-9]{64}$/.test(metadata.analysis?.script_sha256 || '')
 }
 
 const chartGroups = { userLevels: 'user_levels', userRadar: 'user_radar', platforms: 'platforms',
   battery: 'battery_health', hourly: 'hour_trend', stationTypes: 'station_types',
-  weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations', stationLoad: 'top_stations' }
+  weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations', stationLoad: 'top_stations',
+  pileStatus: 'pile_status', pileTypes: 'pile_types' }
 export function chartMissingReason(key, data, metadata) {
   if (!data) return '等待可信分析结果'
   const group = data[chartGroups[key]] || []
@@ -75,6 +81,8 @@ export function normalizeDashboard(payload) {
     battery_health: rows(data, 'battery_health'),
     area_costs: rows(data, 'area_costs'),
     top_stations: rows(data, 'top_stations'),
+    pile_status: Array.isArray(data.pile_status) ? rows(data, 'pile_status') : [],
+    pile_types: Array.isArray(data.pile_types) ? rows(data, 'pile_types') : [],
   }
 }
 
@@ -113,4 +121,36 @@ export function normalizeStations(payload) {
     }
   })
   return { stations, snapshotAt: payload.snapshot_at || null }
+}
+
+export function normalizeBusinessStations(payload) {
+  if (!isObject(payload) || payload.code !== 0 || !isObject(payload.data)
+      || payload.data.source !== 'platform_sqlite' || !Array.isArray(payload.data.stations)) {
+    throw new TypeError(payload?.message || '业务站点响应格式不正确')
+  }
+  const ids = new Set()
+  const stations = payload.data.stations.map(station => {
+    if (!isObject(station) || station.id === undefined || ids.has(String(station.id))) {
+      throw new TypeError('业务站点缺少唯一 ID')
+    }
+    ids.add(String(station.id))
+    const longitude = finite(station.longitude, 'station.longitude')
+    const latitude = finite(station.latitude, 'station.latitude')
+    const coord = longitude != null && latitude != null
+      && longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90
+      ? [longitude, latitude] : null
+    const counts = { charging: 0, idle: 0, fault: 0, offline: 0, unknown: 0 }
+    for (const key of ['charging', 'idle', 'fault', 'offline']) {
+      counts[key] = finite(station.counts?.[key] ?? 0, `station.counts.${key}`)
+    }
+    return {
+      id: String(station.id), name: String(station.name || '未命名站点'),
+      province: String(station.province || ''), city: String(station.city || ''),
+      district: String(station.district || ''), address: station.address || null,
+      coord, counts, piles: [], status: station.status || null,
+      attention: counts.fault + counts.offline,
+      issues: [], lifecycle: null, operator: null, brand: null, access: null, sourceUrl: null,
+    }
+  })
+  return { stations, snapshotAt: payload.data.generated_at || null, source: 'platform_sqlite' }
 }
