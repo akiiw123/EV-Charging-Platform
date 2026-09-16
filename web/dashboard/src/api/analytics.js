@@ -11,8 +11,9 @@ async function getJson(url, signal) {
     headers: { Accept: 'application/json' },
     signal,
   })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response.json()
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`)
+  return payload
 }
 
 export async function fetchDashboard(signal, mode = 'batch') {
@@ -23,4 +24,21 @@ export async function fetchDashboard(signal, mode = 'batch') {
 export async function fetchStations(signal, mode = 'live') {
   const url = mode === 'live' ? '/api/v1/live/stations' : '/api/v1/stations/map'
   return normalizeBusinessStations(await getJson(url, signal))
+}
+
+export async function fetchMlStations(signal) {
+  return getJson('/api/v1/ml/stations', signal)
+}
+
+export async function fetchMlPrediction(stationId, signal) {
+  const response = await fetch('/api/v1/ml/predict', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ station_id: stationId, horizons: [1, 6, 24] }),
+    signal,
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`)
+  return payload
 }

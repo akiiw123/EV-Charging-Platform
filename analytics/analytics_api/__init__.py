@@ -29,6 +29,8 @@ def create_app(config_overrides: dict | None = None, repository=None) -> Flask:
     app.register_blueprint(api, url_prefix="/api/v1")
     from .live_routes import live_api
     app.register_blueprint(live_api, url_prefix="/api/v1")
+    from .ml_routes import ml_api
+    app.register_blueprint(ml_api, url_prefix="/api/v1")
     dashboard_dist = Path(app.config["DASHBOARD_DIST_DIR"]).resolve()
 
     def dashboard_file(filename: str):

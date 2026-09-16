@@ -1,0 +1,18 @@
+[Unit]
+Description=Charging Platform Historical Forecast Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bit
+Group=bit
+WorkingDirectory=/home/bit/EV-Charging-Platform
+ExecStart=/home/bit/EV-Charging-Platform/.venv-ml/bin/python ml/service.py --backend sessions --artifacts ml/artifacts/sessions --host 127.0.0.1 --port 8090
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

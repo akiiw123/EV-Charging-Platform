@@ -41,4 +41,6 @@ def load_config() -> dict:
         "DASHBOARD_DIST_DIR": os.getenv(
             "DASHBOARD_DIST_DIR", str(DEFAULT_DASHBOARD_DIST)
         ),
+        "ML_SERVICE_URL": os.getenv("ML_SERVICE_URL", "http://127.0.0.1:8090").rstrip("/"),
+        "ML_SERVICE_TIMEOUT_SECONDS": _positive_int("ML_SERVICE_TIMEOUT_SECONDS", 5),
     }
