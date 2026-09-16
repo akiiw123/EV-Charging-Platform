@@ -36,7 +36,6 @@ from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
-import torch
 
 from data import (
     WEATHER_COLUMNS,
@@ -46,7 +45,6 @@ from data import (
     time_features,
     zone_token,
 )
-from model import LoadForecaster
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_HORIZONS = (1, 6, 24)
@@ -57,6 +55,8 @@ class ForecastEngine:
     """加载训练产物并执行只读推理。"""
 
     def __init__(self, artifacts_dir: Path, data_dir: Optional[Path]):
+        import torch
+        from model import LoadForecaster
         meta_path = artifacts_dir / "meta.json"
         if not meta_path.exists():
             raise FileNotFoundError(f"未找到 {meta_path}，请先运行 train.py 完成训练")
@@ -171,6 +171,7 @@ class ForecastEngine:
 
     # ------------------------------------------------------------------ predict
     def predict(self, payload: dict) -> dict:
+        import torch
         if not isinstance(payload, dict):
             raise ValueError("请求体须为 JSON 对象")
         zone = self._require_zone(payload.get("station_id"))
@@ -274,6 +275,8 @@ class ForecastEngine:
             curve.append({
                 "offset": offset,
                 "timestamp": (timestamp + pd.Timedelta(hours=offset)).isoformat(),
+                "interval_start": (timestamp + pd.Timedelta(hours=offset-1)).isoformat(),
+                "interval_end": (timestamp + pd.Timedelta(hours=offset)).isoformat(),
                 "load_kwh": float(values_load[self.point_index]),
                 "load_lower": float(values_load[0]),
                 "load_upper": float(values_load[-1]),
@@ -287,6 +290,9 @@ class ForecastEngine:
             "total_piles": total_piles,
             "horizons": horizons,
             "quantiles": [float(q) for q in self.quantiles],
+            "mode": "historical_replay" if from_dataset else "provided_history",
+            "station_namespace": self.meta.get("station_namespace", "urbanev_zone"),
+            "load_semantics": "individual_hour_energy_kwh",
             "load_kwh": {str(h): load_entry(h) for h in horizons},
             "available_piles": {str(h): piles_entry(h) for h in horizons},
             "curve": curve,
@@ -297,18 +303,22 @@ class ForecastEngine:
         if dataset is None:
             raise ValueError("服务未配置数据目录，无法回退历史数据")
         pos = self._locate(timestamp)
+        if pos < self.seq_len:
+            raise ValueError(f"预测起点前不足 {self.seq_len} 小时历史数据")
         z = dataset.zones.index(zone)
         return (dataset.volume[pos - self.seq_len:pos, z].astype(np.float64),
                 dataset.busy_ratio[pos - self.seq_len:pos, z].astype(np.float64))
 
     def _locate(self, timestamp: pd.Timestamp) -> int:
         times = self.dataset.times
+        if timestamp.tzinfo is not None:
+            raise ValueError("数据集时间不含时区，timestamp 也须不含时区")
         pos = int(times.searchsorted(timestamp))
         if pos < len(times) and times[pos] == timestamp:
             return pos
-        if pos == 0:
-            raise ValueError(f"timestamp {timestamp} 早于数据集起点 {times[0]}")
-        return pos - 1                                                # 向前对齐最近一小时
+        if timestamp == times[-1] + pd.Timedelta(hours=1):
+            return len(times)
+        raise ValueError("timestamp 不在连续历史数据范围内；不能用旧历史冒充当前数据")
 
 
 class ForecastHandler(BaseHTTPRequestHandler):
@@ -328,6 +338,9 @@ class ForecastHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/health":
             engine = self.engine
+            if hasattr(engine, "health"):
+                self.send_json(engine.health())
+                return
             self.send_json({
                 "status": "ok",
                 "model": "urbanev-load-forecaster",
@@ -338,6 +351,9 @@ class ForecastHandler(BaseHTTPRequestHandler):
                 "data_range": engine.meta.get("data_range"),
             })
         elif path == "/stations":
+            if hasattr(self.engine, "stations"):
+                self.send_json(self.engine.stations())
+                return
             stations = [
                 {"station_id": zone, "total_piles": piles}
                 for zone, piles in sorted(
@@ -384,16 +400,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="EV 负荷预测 JSON API 服务")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8090)
+    parser.add_argument("--backend", choices=("lstm", "sessions"), default="lstm",
+                        help="保留原 LSTM 默认；sessions 用于稀疏订单数据历史回放")
+    parser.add_argument("--replay-at", default=None, help="sessions 后端共同回放时刻，限 2025 年 9 月")
     parser.add_argument("--artifacts", type=Path, default=SCRIPT_DIR / "artifacts")
     parser.add_argument("--data-dir", type=Path, default=SCRIPT_DIR / "data",
                         help="UrbanEV data 目录（用于缺省历史回退，可不存在）")
     args = parser.parse_args()
 
-    engine = ForecastEngine(args.artifacts, args.data_dir)
+    if args.backend == "sessions":
+        from session_engine import SessionForecastEngine
+        engine = SessionForecastEngine(args.artifacts, args.replay_at)
+    else:
+        if args.replay_at is not None:
+            parser.error("--replay-at 仅适用于 sessions 后端")
+        engine = ForecastEngine(args.artifacts, args.data_dir)
     ForecastHandler.engine = engine
     server = ThreadingHTTPServer((args.host, args.port), ForecastHandler)
     print(f"负荷预测服务: http://{args.host}:{args.port}  "
-          f"站点数={len(engine.zone_index)}  模型={args.artifacts / 'model.pt'}")
+          f"站点数={len(engine.zone_index)}  后端={args.backend}  产物={args.artifacts}")
     print("接口: GET /health  GET /stations  POST /predict")
     try:
         server.serve_forever()
