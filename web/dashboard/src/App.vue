@@ -157,13 +157,14 @@ async function loadStationData() {
   const timeout = setTimeout(() => controller.abort(), 15000)
   stationLoading.value = true
   try {
-    const value = await fetchStations(controller.signal)
+    const value = await fetchStations(controller.signal, chartDataMode.value)
     if (stationController !== controller) return
     stationData.value = value
     stationError.value = ''
   } catch (error) {
     if (stationController !== controller) return
-    stationError.value = error.name === 'AbortError' ? '业务站点加载超时' : error.message
+    const label = isLive.value ? '业务站点' : '历史站点'
+    stationError.value = error.name === 'AbortError' ? `${label}加载超时` : error.message
   } finally {
     clearTimeout(timeout)
     if (stationController === controller) stationLoading.value = false
@@ -310,6 +311,9 @@ onBeforeUnmount(() => {
     :theme="theme"
     :loading="stationLoading"
     :error="stationError"
+    :historical="!isLive"
+    :prediction-data="dashboard"
+    :data-mode="chartDataMode"
   />
 
   <div class="performance-docks" aria-label="站点绩效快捷分析">

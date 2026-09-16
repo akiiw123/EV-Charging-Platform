@@ -1,6 +1,6 @@
 # 大屏与数据库交接文档
 
-更新日期：2026-09-15。面向继续维护前端、分析链路和部署的同学。
+更新日期：2026-09-16。面向继续维护前端、分析链路和部署的同学。
 
 项目内位置：`docs/dashboard-data-handoff.md`。本文相对链接以该目录为基准。
 
@@ -9,9 +9,9 @@
 1. **唯一开发目录是 Ubuntu 虚拟机 `/home/bit/EV-Charging-Platform`。** Windows 使用 `ssh BitDev` 连接；不要在 Windows 旧副本开发或用它判断现状。
 2. 当前分支是 `glm`。PR #23（`4c65d2c`）已同步，保留新布局的整合提交为 `1bbaff9`。接手时重新检查分支、工作区和远程，本文不是实时状态。
 3. **当前布局是用户希望保留的版本：**中央沉浸地图、折叠 KPI、两侧展开卡片、“用户与时段 / 结构与收益”分组、左下排行和右上负载/收入关系图。修功能时不要直接用 `main` 的旧 App.vue/styles.css 覆盖。
-4. **页面能打开不等于真实分析链路已打通。** 最近检查中，8091 的旧进程没有新版 metadata 接口，响应与测试样例一致；独立读取私有 `.env` 后连接 MySQL 未成功。真实数据仍待核验。
-5. 地图站点来自 SQLite 业务库的 `/api/v1/live/stations`，与实时 KPI 使用同一来源；Spark/MySQL 历史批次仍是独立分析来源。
-6. 本次工作没有替换旧 Qt 大屏入口、重启分析后端或修改真实数据库；前端构建已更新，可在既有静态路径预览。尚未推送远程。
+4. Hadoop/Spark 已生成教师数据批次 `ncs-spark-20260916`，10 组 ADS 已导入 MySQL `ncs_ads`，8091 Flask 接口可读取该批次 metadata 和结果。
+5. 地图随数据模式切换：实时模式读取 SQLite `/api/v1/live/stations`；历史模式读取 MySQL `/api/v1/stations/map`。历史站点坐标是展示坐标，来源和限制见本文末尾。
+6. Flask 已重启，前端生产构建和真实数据库均已更新。项目改动仍在 `glm` 工作区，提交前应再次运行测试并检查差异。
 
 建议先读仓库 [AGENTS.md](../AGENTS.md)，再看本文。历史同步证据见 [PR #23 验收记录](pr23-sync-validation.md)。
 
@@ -253,3 +253,22 @@ python3 analytics/scripts/verify_chain.py --dir "$ADS_EXPORT_DIR" --base-url "$A
 - 旧大屏入口位置、替换负责人和回退入口。
 
 这些信息当前没有可靠证据，本文不代填。
+## 10. 历史批次地图坐标
+
+教师提供的 105 个站点没有经纬度。历史批次地图使用 MySQL 表
+`station_display_coordinates`：先按 25 个郑州地址设置展示中心，再以站点 ID 和名称做稳定的小范围偏移，避免同地址站点重叠。
+
+- 接口：`GET /api/v1/stations/map`
+- 生成脚本：`analytics/scripts/seed_station_coordinates.py`
+- 当前方法标识：`name_anchor_synthetic_v1`
+- 坐标仅用于大屏展示，不代表测绘位置；页面和站点详情均有明确说明。
+- 重新导入数据时，先从 `ncs_dws.dws_station_agg` 导出 `station_id、station_name、address、location_id、station_type、device_count` 六列 TSV，再运行生成脚本。脚本遇到未配置地址会报错，应先为新地址补充锚点。
+
+## 11. 智能预测卡片
+
+地图 `2.5D` 按钮右侧的机器人球用于展开智能预测卡片。卡片位于地图中央，桌面端不会占用左下排行和右上关系图的展开区域，并支持键盘焦点和 `Esc` 收起。
+
+- 组件：`web/dashboard/src/components/PredictionAssistant.vue`
+- 计算：`web/dashboard/src/lib/prediction-model.js`
+- 当前根据所选数据源的 24 小时会话分布和站点利用率计算高峰窗口、参考负荷及高负载站点数量。
+- 当前属于可解释的统计规则推演，不是已训练 ML 模型；页面有明确说明。后续接入预测接口时应替换计算模块，保留组件的数据契约和空状态。

@@ -109,6 +109,30 @@ def station_top():
     return success(rows)
 
 
+@api.get("/stations/map")
+def station_map():
+    rows = _repository().fetch_all(
+        "SELECT station_id AS id, station_name AS name, address, province, city, district, "
+        "station_type, device_count AS pile_count, latitude, longitude, coordinate_method "
+        "FROM station_display_coordinates ORDER BY station_id"
+    )
+    stations = []
+    for row in rows:
+        station = dict(row)
+        station["status"] = "historical"
+        station["counts"] = {
+            "idle": 0, "charging": 0, "fault": 0, "offline": 0,
+            "unknown": station["pile_count"],
+        }
+        stations.append(station)
+    return success({
+        "source": "spark_mysql_display_coordinates",
+        "scope": "historical_batch_stations",
+        "coordinate_kind": "synthetic_name_anchor",
+        "stations": stations,
+    })
+
+
 @api.get("/dashboard")
 def dashboard():
     repository = _repository()

@@ -91,6 +91,24 @@ CREATE TABLE IF NOT EXISTS ads_station_topn (
     PRIMARY KEY (rn)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Display-only coordinates for historical stations whose source file has no
+-- longitude/latitude. The method is retained so these are never presented as surveyed locations.
+CREATE TABLE IF NOT EXISTS station_display_coordinates (
+    station_id BIGINT NOT NULL,
+    station_name VARCHAR(100) NOT NULL,
+    address VARCHAR(200) NOT NULL,
+    province VARCHAR(30) NOT NULL,
+    city VARCHAR(30) NOT NULL,
+    district VARCHAR(30) NOT NULL,
+    station_type VARCHAR(30) NOT NULL,
+    device_count BIGINT NOT NULL,
+    latitude DECIMAL(10,6) NOT NULL,
+    longitude DECIMAL(10,6) NOT NULL,
+    coordinate_method VARCHAR(40) NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (station_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 ALTER TABLE ads_user_radar MODIFY COLUMN dim_value DECIMAL(8,3) NULL;
 
 ALTER TABLE ads_station_type_eff MODIFY COLUMN daily_kwh DECIMAL(18,3) NULL;

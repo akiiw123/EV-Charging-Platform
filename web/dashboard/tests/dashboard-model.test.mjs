@@ -46,6 +46,19 @@ test('business stations retain coordinates and pile state counts', () => {
   assert.equal(normalized.source, 'platform_sqlite')
 })
 
+test('historical stations retain disclosed synthetic coordinates and device totals', () => {
+  const payload = { code: 0, data: { source: 'spark_mysql_display_coordinates', coordinate_kind: 'synthetic_name_anchor', stations: [
+    { id: 129465, name: '高新区科学大道·交直流充电站1号', longitude: 113.5758, latitude: 34.8101,
+      province: '河南省', city: '郑州市', district: '高新区', station_type: '交直流一体桩',
+      coordinate_method: 'name_anchor_synthetic_v1', counts: { unknown: 6 } },
+  ] } }
+  const normalized = normalizeBusinessStations(payload)
+  assert.equal(normalized.source, 'spark_mysql_display_coordinates')
+  assert.equal(normalized.coordinateKind, 'synthetic_name_anchor')
+  assert.equal(normalized.stations[0].counts.unknown, 6)
+  assert.equal(normalized.stations[0].stationType, '交直流一体桩')
+})
+
 test('missing numeric values remain null instead of fabricated zero', () => {
   const data = structuredClone(groups)
   data.user_radar[0].dim_value = null
