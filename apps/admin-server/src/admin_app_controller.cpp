@@ -7,6 +7,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
+#include <cmath>
 
 namespace charging::admin {
 namespace {
@@ -292,12 +293,52 @@ void AdminAppController::applyClientFilters(){QJsonArray out;
     for(const auto&v:rawUsers_){auto o=v.toObject();if(!containsCI(o,{"phone"},userQuery_))continue;if(!userState_.isEmpty()&&o.value("status").toString()!=userState_)continue;out.append(o);}users_.setJson(out);
 }
 
-void AdminAppController::refreshPredictions(){ predictionStatus_=QStringLiteral("正在连接预测服务…");emit predictionChanged(); QNetworkRequest req(QUrl(qEnvironmentVariable("CHARGING_ML_URL",QStringLiteral("http://127.0.0.1:8090"))+QStringLiteral("/stations")));req.setTransferTimeout(4000);auto* reply=network_.get(req);connect(reply,&QNetworkReply::finished,this,[this,reply]{auto data=reply->readAll();if(reply->error()!=QNetworkReply::NoError){QString why=reply->errorString();reply->deleteLater();usePredictionDemo(why);return;}auto list=QJsonDocument::fromJson(data).object().value("stations").toArray();reply->deleteLater();if(list.isEmpty()){usePredictionDemo(QStringLiteral("预测服务没有可用站点"));return;}requestStationForecasts(list);});}
+void AdminAppController::refreshPredictions()
+{
+    const int generation = ++forecastRequestGeneration_;
+    predictionLoading_ = true;
+    predictionSource_ = QStringLiteral("连接中");
+    predictionStatus_ = QStringLiteral("正在连接预测服务…");
+    emit predictionChanged();
+
+    QString base = qEnvironmentVariable("CHARGING_ML_URL", QStringLiteral("http://127.0.0.1:8090"));
+    while (base.endsWith(QLatin1Char('/'))) base.chop(1);
+    QNetworkRequest req(QUrl(base + QStringLiteral("/stations")));
+    req.setTransferTimeout(4000);
+    auto* reply = network_.get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation] {
+        const auto data = reply->readAll();
+        const auto error = reply->error();
+        const QString errorText = reply->errorString();
+        reply->deleteLater();
+        if (generation != forecastRequestGeneration_) return;
+        if (error != QNetworkReply::NoError) {
+            usePredictionDemo(errorText);
+            return;
+        }
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(data, &parseError);
+        const auto catalog = document.object();
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            usePredictionDemo(QStringLiteral("站点接口返回了无效 JSON"));
+            return;
+        }
+        if (catalog.value(QStringLiteral("stations")).toArray().isEmpty()) {
+            usePredictionDemo(QStringLiteral("预测服务没有可用站点"));
+            return;
+        }
+        requestStationForecasts(catalog, generation);
+    });
+}
 
 // 对每个站点并发发起 POST /predict(最多 6 个),全部完成后统一汇总展示
-void AdminAppController::requestStationForecasts(const QJsonArray& stations)
+void AdminAppController::requestStationForecasts(const QJsonObject& catalog, int generation)
 {
-    const QString base = qEnvironmentVariable("CHARGING_ML_URL", QStringLiteral("http://127.0.0.1:8090"));
+    QString base = qEnvironmentVariable("CHARGING_ML_URL", QStringLiteral("http://127.0.0.1:8090"));
+    while (base.endsWith(QLatin1Char('/'))) base.chop(1);
+    const auto stations = catalog.value(QStringLiteral("stations")).toArray();
+    forecastMode_ = catalog.value(QStringLiteral("mode")).toString();
+    forecastReplayAt_ = catalog.value(QStringLiteral("default_timestamp")).toString();
     pendingForecastRows_.clear();
     forecastLoadSum_[0] = forecastLoadSum_[1] = forecastLoadSum_[2] = 0.0;
     forecastOkCount_ = 0;
@@ -310,7 +351,8 @@ void AdminAppController::requestStationForecasts(const QJsonArray& stations)
         const QString zone = entry.value(QStringLiteral("station_id")).toVariant().toString();
         pendingForecastRows_.append(QVariantMap{
             {QStringLiteral("station_id"), entry.value(QStringLiteral("station_id")).toVariant()},
-            {QStringLiteral("station_name"), QStringLiteral("预测区域 %1").arg(zone)},
+            {QStringLiteral("station_name"), entry.value(QStringLiteral("station_name")).toString(
+                 QStringLiteral("预测区域 %1").arg(zone))},
             {QStringLiteral("h1"), QStringLiteral("…")}, {QStringLiteral("h6"), QStringLiteral("…")},
             {QStringLiteral("h24"), QStringLiteral("…")},
             {QStringLiteral("free"), entry.value(QStringLiteral("total_piles")).toInt()},
@@ -320,12 +362,15 @@ void AdminAppController::requestStationForecasts(const QJsonArray& stations)
         req.setTransferTimeout(10000);
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
         auto* reply = network_.post(req, QJsonDocument(QJsonObject{{QStringLiteral("station_id"), entry.value(QStringLiteral("station_id"))}}).toJson());
-        connect(reply, &QNetworkReply::finished, this, [this, reply, i] {
+        connect(reply, &QNetworkReply::finished, this, [this, reply, i, generation] {
             const auto data = reply->readAll();
             const bool ok = reply->error() == QNetworkReply::NoError;
             reply->deleteLater();
-            if (ok) {
-                applyForecastReply(i, QJsonDocument::fromJson(data).object());
+            if (generation != forecastRequestGeneration_) return;
+            QJsonParseError parseError;
+            const auto document = QJsonDocument::fromJson(data, &parseError);
+            if (ok && parseError.error == QJsonParseError::NoError && document.isObject()
+                && applyForecastReply(i, document.object())) {
                 ++forecastOkCount_;
             } else {
                 auto row = pendingForecastRows_[i];
@@ -341,32 +386,51 @@ void AdminAppController::requestStationForecasts(const QJsonArray& stations)
 
 // 解析单个站点的 /predict 响应:1/6/24h 负荷点估计、预计空闲桩、
 // 风险判定(由 24h 曲线的占用率峰值推出),并累加进合计
-void AdminAppController::applyForecastReply(int row, const QJsonObject& payload)
+bool AdminAppController::applyForecastReply(int row, const QJsonObject& payload)
 {
-    const auto loadKwh = payload.value(QStringLiteral("load_kwh")).toObject();
     const auto available = payload.value(QStringLiteral("available_piles")).toObject();
     auto pointAt = [](const QJsonObject& holder, const char* key) {
         return holder.value(QLatin1String(key)).toObject().value(QStringLiteral("point")).toDouble();
     };
-    const double h1 = pointAt(loadKwh, "1"), h6 = pointAt(loadKwh, "6"), h24 = pointAt(loadKwh, "24");
     const int free1 = int(pointAt(available, "1"));
+
+    const auto curve = payload.value(QStringLiteral("curve")).toArray();
+    if (curve.isEmpty()) return false;
+    double h1 = 0.0, h6 = 0.0, h24 = 0.0;
+    int validPoints = 0;
+    for (int i = 0; i < curve.size() && i < 24; ++i) {
+        const auto point = curve.at(i).toObject();
+        const double load = point.value(QStringLiteral("load_kwh")).toDouble(-1.0);
+        if (!std::isfinite(load) || load < 0.0) return false;
+        ++validPoints;
+        h24 += load;
+        if (i < 6) h6 += load;
+        if (i == 0) h1 = load;
+    }
+    if (validPoints < 24) return false;
 
     // 24h 曲线里占用率最高的小时 → 高峰提示;占用率过高/无空闲桩 → 容量预警
     double peakBusy = 0.0;
     int peakHour = 0;
-    for (const auto& item : payload.value(QStringLiteral("curve")).toArray()) {
+    QString peakTime;
+    for (const auto& item : curve) {
         const auto point = item.toObject();
         const double busy = point.value(QStringLiteral("busy_ratio")).toDouble();
         if (busy > peakBusy) {
             peakBusy = busy;
             peakHour = point.value(QStringLiteral("offset")).toInt();
+            const auto start = QDateTime::fromString(point.value(QStringLiteral("interval_start")).toString(), Qt::ISODate);
+            peakTime = start.isValid() ? start.toString(QStringLiteral("HH:mm")) : QString();
         }
     }
     QString risk = QStringLiteral("正常");
+    const bool capacityVerified = payload.value(QStringLiteral("capacity_verified")).toBool(true);
     if (free1 <= 0 || peakBusy >= 0.9)
-        risk = QStringLiteral("容量预警");
+        risk = capacityVerified ? QStringLiteral("容量预警") : QStringLiteral("高负荷提示");
     else if (peakBusy >= 0.6)
-        risk = QStringLiteral("%1:00 高峰").arg(peakHour, 2, 10, QLatin1Char('0'));
+        risk = peakTime.isEmpty()
+            ? QStringLiteral("第 %1 小时高峰").arg(peakHour)
+            : QStringLiteral("%1 高峰").arg(peakTime);
 
     // 置信水平 = 分位数区间宽度,如 [0.05,0.95] → 90%
     if (forecastConfidence_ <= 0.0) {
@@ -385,22 +449,28 @@ void AdminAppController::applyForecastReply(int row, const QJsonObject& payload)
     pendingForecastRows_[row].insert(QStringLiteral("h24"), fmt(h24));
     pendingForecastRows_[row].insert(QStringLiteral("free"), free1);
     pendingForecastRows_[row].insert(QStringLiteral("risk"), risk);
+    return true;
 }
 
 // 全部站点请求结束后:刷新表格、汇总指标卡数值与状态说明
 void AdminAppController::finishForecasts()
 {
     predictions_.setRows(pendingForecastRows_);
-    predictionSource_ = QStringLiteral("模型服务");
-    predictionConfidence_ = forecastOkCount_ > 0
+    predictionLoading_ = false;
+    predictionSource_ = forecastMode_ == QStringLiteral("historical_replay")
+        ? QStringLiteral("历史回放模型") : QStringLiteral("模型服务");
+    predictionConfidence_ = forecastOkCount_ > 0 && forecastConfidence_ > 0.0
         ? QStringLiteral("%1").arg(qRound(forecastConfidence_))
         : QStringLiteral("—");
     if (forecastOkCount_ > 0) {
         predictionLoad1_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[0], 0, 'f', 1);
         predictionLoad6_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[1], 0, 'f', 1);
         predictionLoad24_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[2], 0, 'f', 1);
+        const QString replayNote = forecastMode_ == QStringLiteral("historical_replay")
+            ? QStringLiteral("；回放时点 %1").arg(forecastReplayAt_.isEmpty() ? QStringLiteral("未提供") : forecastReplayAt_)
+            : QString();
         predictionStatus_ = forecastOkCount_ == pendingForecastRows_.size()
-            ? QStringLiteral("服务在线；已完成 %1 个站点的负荷预测").arg(forecastOkCount_)
+            ? QStringLiteral("服务在线；已完成 %1 个站点的负荷预测%2").arg(forecastOkCount_).arg(replayNote)
             : QStringLiteral("服务在线；%1/%2 个站点预测成功，其余站点请检查模型产物")
                   .arg(forecastOkCount_).arg(pendingForecastRows_.size());
     } else {
@@ -488,6 +558,7 @@ void AdminAppController::usePredictionDemo(const QString& reason)
             {QStringLiteral("risk"), risk}});
     }
 
+    predictionLoading_ = false;
     predictions_.setRows(rows);
     predictionSource_ = QStringLiteral("历史数据估算");
     predictionLoad1_ = QStringLiteral("%1 kWh").arg(sum1, 0, 'f', 1);
