@@ -130,7 +130,8 @@ export function normalizeStations(payload) {
 
 export function normalizeBusinessStations(payload) {
   if (!isObject(payload) || payload.code !== 0 || !isObject(payload.data)
-      || payload.data.source !== 'platform_sqlite' || !Array.isArray(payload.data.stations)) {
+      || !['platform_sqlite', 'spark_mysql_display_coordinates'].includes(payload.data.source)
+      || !Array.isArray(payload.data.stations)) {
     throw new TypeError(payload?.message || '业务站点响应格式不正确')
   }
   const ids = new Set()
@@ -145,7 +146,7 @@ export function normalizeBusinessStations(payload) {
       && longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90
       ? [longitude, latitude] : null
     const counts = { charging: 0, idle: 0, fault: 0, offline: 0, unknown: 0 }
-    for (const key of ['charging', 'idle', 'fault', 'offline']) {
+    for (const key of ['charging', 'idle', 'fault', 'offline', 'unknown']) {
       counts[key] = finite(station.counts?.[key] ?? 0, `station.counts.${key}`)
     }
     return {
@@ -153,9 +154,16 @@ export function normalizeBusinessStations(payload) {
       province: String(station.province || ''), city: String(station.city || ''),
       district: String(station.district || ''), address: station.address || null,
       coord, counts, piles: [], status: station.status || null,
+      stationType: station.station_type || null,
+      coordinateMethod: station.coordinate_method || null,
       attention: counts.fault + counts.offline,
       issues: [], lifecycle: null, operator: null, brand: null, access: null, sourceUrl: null,
     }
   })
-  return { stations, snapshotAt: payload.data.generated_at || null, source: 'platform_sqlite' }
+  return {
+    stations,
+    snapshotAt: payload.data.generated_at || null,
+    source: payload.data.source,
+    coordinateKind: payload.data.coordinate_kind || 'measured',
+  }
 }

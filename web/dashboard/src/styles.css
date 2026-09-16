@@ -87,7 +87,7 @@ a { color: var(--accent); }
 .map-card .dashboard-card__header { position: relative; z-index: 2; min-height: 38px; }
 .map-card .dashboard-card__header h2 { font-size: 21px; letter-spacing: .08em; text-shadow: 0 2px 8px var(--bg); }
 .map-card .dashboard-card__badge { background: var(--panel); pointer-events: auto; }
-.map-panel { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.map-panel { position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .map-toolbar { display: flex; align-items: center; gap: 5px; position: relative; z-index: 2; }
 .map-toolbar > * { pointer-events: auto; }
 .map-toolbar button, .map-toolbar select { font-size: 10px; padding: 5px 7px; }
@@ -107,6 +107,80 @@ a { color: var(--accent); }
 .map-zoom { position: absolute; right: 0; bottom: 4px; z-index: 2; display: flex; gap: 5px; pointer-events: auto; }
 .map-zoom button { width: 30px; height: 30px; padding: 0; }
 .map-message { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; text-align: center; margin: 0; color: var(--muted); font-size: 12px; pointer-events: none; }
+
+/* Expandable prediction assistant: centered so corner performance docks remain usable. */
+.prediction-orb {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  padding: 0 !important;
+  margin-left: 4px;
+  overflow: visible;
+  border-radius: 50% !important;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 24px var(--shadow);
+}
+.prediction-orb svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.prediction-orb__ring { stroke: var(--accent-2); stroke-dasharray: 72 24; transform-origin: center; animation: prediction-orbit 7s linear infinite; }
+.prediction-orb__pulse { position: absolute; right: 1px; top: 2px; width: 8px; height: 8px; border: 2px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.prediction-orb.active { color: var(--bg); background: var(--accent) !important; border-color: var(--accent); }
+.prediction-orb.active .prediction-orb__ring { stroke: currentColor; }
+
+.prediction-card {
+  position: fixed;
+  left: 50vw;
+  top: calc(50vh + 90px);
+  z-index: 7;
+  width: clamp(430px, 42vw, 620px);
+  max-width: calc(100vw - 760px);
+  max-height: min(480px, calc(100dvh - 300px));
+  padding: 18px;
+  overflow: auto;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 24px 70px rgba(0, 8, 20, .48), inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  backdrop-filter: blur(18px);
+}
+.prediction-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 42%, color-mix(in srgb, var(--accent-2) 7%, transparent)); }
+.prediction-card > * { position: relative; }
+.prediction-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.prediction-card__header { display: grid; grid-template-columns: 1fr auto 32px; align-items: center; gap: 12px; }
+.prediction-card__header small { color: var(--accent); font-size: 9px; letter-spacing: .16em; }
+.prediction-card__header h3 { margin: 3px 0 0; font-size: 20px; letter-spacing: .08em; }
+.prediction-card__status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; font-size: 10px; }
+.prediction-card__status i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.prediction-card__close { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; font-size: 22px; }
+.prediction-card__lead { margin-top: 15px; padding: 14px 16px; border-left: 2px solid var(--accent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.prediction-card__lead span, .prediction-card__lead strong { display: block; }
+.prediction-card__lead span { color: var(--muted); font-size: 11px; }
+.prediction-card__lead strong { margin-top: 3px; color: var(--accent); font: 600 clamp(22px, 2vw, 30px)/1.25 "Bahnschrift", "Microsoft YaHei", sans-serif; letter-spacing: .04em; }
+.prediction-card__lead p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.prediction-card__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.prediction-card__metrics article { min-width: 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--border) 72%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--bg) 34%, transparent); }
+.prediction-card__metrics span { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }
+.prediction-card__metrics strong { color: var(--text); font: 600 20px/1 "Bahnschrift", sans-serif; font-variant-numeric: tabular-nums; }
+.prediction-card__metrics small { margin-left: 4px; color: var(--muted); font-size: 9px; }
+.prediction-signal { margin-top: 12px; padding: 10px 12px 8px; border: 1px solid color-mix(in srgb, var(--border) 62%, transparent); border-radius: 10px; }
+.prediction-signal__head { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 10px; }
+.prediction-signal__head small { max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prediction-signal__bars { height: 48px; display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 3px; margin-top: 8px; }
+.prediction-signal__bars i { display: block; height: var(--signal); min-height: 3px; border-radius: 2px 2px 0 0; background: linear-gradient(to top, color-mix(in srgb, var(--accent-2) 55%, transparent), var(--accent)); }
+.prediction-signal__axis { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-size: 8px; font-variant-numeric: tabular-nums; }
+.prediction-card__empty { min-height: 180px; display: grid; place-content: center; gap: 8px; text-align: center; color: var(--muted); }
+.prediction-card__empty strong { color: var(--text); }
+.prediction-card__footer { margin-top: 12px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent); display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 9px; }
+.prediction-card__footer span:last-child { text-align: right; }
+.prediction-panel-enter-active, .prediction-panel-leave-active { transition: opacity 180ms ease, transform 220ms cubic-bezier(.2,.8,.2,1); }
+.prediction-panel-enter-from, .prediction-panel-leave-to { opacity: 0; transform: translate(-50%, -46%) scale(.94); }
+@keyframes prediction-orbit { to { transform: rotate(360deg); } }
 [hidden] { display: none !important; }
 .map-footer { position: relative; z-index: 2; padding: 7px 10px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 92%, transparent); display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; font-size: 10px; color: var(--muted); }
 #lightCount { color: var(--gold); }
@@ -139,6 +213,9 @@ footer { display: flex; flex: none; justify-content: space-between; gap: 10px; c
  .map-toolbar { flex-wrap: wrap; }.map-toolbar .segmented { margin-left: 0; }
  .center-column { grid-template-rows: minmax(0, 1fr) 185px; }.map-card .dashboard-card__header h2 { font-size: 18px; }
 }
+@media (min-width: 1101px) and (max-width: 1350px) {
+ .prediction-card { width: min(420px, calc(100% - 560px)); max-width: none; }
+}
 @media (min-width: 1101px) and (max-height: 800px) {
  .dashboard-shell { gap: 8px; }.topbar { min-height: 62px; }.kpi-grid { height: 78px; }
  .kpi-value strong { font-size: 28px; }.center-column { grid-template-rows: minmax(0, 1fr) 180px; }
@@ -152,6 +229,7 @@ footer { display: flex; flex: none; justify-content: space-between; gap: 10px; c
  .chart-column { grid-template-rows: repeat(2, 280px); }.map-card { background: var(--panel); border-color: var(--border); }
  #mapBackdrop { display: none; }.map-stage { min-height: 320px; }.map-card { pointer-events: auto; }
  footer { flex-wrap: wrap; }.metric-notes[open] { max-height: none; }
+ .prediction-card { left: 50vw; top: 50vh; width: min(620px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); }
 }
 @media (max-width: 680px) {
  .dashboard-shell { padding: 0 12px 12px; }.brand strong { font-size: 18px; }.brand img { width: 34px; height: 34px; }
@@ -162,6 +240,7 @@ footer { display: flex; flex: none; justify-content: space-between; gap: 10px; c
  .chart-column { grid-template-rows: repeat(2, 280px); }.source-strip { gap: 8px; }.source-strip a { width: 100%; }
  .map-toolbar { flex-wrap: wrap; }.map-toolbar .segmented { margin-left: 0; }.map-footer { font-size: 9px; }
  .dashboard-card__header h2 { font-size: 14px; }.dashboard-card__badge { font-size: 9px; }
+ .prediction-card { top: 48%; padding: 14px; }.prediction-card__metrics { grid-template-columns: 1fr; }.prediction-card__footer { display: grid; }.prediction-card__footer span:last-child { text-align: left; }
 }
 
 /* Desktop overview and collapsible side rails */

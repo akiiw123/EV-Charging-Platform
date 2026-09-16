@@ -1,9 +1,3 @@
-"""用真实浏览器检查大屏主要功能和失败恢复行为。
-
-输入：命令行 URL 或 DASHBOARD_URL，并可使用隔离的接口测试响应。
-输出/接口：验证图表、地图、主题、分组、响应式、错误保留和恢复；不写业务数据。
-"""
-
 import argparse
 import os
 import tempfile
@@ -41,6 +35,19 @@ with sync_playwright() as p:
   live_station_count=page.evaluate("Number(document.querySelector('#map')?.dataset.renderedStations)")
   assert page.get_by_text('实时业务统计在线',exact=True).is_visible()
   live_source=page.locator('.metric-notes summary').inner_text()
+  prediction_button=page.get_by_role('button',name='打开智能预测',exact=True)
+  prediction_button.click()
+  prediction_panel=page.get_by_role('region',name='智能预测卡片')
+  assert prediction_panel.is_visible()
+  assert '规则推演' in prediction_panel.inner_text()
+  for side in ['left','right']:
+   dock=page.locator(f'.performance-dock--{side}')
+   dock.focus();page.wait_for_timeout(350)
+   panel_box,dock_box=prediction_panel.bounding_box(),dock.bounding_box()
+   overlaps=not (panel_box['x']+panel_box['width']<=dock_box['x'] or dock_box['x']+dock_box['width']<=panel_box['x'] or panel_box['y']+panel_box['height']<=dock_box['y'] or dock_box['y']+dock_box['height']<=panel_box['y'])
+   assert not overlaps,f'prediction overlaps {side} performance dock'
+  prediction_panel.press('Escape')
+  assert not prediction_panel.is_visible()
   page.screenshot(path=str(out/'live-night.png'),full_page=True)
   print(f'PASS live service: data loads, {live_station_count} business stations; source status: '+live_source,flush=True)
   state={'failure':False,'missing':False}
@@ -54,6 +61,8 @@ with sync_playwright() as p:
   page.route('**/api/v1/dashboard',handle)
   page.get_by_label('图表数据来源').select_option('batch')
   page.wait_for_function("document.querySelector('.metric-notes summary')?.textContent.includes('已提供分析批次')")
+  page.wait_for_function("Number(document.querySelector('#map')?.dataset.renderedStations) === 105")
+  assert page.get_by_text('展示坐标 · 按站点名称近似生成', exact=True).is_visible()
   assert page.locator('.chart-canvas canvas').count()==6
   assert '已提供分析批次' in page.locator('.metric-notes summary').inner_text()
   page.locator('.metric-notes summary').click()

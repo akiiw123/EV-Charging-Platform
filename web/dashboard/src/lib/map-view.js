@@ -23,7 +23,7 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
   const [terrain,links,lights]=canvases.map(c=>c.getContext('2d'));
   if(!terrain||!links||!lights) throw new Error('浏览器不支持 Canvas 2D');
   const tooltip=document.createElement('div');tooltip.className='geo-tooltip';tooltip.hidden=true;tooltip.setAttribute('role','status');host.append(tooltip);
-  let geo=null,regions=[],stations=[],provinceFor=new Map(),selected=null,filter='all',view='2d',layout='immersive';
+  let geo=null,regions=[],stations=[],provinceFor=new Map(),selected=null,filter='all',view='2d',layout='immersive',dataSource=null;
   let camera={zoom:1,pan:[0,0]},nationCamera=null,projection=null,insetProjection=null,insetRect=null;
   let shapes=[],offshoreShapes=[],points=[],edges=[],displayEdges=[],dirty=true,raf=0,lastFrame=0,disposed=false,loaded=false;
   let width=0,height=0,dpr=1,hoverRegion=null,hoverStation=null,showLinks=false,animate=false,mainRect=null;
@@ -379,7 +379,13 @@ export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
   applyLayout();motionChange();
   return {
     ready,
-    update(data){loaded=true;stations=data.stations;provinceFor=new Map(stations.map(s=>[s.id,locateProvince(s,regions)]));lastPublished='';invalidate(true);publish();},
+    update(data){
+      const sourceChanged=dataSource!==null&&dataSource!==data.source;
+      dataSource=data.source;loaded=true;stations=data.stations;
+      provinceFor=new Map(stations.map(s=>[s.id,locateProvince(s,regions)]));
+      if(sourceChanged){selected=null;camera={zoom:1,pan:[0,0]};nationCamera=null;hoverRegion=null;hoverStation=null;}
+      lastPublished='';invalidate(true);publish();
+    },
     theme(){invalidate();},
     setFilter(value){filter=value;invalidate(true);publish();},
     setView(value){if(!['2d','2.5d'].includes(value))return;view=value;hoverRegion=null;invalidate();publish();},

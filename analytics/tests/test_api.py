@@ -34,6 +34,12 @@ class FakeRepository:
         return None
 
     def fetch_all(self, query, params=()):
+        if "station_display_coordinates" in query:
+            return [{"id": 129465, "name": "高新区科学大道·交直流充电站1号",
+                     "address": "河南省郑州市高新区科学大道", "province": "河南省",
+                     "city": "郑州市", "district": "高新区", "station_type": "交直流一体桩",
+                     "pile_count": 6, "latitude": 34.8101, "longitude": 113.5758,
+                     "coordinate_method": "name_anchor_synthetic_v1"}]
         if "ads_station_topn" in query:
             return [{"rn": 1, "station_name": "测试站", "station_area": "A区"}]
         if "ads_hour_trend" in query:
@@ -81,6 +87,14 @@ class AnalyticsApiTest(unittest.TestCase):
         response = self.make_client().get("/api/v1/stations/top?limit=all")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["code"], 40001)
+
+    def test_historical_station_map_discloses_synthetic_coordinates(self):
+        response = self.make_client().get("/api/v1/stations/map")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        self.assertEqual(data["source"], "spark_mysql_display_coordinates")
+        self.assertEqual(data["coordinate_kind"], "synthetic_name_anchor")
+        self.assertEqual(data["stations"][0]["counts"]["unknown"], 6)
 
     def test_not_found_uses_standard_envelope(self):
         response = self.make_client().get("/api/v1/not-found")
