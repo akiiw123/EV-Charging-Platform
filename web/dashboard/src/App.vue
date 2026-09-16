@@ -1,4 +1,5 @@
 <script setup>
+import LiveOrders from './components/LiveOrders.vue'
 import { Decoration5 } from '@kjgl77/datav-vue3'
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import DashboardCard from './components/DashboardCard.vue'
@@ -9,6 +10,8 @@ import { buildChartOptions } from './lib/chart-options.js'
 import { chartMissingReason, hasVerifiedSource } from './lib/dashboard-model.js'
 
 const chartGroup = ref('overview')
+const chartDataMode = ref('live')
+const isLive = computed(() => chartDataMode.value === 'live')
 const dashboard = ref(null)
 const metadata = ref({})
 const assetBase = import.meta.env.BASE_URL
@@ -42,7 +45,7 @@ const leftCharts = computed(() => [
 ])
 
 const rightCharts = computed(() => [
-  { key: 'hourly', title: '24 小时充电趋势', eyebrow: 'HOURLY TREND', badge: '次数 / 电量' },
+  { key: 'hourly', title: isLive.value ? '按开始小时统计（全部历史）' : '24 小时充电趋势', eyebrow: 'HOURLY TREND', badge: '次数 / 电量' },
   { key: 'stationTypes', title: '桩型充电负载', eyebrow: 'STATION TYPE', badge: '相对负载 / 单位收入' },
   { key: 'weekCompare', title: '工作日与周末', eyebrow: 'WEEK COMPARISON', badge: '双维对比' },
   { key: 'areaCosts', title: '区域收益与估算成本', eyebrow: 'AREA PROFIT', badge: 'TOP 10' },
@@ -96,13 +99,14 @@ function formatMoney(value) {
 }
 
 async function refreshDashboard() {
+  clearTimeout(refreshTimer)
   refreshController?.abort()
   refreshController = new AbortController()
   const controller = refreshController
   const timeout = setTimeout(() => controller.abort(), 10000)
   loading.value = true
   try {
-    const payload = await fetchDashboard(controller.signal)
+    const payload = await fetchDashboard(controller.signal, chartDataMode.value)
     if (refreshController !== controller) return
     dashboard.value = payload.data
     metadata.value = payload.metadata
@@ -114,7 +118,10 @@ async function refreshDashboard() {
     else dashboardError.value = '分析接口请求超时'
   } finally {
     clearTimeout(timeout)
-    if (refreshController === controller) loading.value = false
+    if (refreshController === controller) {
+      loading.value = false
+      refreshTimer = setTimeout(refreshDashboard, isLive.value ? 5000 : 60000)
+    }
   }
 }
 
@@ -146,14 +153,23 @@ watch(theme, value => {
 onMounted(() => {
   refreshDashboard()
   loadStationData()
-  refreshTimer = setInterval(refreshDashboard, 60000)
   clockTimer = setInterval(() => { clock.value = new Date() }, 1000)
 })
 
+watch(chartDataMode, () => {
+  dashboard.value = null
+  metadata.value = {}
+  updatedAt.value = null
+  dashboardError.value = ''
+  refreshDashboard()
+})
+
 onBeforeUnmount(() => {
-  refreshController?.abort()
+  const pending = refreshController
+  refreshController = null
+  pending?.abort()
   stationController?.abort()
-  clearInterval(refreshTimer)
+  clearTimeout(refreshTimer)
   clearInterval(clockTimer)
   clearTimeout(railCloseTimer)
 })
@@ -178,9 +194,15 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <LiveOrders />
+
     <div class="source-strip">
+      <select v-model="chartDataMode" aria-label="图表数据来源">
+        <option value="live">实时业务统计（5 秒更新）</option>
+        <option value="batch">Spark 历史批次</option>
+      </select>
       <span class="live-dot" :class="{ error: dashboardError, ok: hasDashboard }"></span>
-      <strong>{{ dashboardError ? '分析接口异常' : hasDashboard ? '分析接口在线' : '正在连接分析接口' }}</strong>
+      <strong>{{ dashboardError ? '统计接口异常' : hasDashboard ? (isLive ? '实时业务统计在线' : 'Spark 批次接口在线') : '正在连接统计接口' }}</strong>
       <span v-if="updatedAt">最近读取 {{ updatedAt.toLocaleTimeString('zh-CN', { hour12: false }) }}</span>
       <div class="analysis-switch" role="group" aria-label="分析图表分组">
         <button type="button" :aria-pressed="chartGroup === 'overview'" @click="chartGroup = 'overview'">用户与时段</button>
@@ -277,18 +299,25 @@ onBeforeUnmount(() => {
     </section>
 
     <details class="metric-notes">
-      <summary>指标口径与数据来源 · {{ verifiedSource ? '已提供分析批次' : '分析批次待核验' }}</summary>
+      <summary>指标口径与数据来源 · {{ isLive ? '业务数据库实时汇总' : verifiedSource ? '已提供分析批次' : '分析批次待核验' }}</summary>
       <div v-if="hasDashboard" class="analysis-source">
-        <template v-if="verifiedSource">
+        <template v-if="isLive">
+          <strong>业务数据库读取：{{ analysisTime }}</strong>
+          <p>全部历史订单实时汇总 · 当前 {{ metadata.quality?.raw_count }} 笔订单 · 未运行 Spark 批次分析</p>
+          <p>预约和取消不计充电会话；新预约只改变上方实时订单数，开始充电后才改变会话指标。</p>
+          <p>按开始小时统计：全部历史会话按上海时间的开始小时分组，订单电量归入开始小时，不是最近 24 小时电表曲线。</p>
+          <p>电量为订单已保存值；平台偏好、SOC 缺少原始字段，清洗剔除比例未计算，均不伪造。未配置成本单价时不展示估算成本和利润。</p>
+        </template>
+        <template v-else-if="verifiedSource">
           <strong>分析生成：{{ analysisTime }}</strong>
           <p>批次：{{ metadata.batch_id }} · 原始 {{ metadata.quality?.raw_count }} 条 / 有效 {{ metadata.quality?.valid_count }} 条 / 剔除 {{ metadata.quality?.rejected_count }} 条</p>
         </template>
         <p v-else>当前数据缺少新版分析批次信息，统计口径尚未核验，需完成新版分析结果导入。</p>
       </div>
       <ul>
-        <li>以下为新版分析口径；无批次信息时，不能据此认定旧数据已更新。</li>
+        <li v-if="!isLive">以下为新版分析口径；无批次信息时，不能据此认定旧数据已更新。</li>
         <li>充电会话包含充电中、待结算与已完成订单；营收仅统计已完成订单金额及占位费。</li>
-        <li>订单剔除比例：原始订单中被清洗、去重或关联校验剔除的比例，不是 SOC 缺失率。</li>
+        <li v-if="!isLive">订单剔除比例：原始订单中被清洗、去重或关联校验剔除的比例，不是 SOC 缺失率。</li>
         <li>站点排行按充电次数、累计电量降序；右侧关系图使用同一 TOP10 站点，横轴为相对负载率，纵轴为已结算营收，不代表全体站点。</li>
         <li>相对负载率为充电次数除以同组最大次数，不代表设备时间利用率。起始 SOC 分布不代表电池健康状态。</li>
         <li>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；估算利润为营收减电量成本，未计设备和人工等成本。</li>
@@ -297,7 +326,7 @@ onBeforeUnmount(() => {
     </details>
 
     <footer>
-      <span>运营指标来自分析结果 · 站点灯光仅表示位置</span>
+      <span>{{ isLive ? "运营指标来自实时业务汇总" : "运营指标来自 Spark 分析批次" }} · 站点灯光仅表示位置</span>
       <span>地理资料：OSM 静态站点 {{ stationData?.stations.length?.toLocaleString('zh-CN') || 0 }} 条</span>
       <span>VOLTFlow V3 / 数据不全时明确显示未知</span>
       <span>估算成本单价：{{ metadata.quality?.cost_per_kwh ?? '未知' }} 元/kWh；周末指周六、周日</span>
