@@ -1,3 +1,7 @@
+-- 功能：创建 MySQL 分析结果库所需的批次表、元数据表和十张 ADS 表。
+-- 输入：由具备建表权限的管理员执行；表结构必须与 analytics/ads_contract.json 一致。
+-- 输出/接口：Flask 使用只读账号查询，ETL 使用写账号按批次原子替换结果。
+
 CREATE TABLE IF NOT EXISTS etl_batches (
 batch_id VARCHAR(32) PRIMARY KEY, source_path VARCHAR(512) NOT NULL,
 status ENUM('running','success','failed') NOT NULL,

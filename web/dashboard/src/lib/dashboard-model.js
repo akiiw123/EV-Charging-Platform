@@ -1,3 +1,8 @@
+/**
+ * 功能：在数据进入界面前校验 Flask 响应、数字、批次来源和 OSM 站点。
+ * 输入：后端 JSON 与静态站点 JSON。
+ * 输出/接口：normalizeDashboard/Metadata/Stations、hasVerifiedSource 和缺失原因；未知值保留 null。
+ */
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
 function finite(value, field) {

@@ -1,4 +1,7 @@
--- Statistics use charging/awaiting_payment/completed; revenue only completed.
+-- 功能：把 DWD 明细汇总成用户、小时、站点和起始 SOC 四类 DWS 中间表。
+-- 输入：ncs_dwd 中已经清洗并完成多表关联的明细表。
+-- 输出/接口：ncs_dws.dws_sessions、dws_user_agg、dws_hour_agg、dws_station_agg、dws_bms_agg。
+-- 口径：会话包含 charging/awaiting_payment/completed；营收字段只由 completed 订单产生。
 DROP TABLE IF EXISTS ncs_dws.dws_sessions;
 CREATE TABLE ncs_dws.dws_sessions USING PARQUET AS
 SELECT * FROM ncs_dwd.dwd_charge_detail WHERE status IN ('charging','awaiting_payment','completed');

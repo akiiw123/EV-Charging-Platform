@@ -1,4 +1,8 @@
-"""Explicit historical-date migration. No synthetic 2026 observations are created."""
+"""显式迁移历史会话日期，不制造 2026 年“真实采集”数据。
+
+输入：原始订单/站点时间列，其中 2014/2015（含 0014/0015）是旧历史年份。
+输出/接口：``shift_timestamps`` 等函数映射到 2024/2025，并返回可审计的迁移说明。
+"""
 import json
 from pathlib import Path
 import pandas as pd

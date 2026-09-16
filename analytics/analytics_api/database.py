@@ -1,4 +1,8 @@
-"""Small MySQL repository used by the read-only analytics endpoints."""
+"""封装 Flask 对 MySQL ADS 结果库的只读访问。
+
+输入：数据库连接配置和参数化 SQL；不接收写业务数据的命令。
+输出/接口：``ping``、``fetch_one``、``fetch_all``，以及十表一致读取的 ``snapshot``。
+"""
 
 from __future__ import annotations
 

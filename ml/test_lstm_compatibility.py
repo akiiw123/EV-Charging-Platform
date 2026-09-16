@@ -1,4 +1,8 @@
-"""Small synthetic checkpoint: verifies original backend contracts, not accuracy."""
+"""用小型人工模型检查原 LSTM 后端仍兼容，不评价预测精度。
+
+输入：测试临时目录中生成的合成 checkpoint 和最小数据集。
+输出/接口：验证模型加载、接口字段、时间边界和旧服务行为没有被 sessions 后端破坏。
+"""
 import json
 from pathlib import Path
 import tempfile

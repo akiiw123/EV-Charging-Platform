@@ -1,4 +1,8 @@
-"""Export a read-only, consistent SQLite snapshot without phone numbers/passwords."""
+"""从 Qt 业务 SQLite 只读导出 Spark 所需的脱敏 CSV。
+
+输入：业务数据库路径 ``--db`` 和独立输出目录 ``--out``。
+输出/接口：订单、电站、电桩、用户四类 CSV；不导出手机号、密码，也不修改业务库。
+"""
 from __future__ import annotations
 
 import argparse

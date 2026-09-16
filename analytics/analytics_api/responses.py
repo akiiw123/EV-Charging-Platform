@@ -1,4 +1,8 @@
-"""Shared JSON response envelope."""
+"""生成所有 Flask 接口共用的 JSON 响应格式。
+
+输入：业务数据、状态码和提示文字，并负责转换 Decimal、日期等类型。
+输出/接口：``success`` 和 ``failure``，统一包含 code、message、data、request_id、timestamp。
+"""
 
 from __future__ import annotations
 

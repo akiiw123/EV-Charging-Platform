@@ -1,3 +1,9 @@
+"""不依赖真实 MySQL 的 Flask API 单元测试。
+
+输入：FakeRepository 返回的固定分析结果和临时大屏目录。
+输出/接口：覆盖健康检查、参数校验、CORS、统一错误、十组聚合和静态页面托管。
+"""
+
 from __future__ import annotations
 
 import unittest

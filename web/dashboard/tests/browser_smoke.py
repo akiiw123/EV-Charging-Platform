@@ -1,3 +1,9 @@
+"""用真实浏览器检查大屏主要功能和失败恢复行为。
+
+输入：命令行 URL 或 DASHBOARD_URL，并可使用隔离的接口测试响应。
+输出/接口：验证图表、地图、主题、分组、响应式、错误保留和恢复；不写业务数据。
+"""
+
 import argparse
 import os
 import tempfile

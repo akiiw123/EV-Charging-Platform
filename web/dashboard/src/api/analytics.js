@@ -1,3 +1,8 @@
+/**
+ * 功能：集中封装大屏的网络读取，不在 Vue 组件中散落 fetch 调用。
+ * 输入：AbortSignal 和实时/批次模式；数据来自 Flask 大屏接口与实时业务站点接口。
+ * 输出/接口：fetchDashboard 返回已校验的数据和来源信息，fetchStations 返回已校验的业务站点。
+ */
 import { normalizeBusinessStations, normalizeDashboard, normalizeMetadata } from '../lib/dashboard-model.js'
 
 async function getJson(url, signal) {

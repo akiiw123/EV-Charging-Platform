@@ -1,4 +1,8 @@
-"""Verify DataV geometry follows actual cards without a window resize."""
+"""验证卡片展开/收起时 DataV SVG 外框会跟随真实尺寸。
+
+输入：DASHBOARD_URL 和可选 PLAYWRIGHT_CHROMIUM_EXECUTABLE。
+输出/接口：连续执行多轮尺寸变化，边框宽高或路径越界时测试失败。
+"""
 import os
 from playwright.sync_api import sync_playwright
 

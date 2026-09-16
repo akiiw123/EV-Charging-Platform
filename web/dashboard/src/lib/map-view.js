@@ -1,3 +1,8 @@
+/**
+ * 功能：在三层 Canvas 上绘制可缩放、可选省、可点击站点的全国地图。
+ * 输入：MapPanel 提供的静态站点、主题和交互回调，以及本地中国 GeoJSON。
+ * 输出/接口：createMap 返回 update/theme/setView/setLayout/zoom/fit/dispose 等控制方法。
+ */
 import {MAP_CONFIG as CONFIG} from './map-config.js';
 import {polygons, boundsOf, prepareRegions, pointInFeature, locateProvince, splitOffshore,
   createProjection, proximityEdges, stationPulse, hash, clamp} from './geo-utils.js';

@@ -1,4 +1,8 @@
-"""Read-only endpoints backed by the ten ADS result tables."""
+"""定义大屏需要的只读 Flask API，并查询十张 MySQL ADS 结果表。
+
+输入：URL 参数和 ``MySQLRepository``；所有 SQL 都是固定查询或参数化查询。
+输出/接口：``/health``、十类分析接口、``/dashboard`` 聚合接口和 ``/metadata``。
+"""
 
 from __future__ import annotations
 

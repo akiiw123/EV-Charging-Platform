@@ -1,4 +1,8 @@
-"""Compare the live dashboard with the validated Spark export; stdlib only."""
+"""把线上 Flask 大屏响应与已校验的 Spark 导出结果逐项对账。
+
+输入：ADS 导出目录和正在运行的 ``/api/v1/dashboard`` 地址。
+输出/接口：检查十组值、批次来源和脚本 SHA256；不一致时返回失败退出码。
+"""
 import argparse
 import json
 from decimal import Decimal

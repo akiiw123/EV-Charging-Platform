@@ -1,3 +1,8 @@
+<!--
+  功能：把全国 Canvas 地图包装成 Vue 组件并提供省份、视角、缩放和站点详情交互。
+  输入：OSM 静态站点、主题、加载状态和错误信息。
+  输出/接口：调用 createMap，并明确地图只是静态地理资料，不代表实时电桩状态。
+-->
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch } from 'vue'
 import DashboardCard from './DashboardCard.vue'

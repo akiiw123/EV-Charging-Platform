@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 功能：创建/升级 charging_ads 表结构，并建立 ETL 写账号与 API 只读账号。
+# 输入：MYSQL_* 环境变量；需要时在终端隐藏读取管理员密码。
+# 输出/接口：执行 sql/mysql_schema.sql，并把随机业务密码写入仓库外的私有环境文件。
 set -Eeuo pipefail
 umask 077
 

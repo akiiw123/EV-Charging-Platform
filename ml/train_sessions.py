@@ -1,4 +1,9 @@
-"""Offline charging-demand experiment and read-only historical replay API."""
+"""训练稀疏充电会话预测模型，并生成只读历史回放产物。
+
+输入：原始会话数据目录或已脱敏清洗目录。
+输出/接口：小时面板、审计记录、MAE/RMSE、模型选择报告、model.joblib 和示例请求。
+模型：比较季节平均与梯度提升模型，只用验证集选型，测试集只用于最终评估。
+"""
 from __future__ import annotations
 import argparse
 import hashlib

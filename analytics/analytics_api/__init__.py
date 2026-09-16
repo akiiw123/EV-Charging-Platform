@@ -1,4 +1,8 @@
-"""Flask application factory for the phase-two analytics API."""
+"""创建第二阶段 Flask 应用，并把分析接口和 Vue 大屏装配到同一服务。
+
+输入：环境变量配置，测试时也可传入配置覆盖项和假数据仓库。
+输出/接口：注册 ``/api/v1/*``、``/dashboard/``、请求编号、CORS 和统一错误响应。
+"""
 
 from __future__ import annotations
 

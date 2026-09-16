@@ -1,3 +1,8 @@
+<!--
+  功能：统一创建、更新、缩放和销毁 ECharts 实例。
+  输入：option 图表配置、empty 状态和空状态说明。
+  输出/接口：按需支持柱、线、饼、雷达、散点图；容器变化时自动 resize。
+-->
 <script setup>
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart, PieChart, RadarChart, ScatterChart } from 'echarts/charts'

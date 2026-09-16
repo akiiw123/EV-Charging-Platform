@@ -1,4 +1,8 @@
-/** Pure geometry helpers. All input coordinates remain unchanged. No DOM dependency. */
+/**
+ * 功能：提供地图投影、边界、点落省份、近邻连线等纯几何算法。
+ * 输入：原始 GeoJSON 和经纬度；不修改输入坐标，也不访问 DOM。
+ * 输出/接口：createProjection、prepareRegions、locateProvince、proximityEdges 等可测试函数。
+ */
 export const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 export function hash(value) {
   let h = 2166136261;

@@ -1,4 +1,8 @@
-"""Environment-backed configuration with no embedded credentials."""
+"""集中读取分析服务配置，避免在代码中写死数据库密码。
+
+输入：MYSQL_*、ANALYTICS_*、DASHBOARD_DIST_DIR 等环境变量。
+输出/接口：``load_config()`` 返回 Flask、MySQL 连接池和大屏目录所需的配置字典。
+"""
 
 from __future__ import annotations
 

@@ -1,3 +1,8 @@
+/**
+ * 功能：把十组标准分析数据转换成 ECharts 配置。
+ * 输入：normalizeDashboard 的结果和 day/night 主题。
+ * 输出/接口：buildChartOptions 返回饼图、雷达、柱线组合、散点和 TOP10 等 option。
+ */
 const number = value => value == null || value === '' ? null : Number.isFinite(Number(value)) ? Number(value) : null
 
 const PALETTES = {

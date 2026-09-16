@@ -1,4 +1,8 @@
-"""Live business metrics are separate from Spark batch results."""
+"""提供实时业务接口，并与 Spark 批次分析接口保持清晰边界。
+
+输入：配置中的 BUSINESS_DB_PATH 和可选 LIVE_COST_PER_KWH。
+输出/接口：GET ``/api/v1/live/dashboard`` 返回实时图表，GET ``/api/v1/live/orders`` 返回实时订单；失败统一返回 503。
+"""
 import os
 import sqlite3
 from flask import Blueprint, current_app

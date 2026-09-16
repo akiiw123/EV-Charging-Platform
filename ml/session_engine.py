@@ -1,4 +1,8 @@
-"""Adapt session forecasts to the platform's existing /stations and /predict API."""
+"""把会话预测模型适配为平台已有的站点查询和预测接口。
+
+输入：train_sessions.py 生成的 model.joblib、历史回放时刻和预测 JSON。
+输出/接口：``health``、``stations``、``predict``，返回 1～24 小时负荷和预计空闲桩。
+"""
 from datetime import datetime
 from pathlib import Path
 import threading

@@ -1,3 +1,8 @@
+<!--
+功能：展示业务库中的实时订单概况和最近十笔订单，每 5 秒自动刷新。
+输入：GET /api/v1/live/orders 的统一 JSON 响应。
+输出/接口：状态卡片、订单表格、手动刷新、超时和“保留上次成功结果”提示；组件本身不修改订单。
+-->
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 

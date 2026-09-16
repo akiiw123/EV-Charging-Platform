@@ -1,4 +1,8 @@
-"""Regression coverage for explicit 2014/2015 -> 2024/2025 migration."""
+"""回归测试历史年份从 2014/2015 映射到 2024/2025 的规则。
+
+输入：人工日期、特征时间和非法回放时刻。
+输出/接口：确保星期重算、边界校验和历史回放标识正确，不生成 2026 年数据。
+"""
 import unittest
 import pandas as pd
 from session_dates import shift_timestamps

@@ -1,4 +1,7 @@
--- Canonical names/order: analytics/ads_contract.json. Run through evcharging_analysis.py.
+-- 功能：把 DWD/DWS 数据计算成大屏直接使用的十张 ADS 结果表。
+-- 输入：ncs_dwd 质量/维度表、ncs_dws 汇总表和 ${COST_PER_KWH} 成本参数。
+-- 输出/接口：KPI、用户、平台、时段、桩型、周类型、SOC、区域收益、站点排行十组结果。
+-- 字段名称与顺序以 analytics/ads_contract.json 为准，由 evcharging_analysis.py 执行。
 DROP TABLE IF EXISTS ncs_ads.ads_kpi_overview;
 CREATE TABLE ncs_ads.ads_kpi_overview USING PARQUET AS
 WITH totals AS (SELECT COUNT(*) AS sessions,CAST(COALESCE(SUM(kwh),0) AS DECIMAL(18,3)) AS total_kwh,

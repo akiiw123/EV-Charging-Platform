@@ -1,3 +1,8 @@
+<!--
+  功能：所有指标和图表共用的 DataV 卡片外框。
+  输入：标题、英文小标题、角标和默认插槽内容。
+  输出/接口：统一的 BorderBox8 卡片；尺寸变化时重算 SVG，避免展开后边框错位。
+-->
 <script setup>
 import { BorderBox8 } from '@kjgl77/datav-vue3'
 import { inject, computed, ref, onMounted, onBeforeUnmount } from 'vue'

@@ -1,5 +1,9 @@
 """把平台 SQLite 运营数据导出为 ml 模块的标准训练数据格式。
 
+功能：只读聚合订单，把业务库转换成与 UrbanEV 兼容的站点×小时数据。
+输入：SQLite 路径、输出目录和可选天气 CSV。
+输出/接口：训练所需的电量、占用率、价格、天气和站点 CSV，不导出用户身份信息。
+
 标准格式与 UrbanEV zone 级 CSV 布局完全一致（由 data.load_urbanev 加载）:
     volume.csv           时间 x 站点  每小时充电量 kWh
     occupancy.csv        时间 x 站点  忙桩比例 0-1

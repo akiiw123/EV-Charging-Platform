@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 功能：在 Spark 主机上一键运行分析并导出十张 ADS 文件。
+# 输入：ADS_EXPORT_DIR、SPARK_SUBMIT、RAW_HDFS_DIR 等环境变量。
+# 输出/接口：调用 export_ads.py --analyze，在目标目录生成 CSV 和 manifest.json。
 set -Eeuo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 cd "${script_dir}/.."

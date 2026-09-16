@@ -1,5 +1,9 @@
 """UrbanEV 数据集加载与特征工程（仅依赖 numpy/pandas）。
 
+功能：把站点×小时 CSV 转成 LSTM 可用的历史窗口、未来特征和归一化统计量。
+输入：volume、occupancy、价格、天气、站点等标准 CSV。
+输出/接口：``load_urbanev``、``build_samples`` 等训练/推理共用的数据对象与特征。
+
 数据集: https://github.com/IntelligentSystemsLab/UrbanEV
 所需文件（放在 data-dir 下）:
     volume.csv       时间 x 区域(TAZID) 每小时充电量 kWh（负荷）

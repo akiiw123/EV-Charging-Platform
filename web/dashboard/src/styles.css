@@ -1,4 +1,8 @@
-/* Base tokens and shared components */
+/*
+ * 功能：定义大屏昼夜主题、三栏布局、卡片动画、地图层级和响应式规则。
+ * 输入：App.vue 写入的 data-theme、展开状态类和不同视口宽度。
+ * 输出/接口：统一视觉样式；不包含业务计算，也不生成任何分析数据。
+ */
 
 :root {
   color-scheme: dark;

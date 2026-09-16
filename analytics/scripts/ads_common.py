@@ -1,4 +1,8 @@
-"""Shared CSV contract; validation does not need Spark or MySQL."""
+"""提供 ADS 文件的统一字段契约、CSV 解析、校验和计算与完整性检查。
+
+输入：``ads_contract.json``、十个竖线分隔 CSV 和 manifest.json。
+输出/接口：TABLES/CONTRACT 以及 ``validate_export``，不依赖 Spark 或 MySQL 也能预检交付物。
+"""
 from __future__ import annotations
 
 import csv

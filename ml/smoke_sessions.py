@@ -1,4 +1,8 @@
-"""Exercise the existing HTTP handler with actual trained session artifacts."""
+"""使用真实 sessions 模型产物对预测 HTTP 服务做冒烟测试。
+
+输入：``--artifacts`` 模型目录，脚本会临时启动随机本机端口。
+输出/接口：验证 /health、/stations、/predict 和错误参数响应，结束后关闭测试服务。
+"""
 import argparse
 import json
 from pathlib import Path

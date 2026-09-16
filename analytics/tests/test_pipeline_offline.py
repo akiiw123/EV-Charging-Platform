@@ -1,7 +1,8 @@
-"""Offline checks of contracts, privacy, SQL metric arithmetic and import rollback.
+"""离线检查 ADS 契约、脱敏导出、统计口径和 MySQL 事务回滚。
 
-SQL SELECTs run using a SQLite compatibility adapter; this does NOT replace
-real Spark/MySQL smoke testing. Fixtures are artificial, never exported as project data.
+输入：测试临时目录和人工构造的小型数据，不读取或写入真实业务库。
+输出/接口：验证 CSV/manifest、校验和、十表原子发布和失败保留旧批次。
+说明：SQL SELECT 通过 SQLite 兼容适配执行，不能代替真实 Spark/MySQL 冒烟测试。
 """
 from __future__ import annotations
 import csv

@@ -1,4 +1,8 @@
-"""Validate every file, stage every table, then publish ALL results in one transaction."""
+"""校验 Spark 导出物，并把十张 ADS 结果原子发布到 MySQL。
+
+输入：含十个 CSV 和 manifest.json 的目录，以及 MYSQL_* 私有环境变量。
+输出/接口：先写临时表，再在一个事务中替换正式表；失败回滚并保留上一批结果。
+"""
 from __future__ import annotations
 import argparse
 import json

@@ -1,4 +1,8 @@
-"""Read-only snapshots of the platform database; never opens a missing DB writable."""
+"""读取业务 SQLite 的实时订单快照，且永远不以可写方式创建数据库。
+
+输入：现有业务数据库文件路径。
+输出/接口：``snapshot()`` 返回各订单状态数量、已记录电量、已结算营收和最近十笔订单；全程只读。
+"""
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone

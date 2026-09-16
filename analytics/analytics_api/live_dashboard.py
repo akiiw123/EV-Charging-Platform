@@ -1,4 +1,8 @@
-"""Live aggregate charts from a single read-only SQLite snapshot (no Spark claims)."""
+"""从业务 SQLite 只读计算“实时图表”，与 Spark 历史批次明确分开。
+
+输入：业务数据库路径和可选的每度电成本；订单、电站、电桩、用户会在同一个只读事务中读取。
+输出/接口：``dashboard_snapshot()`` 返回大屏十组结构中的实时统计和来源说明，不写数据库，也不冒充 Spark 清洗结果。
+"""
 from collections import Counter, defaultdict
 from contextlib import closing
 from datetime import datetime, timezone, timedelta

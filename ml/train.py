@@ -1,5 +1,9 @@
 """训练入口: 在 UrbanEV zone 级数据上训练多步分位数负荷预测模型。
 
+功能：构建训练/验证 DataLoader，优化 LSTM，并保存最佳权重和归一化元数据。
+输入：标准 UrbanEV 布局的数据目录、训练轮数、站点范围等命令行参数。
+输出/接口：artifacts/model.pt 与 meta.json，供 ml/service.py 的 LSTM 后端加载。
+
 用法（在 ml 目录下）:
     python train.py --data-dir ./data --epochs 8
 快速体验（少量站点、CPU 可跑）:

@@ -1,3 +1,8 @@
+<!--
+  功能：运营大屏主页面，组织 KPI、分析分组、地图、主题、刷新和错误状态。
+  输入：Flask /api/v1/dashboard 与 OSM 静态站点；用户的主题/展开/刷新操作。
+  输出/接口：向子组件传递标准数据和 ECharts option；一分钟自动刷新且失败时保留旧结果。
+-->
 <script setup>
 import LiveOrders from './components/LiveOrders.vue'
 import { Decoration5 } from '@kjgl77/datav-vue3'

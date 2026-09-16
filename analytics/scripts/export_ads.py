@@ -1,4 +1,8 @@
-"""Export bounded ADS results with proper CSV quoting and a checksummed manifest."""
+"""把 Spark ADS 表安全导出为可交付、可校验的一整批文件。
+
+输入：Spark 中十张 ncs_ads 表，可选先执行完整分析。
+输出/接口：十个正确转义的竖线 CSV 和带行数、SHA256、脚本身份、输入快照的 manifest.json。
+"""
 from __future__ import annotations
 import argparse
 import csv

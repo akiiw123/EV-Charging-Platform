@@ -1,4 +1,8 @@
-"""Business CSV -> ODS -> DWD -> Spark SQL DWS -> canonical ten ADS tables."""
+"""第二阶段 Spark 主流程：把 HDFS 业务 CSV 处理成十张标准 ADS 表。
+
+输入：HDFS 中的订单、电站、电桩、用户 CSV，以及仓库目录和电量成本参数。
+输出/接口：ODS 原始表、DWD 清洗明细、DWS 汇总表、ADS 大屏结果和质量/来源记录。
+"""
 from __future__ import annotations
 import argparse
 import os

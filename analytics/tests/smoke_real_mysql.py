@@ -1,4 +1,8 @@
-"""Run all analytics endpoints against the configured real MySQL database."""
+"""使用 Flask 测试客户端连接真实 MySQL，检查全部分析接口。
+
+输入：当前环境中的 MYSQL_* 配置，不使用 FakeRepository。
+输出/接口：验证健康状态、十组分析结果及 metadata，失败时指出具体接口。
+"""
 
 from __future__ import annotations
 
@@ -37,4 +41,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,4 +1,8 @@
-"""Explain compatibility field names without misrepresenting metrics."""
+"""解释分析指标口径，并从当前 ETL 批次读取可追溯的来源信息。
+
+输入：能查询 ``etl_metadata`` 的只读仓库。
+输出/接口：``metadata(repository)`` 返回批次号、生成时间、质量信息和指标释义。
+"""
 import json
 
 DEFINITIONS = {

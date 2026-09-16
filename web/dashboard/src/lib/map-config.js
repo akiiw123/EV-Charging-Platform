@@ -1,4 +1,8 @@
-/** Visual-only configuration. No business metrics are derived from these values. */
+/**
+ * 功能：集中保存 Canvas 地图的连线、帧率、像素预算、灯光和安全布局参数。
+ * 输入：无运行时业务数据，所有值只影响视觉和性能。
+ * 输出/接口：只读 MAP_CONFIG；这些参数绝不能被解释成运营指标。
+ */
 export const MAP_CONFIG = Object.freeze({
   network: Object.freeze({maxKm:150, maxDegree:3, candidateCap:72}),
   renderer: Object.freeze({maxFPS:30, maxDPR:1.75, pixelBudget:5500000}),

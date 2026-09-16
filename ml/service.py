@@ -1,5 +1,9 @@
 """负荷预测 JSON API 服务（独立只读推理服务）。
 
+功能：加载 LSTM 或 sessions 模型产物，通过 HTTP 向 Qt 管理端提供预测。
+输入：模型目录、数据目录、后端类型，以及 JSON 预测请求。
+输出/接口：``GET /health``、``GET /stations``、``POST /predict``；不修改订单或电桩。
+
 按 ml/README.md 约定: 独立 Python 服务、稳定 JSON API，与 Qt GUI 解耦；
 训练数据来自公开的 UrbanEV 数据集（天然脱敏），服务本身不读写业务数据库，
 也不修改订单或电桩状态。

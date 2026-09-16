@@ -1,4 +1,9 @@
-"""Run: python -m unittest discover -s ml -p 'test_*.py' -v."""
+"""会话预测训练、推理和 HTTP 参数校验的主单元测试集。
+
+输入：临时构造的脱敏订单、站点和模型产物。
+输出/接口：覆盖防数据泄漏、模型选择、1/6/24 小时语义、站点命名空间和错误响应。
+运行：``python -m unittest discover -s ml -p 'test_*.py' -v``。
+"""
 import hashlib
 import json
 from pathlib import Path

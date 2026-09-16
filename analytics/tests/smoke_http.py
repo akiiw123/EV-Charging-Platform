@@ -1,4 +1,8 @@
-"""Exercise every analytics endpoint through a running HTTP server."""
+"""通过真实 HTTP 访问正在运行的 Flask 服务，冒烟检查全部分析接口。
+
+输入：ANALYTICS_BASE_URL，默认 http://127.0.0.1:8091。
+输出/接口：逐个打印 PASS；状态码、统一响应格式或数据组数量异常时立即失败。
+"""
 
 from __future__ import annotations
 
