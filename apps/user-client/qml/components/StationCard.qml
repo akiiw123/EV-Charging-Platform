@@ -1,3 +1,8 @@
+/*
+ * 文件职责：电站摘要卡片：展示距离、状态和价格等信息，并发出查看详情事件。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Layouts
 import ChargingUser

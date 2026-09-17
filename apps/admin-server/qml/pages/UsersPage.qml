@@ -1,3 +1,8 @@
+/*
+ * 文件职责：用户管理页：展示用户列表和状态筛选，并通过确认流程执行冻结或解冻。
+ * 对接关系：属于 AdminAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

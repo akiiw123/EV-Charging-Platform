@@ -1,3 +1,10 @@
+/**
+ * @file main_window.h
+ * @brief 旧版 Qt Widgets 用户端声明，仅为历史兼容保留；新功能应进入 QML 与 UserAppController。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #pragma once
 #include "charging/core/api_client.h"
 #include <QJsonArray>

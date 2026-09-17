@@ -1,3 +1,10 @@
+/**
+ * @file user_app_controller.cpp
+ * @brief 用户端业务编排：参数校验、异步 TCP 请求、响应分发、定位/地图请求及 QML 状态更新。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #include "charging/core/business_rules.h"
 #include "charging/core/display_time.h"
 #include "user_app_controller.h"

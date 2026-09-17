@@ -41,6 +41,7 @@ export function pointInFeature(point, feature) {
 export function provinceName(name) {
   return String(name ?? '').replace(/维吾尔自治区|壮族自治区|回族自治区|特别行政区|自治区|省|市/g, '').trim();
 }
+// 把 GeoJSON Feature 预处理为带边界框的省级区域，供归属判断和下钻复用。
 export function prepareRegions(geo) {
   if (geo?.type !== 'FeatureCollection' || !Array.isArray(geo.features)) throw new TypeError('地图不是有效的 GeoJSON FeatureCollection');
   const regions = geo.features.filter(f => f.properties?.name && polygons(f).length).map(f => ({
@@ -52,6 +53,7 @@ export function prepareRegions(geo) {
   return regions;
 }
 /** Source province strings help resolve border cases, but geometry validates drawable points. */
+// 优先用明确省名匹配，缺少行政区时再用点在多边形内算法判断。
 export function locateProvince(station, regions) {
   const hint = regions.find(r => r.short === provinceName(station.province) || r.id === String(station.province));
   if (!station.coord) return hint?.id ?? null;
@@ -74,6 +76,7 @@ export function splitOffshore(features) {
   return {main, offshore};
 }
 /** Equirectangular + affine oblique projection. z is a screen-space extrusion, NOT altitude. */
+// 根据当前区域、画布和相机状态创建经纬度到 Canvas 像素的投影函数。
 export function createProjection(features, rect, view = '2d', camera = {zoom:1, pan:[0,0]}) {
   const b = boundsOf(features);
   if (!b || rect.width <= 0 || rect.height <= 0) return null;
@@ -111,6 +114,7 @@ export function haversine(a,b) {
 /** Geographic-distance-limited, bounded-degree undirected proximity graph. Not power-grid links.
  *  Spatial buckets plus a candidate cap bound dense-cell work. This is approximate nearest-neighbor,
  *  not a claim of globally exact k-NN or worst-case unbounded scans. */
+// 以球面距离连接邻近站点，并限制距离、候选数和节点度数，控制视觉密度与计算量。
 export function proximityEdges(stations, {maxKm=150, maxDegree=3, candidateCap=72}={}) {
   if(maxKm<=0||maxDegree<=0) return [];
   const valid=stations.filter(s=>s.coord?.every(Number.isFinite)).slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)));

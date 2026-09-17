@@ -1,3 +1,8 @@
+/*
+ * 文件职责：应用界面总入口：装配登录态、页面导航和全局弹窗；通过注入的 C++ Controller 读取业务状态，不直接访问数据库。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

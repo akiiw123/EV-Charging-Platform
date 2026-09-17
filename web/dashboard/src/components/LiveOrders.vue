@@ -23,6 +23,7 @@ const cards = computed(() => data.value ? [
   ['已结算营收（元）', data.value.settled_revenue],
 ] : [])
 
+// 周期读取最新订单；组件卸载或新一轮开始时取消旧请求，避免竞态和资源泄漏。
 async function refresh() {
   if (loading.value || stopped) return
   clearTimeout(timer)

@@ -28,6 +28,7 @@ const links = ref(true)
 const motion = ref(true)
 const map = shallowRef(null)
 
+// 接收 Canvas 地图命中的站点，保存选中项并打开原生 dialog 详情。
 function openStation(station) {
   selectedStation.value = station
   stationDialog.value?.showModal()
@@ -41,6 +42,7 @@ function returnNational() {
   map.value?.selectProvince(null)
 }
 
+// 切换 2D/2.5D 仅改变地图投影和绘制方式，不修改站点原始经纬度。
 function setView(next) {
   view.value = next
   map.value?.setView(next)
@@ -55,6 +57,7 @@ function zoomMap(factor) {
   map.value?.zoom(factor)
 }
 
+// 恢复当前全国/省份范围的自适应视角。
 function fitMap() {
   map.value?.fit()
 }

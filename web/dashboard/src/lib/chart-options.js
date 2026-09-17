@@ -16,6 +16,7 @@ const PALETTES = {
   },
 }
 
+// 每张图共用的动画、字体、提示框和调色板，确保日夜主题一致切换。
 function base(mode) {
   const palette = PALETTES[mode] || PALETTES.night
   return {
@@ -53,6 +54,8 @@ function barStyle(color) {
   return { color, borderRadius: [3, 3, 0, 0] }
 }
 
+// 将 normalizeDashboard 的标准数据一次性转换为各卡片的 ECharts option。
+// 此处只负责展示映射，不在前端重新定义后端业务指标口径。
 export function buildChartOptions(data, mode = 'night') {
   if (!data) return {}
   const common = base(mode)

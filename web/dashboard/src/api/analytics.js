@@ -5,6 +5,7 @@
  */
 import { normalizeBusinessStations, normalizeDashboard, normalizeMetadata } from '../lib/dashboard-model.js'
 
+// 所有 GET 请求的统一出口：禁用缓存、透传取消信号，并把 HTTP/业务错误转成异常。
 async function getJson(url, signal) {
   const response = await fetch(url, {
     cache: 'no-store',
@@ -16,11 +17,13 @@ async function getJson(url, signal) {
   return payload
 }
 
+// mode=live 读取业务库实时汇总；mode=batch 读取 Spark/MySQL 历史分析批次。
 export async function fetchDashboard(signal, mode = 'batch') {
   const payload = await getJson(mode === 'live' ? '/api/v1/live/dashboard' : '/api/v1/dashboard', signal)
   return { data: normalizeDashboard(payload), metadata: normalizeMetadata(payload.metadata) }
 }
 
+// 返回统一站点模型，使地图无需关心实时与历史接口的字段差异。
 export async function fetchStations(signal, mode = 'live') {
   const url = mode === 'live' ? '/api/v1/live/stations' : '/api/v1/stations/map'
   return normalizeBusinessStations(await getJson(url, signal))
@@ -30,6 +33,7 @@ export async function fetchMlStations(signal) {
   return getJson('/api/v1/ml/stations', signal)
 }
 
+// 预测经 Flask 同源代理转发，前端不接触 ML 服务地址；固定请求 1/6/24 小时时域。
 export async function fetchMlPrediction(stationId, signal) {
   const response = await fetch('/api/v1/ml/predict', {
     method: 'POST',

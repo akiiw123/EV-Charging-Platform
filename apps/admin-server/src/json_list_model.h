@@ -1,3 +1,10 @@
+/**
+ * @file json_list_model.h
+ * @brief 通用 JSON 列表模型：把 QJsonObject 列表转换成 QML ListView/TableView 可读取的动态角色。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #pragma once
 
 #include <QAbstractListModel>

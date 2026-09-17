@@ -1,3 +1,8 @@
+/*
+ * 文件职责：个人中心：展示用户资料、余额、充值记录和主题设置，并调用 Controller 提交修改。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

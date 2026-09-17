@@ -1,3 +1,10 @@
+/**
+ * @file admin_app_controller.h
+ * @brief 管理端 QML 与服务端/ML 服务之间的 ViewModel 接口：暴露表格模型、筛选状态和管理命令。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #pragma once
 
 #include "charging/core/api_client.h"
@@ -14,6 +21,7 @@
 
 namespace charging::admin {
 
+/** 管理端页面的统一 ViewModel。它把 TCP/ML 响应整理成 QML 模型，并集中处理筛选、忙碌态和错误反馈。 */
 class AdminAppController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool connected READ connected NOTIFY connectionChanged)
@@ -59,6 +67,7 @@ class AdminAppController final : public QObject {
 
 public:
     explicit AdminAppController(bool databaseReady, QObject* parent = nullptr);
+    // getter 为 QML 属性绑定提供当前快照；列表通过 QAbstractItemModel 暴露，避免在 QML 硬编码表格行。
     bool connected() const { return connected_; }
     bool databaseReady() const { return databaseReady_; }
     bool loggedIn() const { return loggedIn_; }
@@ -98,12 +107,15 @@ public:
     bool mustChangePassword() const { return mustChangePassword_; }
     bool loadFailed() const { return loadFailed_; }
 
+    // displayTime 将服务端 UTC 时间转换成界面统一使用的北京时间文本。
     Q_INVOKABLE QString displayTime(const QString& value) const;
+    // login/logout 管理管理员会话；refreshAll 在登录成功后并行拉取各业务模块。
     Q_INVOKABLE void login(const QString& username, const QString& password, bool remember);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refreshAll();
     // days 为趋势统计区间(7 或 30 日),默认 30
     Q_INVOKABLE void refreshDashboard(int days = 30);
+    // refreshStations/Piles/Orders/Users 将搜索和筛选条件带入请求或本地过滤，再更新对应模型。
     Q_INVOKABLE void refreshStations(const QString& query = {});
     // stationIds 为电站 id 列表(QVariantList);空列表表示全部电桩
     Q_INVOKABLE void refreshPiles(const QString& query = {}, const QVariantList& stationIds = {}, const QString& type = {}, const QString& status = {});
@@ -121,6 +133,7 @@ public:
     // 常用电站推荐:本机记录的最近管理电站(最多 5 个,不区分管理员账号)
     Q_INVOKABLE QVariantList recentStations() const;
     Q_INVOKABLE void noteStationManaged(qint64 stationId);
+    // create/update/deleteStation 与 create/update/restartPile 只发送管理命令；业务约束由服务端最终校验。
     Q_INVOKABLE void createStation(const QVariantMap& form);
     Q_INVOKABLE void updateStation(const QVariantMap& form);
     Q_INVOKABLE void deleteStation(qint64 id);
@@ -130,10 +143,12 @@ public:
     Q_INVOKABLE void setPileStatus(qint64 id, const QString& status);
     // 供"新增电桩"对话框选择所属电站
     Q_INVOKABLE QStringList stationNames() const;
+    // setUserStatus 执行冻结或解冻；冻结后的在线会话由服务端负责失效处理。
     Q_INVOKABLE void setUserStatus(qint64 id, const QString& status);
     // 站点计价规则(分时电价段 + 占位费):编辑对话框打开时拉取,保存后立即对计费生效
     Q_INVOKABLE void loadPricing(qint64 stationId);
     Q_INVOKABLE void savePricing(const QVariantMap& form);
+    // refreshPredictions 先读取 ML 站点目录，再异步请求各站 1/6/24 小时预测并聚合到模型。
     Q_INVOKABLE void refreshPredictions();
     // 强制改密流程:校验当前密码并设置新密码(服务端 PBKDF2 落库,清除首登标志)
     Q_INVOKABLE void changePassword(const QString& oldPassword, const QString& newPassword);
@@ -172,6 +187,7 @@ signals:
     void stationDataChanged();
 
 private:
+    // request 统一生成 TCP 请求并维护 busy/pending；handleResponse 按消息类型更新模型与提示。
     void request(const QString& type, const QJsonObject& payload = {});
     void handleResponse(const charging::core::Message& message);
     void showNotice(const QString& text, const QString& kind = QStringLiteral("success"));

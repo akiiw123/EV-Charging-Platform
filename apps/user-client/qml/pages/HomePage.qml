@@ -1,3 +1,8 @@
+/*
+ * 文件职责：首页与电站列表：展示定位、筛选结果和电站摘要；数据来自 Controller 的站点模型。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts

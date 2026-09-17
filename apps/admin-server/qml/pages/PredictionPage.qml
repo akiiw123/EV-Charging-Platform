@@ -1,3 +1,8 @@
+/*
+ * 文件职责：智能预测页：展示独立 ML HTTP 服务返回的站点预测、模型来源及错误/演示状态。
+ * 对接关系：属于 AdminAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Layouts
 import Charging.UI

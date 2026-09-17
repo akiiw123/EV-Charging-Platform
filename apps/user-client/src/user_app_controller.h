@@ -1,3 +1,10 @@
+/**
+ * @file user_app_controller.h
+ * @brief 用户端 QML 与 TCP 服务之间的 ViewModel 接口：向 QML 暴露属性、模型、命令和状态信号。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #pragma once
 
 #include "charging/core/api_client.h"
@@ -13,6 +20,7 @@
 
 namespace charging::user {
 
+/** 用户端页面的唯一业务入口。页面读取 Q_PROPERTY、调用 Q_INVOKABLE；该类负责校验、异步请求和状态同步。 */
 class UserAppController final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
@@ -47,6 +55,7 @@ class UserAppController final : public QObject {
 public:
     explicit UserAppController(QObject* parent = nullptr);
 
+    // 下列 getter 是 Q_PROPERTY 的数据出口；QML 通过属性绑定读取，状态改变时由对应 signal 通知刷新。
     QString theme() const { return theme_; }
     void setTheme(const QString& value);
     Q_INVOKABLE QString displayTime(const QString& value) const;
@@ -76,23 +85,32 @@ public:
     QUrl mapUrl() const;
     QString mapTitle() const;
 
+    // setFilters 保存首页筛选条件并重建可见站点；不修改服务端原始数据。
     Q_INVOKABLE void setFilters(double minDistance, double maxDistance, double minPrice, double maxPrice, const QString& type, bool idleOnly);
+    // orderStatusText 只负责把协议英文状态翻译成中文显示文字。
     Q_INVOKABLE QString orderStatusText(const QString& status) const;
+    // login/logout 建立或清理用户会话；登录请求成功后再加载用户、订单和站点数据。
     Q_INVOKABLE void login(const QString& phone);
     Q_INVOKABLE void logout();
+    // refreshStations 从服务端重新拉取电站，再逐站补充电桩数据并应用本地距离/价格筛选。
     Q_INVOKABLE void refreshStations();
+    // locate 优先识别预设城市；配置地图 Key 时也可异步地理编码任意地址。
     Q_INVOKABLE void locate(const QString& address);
     Q_INVOKABLE QVariantList presetCities() const { return presetCities_; }
+    // selectStation 切换详情页上下文，并触发该站电桩和计价规则加载。
     Q_INVOKABLE void selectStation(const QVariantMap& station);
     // 拉取电站计价规则:选中电站与活动订单换站时自动调用
     Q_INVOKABLE void loadPricing(qint64 stationId);
+    // reserve 发起预约；orderAction 根据当前订单状态发送开始、停止、结算或取消命令。
     Q_INVOKABLE void reserve(qint64 pileId, double powerKw);
     Q_INVOKABLE void orderAction(const QString& action);
+    // 个人中心相关命令：刷新资料、修改昵称、选取头像和钱包充值。
     Q_INVOKABLE void refreshProfile();
     Q_INVOKABLE void updateNickname(const QString& nickname);
     // 头像:打开系统文件选择器,校验后裁成圆形 PNG 存到应用数据目录并上传路径
     Q_INVOKABLE void pickAvatar();
     Q_INVOKABLE void recharge(double amount);
+    // openNavigation 根据 mode 生成腾讯地图驾车/公交/步行导航地址，交给 MapPage 展示。
     Q_INVOKABLE void openNavigation(const QString& mode);
     Q_INVOKABLE void clearNotice();
 
@@ -122,6 +140,7 @@ signals:
     void reservationSucceeded();
 
 private:
+    // sendRequest 生成请求 ID 并登记 pending_；handleResponse 按 ID 找回原请求并更新对应状态。
     QString sendRequest(const QString& type, const QJsonObject& payload = {});
     void clearSession();
     void loadNextFilterPiles();

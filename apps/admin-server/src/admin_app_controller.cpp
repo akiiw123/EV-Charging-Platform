@@ -1,3 +1,10 @@
+/**
+ * @file admin_app_controller.cpp
+ * @brief 管理端业务编排：发送 TCP 管理请求、更新列表模型、持久化界面设置并异步请求 ML 预测。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #include "charging/core/display_time.h"
 #include "admin_app_controller.h"
 

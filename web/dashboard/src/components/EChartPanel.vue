@@ -33,6 +33,7 @@ const host = ref(null)
 let chart
 let observer
 
+// 初始化或更新唯一 ECharts 实例；无 option 时清空，避免残留上一组数据。
 function render() {
   if (!chart) return
   if (props.empty) { chart.clear(); return }

@@ -5,6 +5,7 @@
  */
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
+// 将 MySQL 常见的数字字符串转换为 Number；null 仍为 null，非法值直接报错而不是画成 0。
 function finite(value, field) {
   if (value === null || (typeof value === 'string' && value.trim() === '')) return null
   if (typeof value !== 'string' && typeof value !== 'number') throw new TypeError(`${field} 不是有效数字`)
@@ -13,6 +14,7 @@ function finite(value, field) {
   return number
 }
 
+// 按指标组的契约逐行复制并规范化数字字段，避免后端原对象被界面意外修改。
 function rows(data, key) {
   if (!Array.isArray(data[key])) throw new TypeError(`${key} 数据缺失`)
   const numericFields = {
@@ -36,6 +38,7 @@ export function normalizeMetadata(value) {
   return isObject(value) ? value : {}
 }
 
+// 只有批次、受支持脚本路径和 64 位脚本哈希均存在时，界面才标记为“来源已核验”。
 export function hasVerifiedSource(metadata) {
   const module = metadata?.analysis?.module
   const supported = module === 'analytics/scripts/evcharging_analysis.py'
@@ -50,6 +53,7 @@ const chartGroups = { userLevels: 'user_levels', userRadar: 'user_radar', platfo
   battery: 'battery_health', hourly: 'hour_trend', stationTypes: 'station_types',
   weekCompare: 'week_compare', areaCosts: 'area_costs', topStations: 'top_stations', stationLoad: 'top_stations',
   pileStatus: 'pile_status', pileTypes: 'pile_types' }
+// 区分“无数据”“原始字段缺失”和“无法归一化”，给用户真实原因而不是空白图表。
 export function chartMissingReason(key, data, metadata) {
   if (!data) return '等待可信分析结果'
   const group = data[chartGroups[key]] || []
@@ -62,6 +66,7 @@ export function chartMissingReason(key, data, metadata) {
   return ''
 }
 
+// Flask 聚合响应进入 Vue 状态前的总校验入口；返回结构是图表层唯一依赖的数据契约。
 export function normalizeDashboard(payload) {
   if (!isObject(payload) || payload.code !== 0 || !isObject(payload.data)) {
     throw new TypeError(payload?.message || '分析接口响应格式不正确')
@@ -91,6 +96,7 @@ export function normalizeDashboard(payload) {
   }
 }
 
+// 兼容静态 OSM 快照格式，生成地图内部统一的站点对象。
 export function normalizeStations(payload) {
   if (!isObject(payload) || payload.data_kind !== 'static_station_inventory' || !Array.isArray(payload.stations)) {
     throw new TypeError('站点 ADS 格式不正确')
@@ -128,6 +134,7 @@ export function normalizeStations(payload) {
   return { stations, snapshotAt: payload.snapshot_at || null }
 }
 
+// 规范 Flask 实时/历史站点接口，并保留 coordinate_kind 供页面明确说明坐标来源。
 export function normalizeBusinessStations(payload) {
   if (!isObject(payload) || payload.code !== 0 || !isObject(payload.data)
       || !['platform_sqlite', 'spark_mysql_display_coordinates'].includes(payload.data.source)

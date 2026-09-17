@@ -1,4 +1,5 @@
 /** Build a transparent rule-based forecast from the dashboard's current aggregates. */
+// 从当前标准大屏数据提取规则预测输入；仅用于解释性辅助，不替代独立 ML 服务结果。
 export function buildPredictionModel(dashboard) {
   const hourly = Array.isArray(dashboard?.hour_trend) ? dashboard.hour_trend : []
   const validHours = hourly

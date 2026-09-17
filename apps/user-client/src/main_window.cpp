@@ -1,3 +1,10 @@
+/**
+ * @file main_window.cpp
+ * @brief 旧版 Qt Widgets 用户端实现，仅为历史兼容保留；当前正式界面入口是 Qt Quick/QML。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #include "main_window.h"
 #include "views/charging_view.h"
 #include "views/home_view.h"

@@ -11,6 +11,8 @@ import {polygons, boundsOf, prepareRegions, pointInFeature, locateProvince, spli
  * Three cached canvas layers: terrain (static), nearby links (static), station lights (animated).
  * Every light is a supplied station. No random fill, generated city texture, or API fallback.
  */
+// 创建独立 Canvas 地图控制器。内部持有地图范围、相机、动画和命中测试状态，
+// 对外只暴露 update/theme/selectProvince/zoom/fit/dispose 等有限操作。
 export function createMap(_echarts, onSelect, {onScopeChange=()=>{}}={}) {
   const $=id=>document.getElementById(id);
   const host=$('map'), stage=host.parentElement, backdrop=$('mapBackdrop'), message=$('mapMessage');

@@ -32,6 +32,7 @@ function hourText(value) {
   return Number.isNaN(date.getTime()) ? '--:--' : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+// 校验 ML 代理响应并整理 1/6/24 小时结果；缺少真实结果时抛错，不伪造预测值。
 function normalizeMlPrediction(payload) {
   const curve = Array.isArray(payload?.curve) ? payload.curve : []
   const distribution = curve.map((row) => Number(row.load_kwh) || 0)
@@ -51,6 +52,7 @@ function normalizeMlPrediction(payload) {
   }
 }
 
+// 取消上一站请求后加载当前站点预测，防止快速切换站点造成旧响应覆盖新状态。
 async function loadPrediction() {
   controller?.abort()
   controller = new AbortController()
@@ -75,6 +77,7 @@ async function loadPrediction() {
   }
 }
 
+// 首次展开先获取可预测站点目录，再按默认站点加载预测。
 async function openPanel() {
   open.value = true
   if (mlState.value === 'idle') loadPrediction()

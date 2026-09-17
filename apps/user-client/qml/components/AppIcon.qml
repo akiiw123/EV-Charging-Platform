@@ -1,3 +1,8 @@
+/*
+ * 文件职责：线性图标组件：根据语义名称绘制统一风格图标，避免混用 Emoji 和位图。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 
 // 简约线性图标:Canvas 矢量绘制,替代字符图标

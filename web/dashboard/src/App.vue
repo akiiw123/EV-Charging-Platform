@@ -92,6 +92,7 @@ const kpis = computed(() => {
 
 let railCloseTimer
 
+// 展开指定侧栏，同时关闭另一侧，避免左右浮层同时遮挡中央地图。
 function openRail(side) {
   window.clearTimeout(railCloseTimer)
   leftRailOpen.value = side === 'left'
@@ -123,6 +124,8 @@ function formatMoney(value) {
   return Number.isFinite(Number(value)) ? Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
 }
 
+// 拉取当前模式的指标数据：取消旧请求、限制 10 秒超时，成功后安排下一轮刷新。
+// 请求失败时保留上一次成功数据，只更新错误提示，避免大屏因瞬时网络波动全部空白。
 async function refreshDashboard() {
   clearTimeout(refreshTimer)
   refreshController?.abort()
@@ -150,6 +153,7 @@ async function refreshDashboard() {
   }
 }
 
+// 地图数据与指标数据分开加载，地图较慢或失败时不会阻塞 KPI 和图表展示。
 async function loadStationData() {
   stationController?.abort()
   stationController = new AbortController()
@@ -171,6 +175,7 @@ async function loadStationData() {
   }
 }
 
+// 自动主题按浏览器本地时间选择；07:00～18:00 为日间，其余为夜间。
 function resolveAutoTheme(date = new Date()) {
   const hour = date.getHours()
   return hour >= 7 && hour < 18 ? 'day' : 'night'
@@ -185,6 +190,7 @@ function cycleThemeMode() {
   themeMode.value = themeMode.value === 'auto' ? 'day' : themeMode.value === 'day' ? 'night' : 'auto'
 }
 
+// 使用标准 Fullscreen API；浏览器拒绝时仅记录警告，不破坏页面其他功能。
 async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen()

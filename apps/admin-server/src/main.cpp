@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @brief 程序启动入口：初始化 Qt/QML 模块、创建 Controller、注入 QML 上下文并显示主窗口。
+ *
+ * 调用链说明：QML 调用 Q_INVOKABLE/槽函数，Controller 通过 ApiClient 异步访问服务端，
+ * 收到响应后更新 Q_PROPERTY 或列表模型并发出信号，QML 绑定会自动刷新。
+ */
 #include "admin_app_controller.h"
 #include "charging/core/database_manager.h"
 #include "charging/core/tcp_server.h"

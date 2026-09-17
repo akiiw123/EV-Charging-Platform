@@ -1,3 +1,8 @@
+/*
+ * 文件职责：地图导航页：承载腾讯地图 Web 页面；地图 Key 和 URL 由 C++ Controller 统一准备。
+ * 对接关系：属于 UserAppController；QML 负责展示和交互，业务数据与持久化由 C++/服务端负责。
+ * 阅读提示：property 是页面状态，signal 是向上层发出的事件，function 是本页面的轻量交互辅助。
+ */
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
