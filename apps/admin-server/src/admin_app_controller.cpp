@@ -31,6 +31,12 @@ QStringList sortedUniqueRegions(QSet<QString> values) {
     out.sort(Qt::CaseInsensitive);
     return out;
 }
+QString predictionAlgorithmLabel(const QString& value) {
+    if (value == QStringLiteral("seasonal")) return QStringLiteral("季节均值");
+    if (value == QStringLiteral("ml")) return QStringLiteral("机器学习模型");
+    if (value == QStringLiteral("zero")) return QStringLiteral("零值基准");
+    return value.isEmpty() ? QStringLiteral("未提供") : value;
+}
 }
 
 AdminAppController::AdminAppController(bool databaseReady, QObject* parent)
@@ -299,14 +305,15 @@ void AdminAppController::refreshPredictions()
     predictionLoading_ = true;
     predictionSource_ = QStringLiteral("连接中");
     predictionStatus_ = QStringLiteral("正在连接预测服务…");
+    predictionModelName_ = predictionMethod_ = predictionDataScope_ = predictionCaveat_ = QStringLiteral("读取中");
     emit predictionChanged();
 
     QString base = qEnvironmentVariable("CHARGING_ML_URL", QStringLiteral("http://127.0.0.1:8090"));
     while (base.endsWith(QLatin1Char('/'))) base.chop(1);
-    QNetworkRequest req(QUrl(base + QStringLiteral("/stations")));
+    QNetworkRequest req(QUrl(base + QStringLiteral("/health")));
     req.setTransferTimeout(4000);
     auto* reply = network_.get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, generation] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation, base] {
         const auto data = reply->readAll();
         const auto error = reply->error();
         const QString errorText = reply->errorString();
@@ -318,16 +325,48 @@ void AdminAppController::refreshPredictions()
         }
         QJsonParseError parseError;
         const auto document = QJsonDocument::fromJson(data, &parseError);
-        const auto catalog = document.object();
         if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            usePredictionDemo(QStringLiteral("站点接口返回了无效 JSON"));
+            usePredictionDemo(QStringLiteral("健康接口返回了无效 JSON"));
             return;
         }
-        if (catalog.value(QStringLiteral("stations")).toArray().isEmpty()) {
-            usePredictionDemo(QStringLiteral("预测服务没有可用站点"));
-            return;
-        }
-        requestStationForecasts(catalog, generation);
+        const auto health = document.object();
+        forecastModel_ = health.value(QStringLiteral("model")).toString();
+        forecastMode_ = health.value(QStringLiteral("mode")).toString();
+        forecastReplayAt_ = health.value(QStringLiteral("default_timestamp")).toString();
+        forecastStationCount_ = health.value(QStringLiteral("zones")).toInt();
+        forecastShiftedData_ = health.value(QStringLiteral("date_shift")).toObject()
+                                   .value(QStringLiteral("data_kind")).toString() == QStringLiteral("shifted_historical");
+        const auto range = health.value(QStringLiteral("data_range")).toArray();
+        forecastDateRange_ = range.size() >= 2
+            ? QStringLiteral("%1 至 %2").arg(range.at(0).toString().left(10), range.at(1).toString().left(10))
+            : QString();
+
+        QNetworkRequest stationRequest(QUrl(base + QStringLiteral("/stations")));
+        stationRequest.setTransferTimeout(4000);
+        auto* stationReply = network_.get(stationRequest);
+        connect(stationReply, &QNetworkReply::finished, this, [this, stationReply, generation] {
+            const auto stationData = stationReply->readAll();
+            const auto stationError = stationReply->error();
+            const QString stationErrorText = stationReply->errorString();
+            stationReply->deleteLater();
+            if (generation != forecastRequestGeneration_) return;
+            if (stationError != QNetworkReply::NoError) {
+                usePredictionDemo(stationErrorText);
+                return;
+            }
+            QJsonParseError stationParseError;
+            const auto stationDocument = QJsonDocument::fromJson(stationData, &stationParseError);
+            const auto catalog = stationDocument.object();
+            if (stationParseError.error != QJsonParseError::NoError || !stationDocument.isObject()) {
+                usePredictionDemo(QStringLiteral("站点接口返回了无效 JSON"));
+                return;
+            }
+            if (catalog.value(QStringLiteral("stations")).toArray().isEmpty()) {
+                usePredictionDemo(QStringLiteral("预测服务没有可用站点"));
+                return;
+            }
+            requestStationForecasts(catalog, generation);
+        });
     });
 }
 
@@ -339,6 +378,13 @@ void AdminAppController::requestStationForecasts(const QJsonObject& catalog, int
     const auto stations = catalog.value(QStringLiteral("stations")).toArray();
     forecastMode_ = catalog.value(QStringLiteral("mode")).toString();
     forecastReplayAt_ = catalog.value(QStringLiteral("default_timestamp")).toString();
+    forecastStationCount_ = catalog.value(QStringLiteral("count")).toInt(stations.size());
+    forecastShiftedData_ = catalog.value(QStringLiteral("date_shift")).toObject()
+                               .value(QStringLiteral("data_kind")).toString() == QStringLiteral("shifted_historical");
+    forecastAlgorithm_.clear();
+    forecastLoadBasis_.clear();
+    forecastWarnings_.clear();
+    forecastCapacityVerified_ = true;
     pendingForecastRows_.clear();
     forecastLoadSum_[0] = forecastLoadSum_[1] = forecastLoadSum_[2] = 0.0;
     forecastOkCount_ = 0;
@@ -425,6 +471,16 @@ bool AdminAppController::applyForecastReply(int row, const QJsonObject& payload)
     }
     QString risk = QStringLiteral("正常");
     const bool capacityVerified = payload.value(QStringLiteral("capacity_verified")).toBool(true);
+    forecastCapacityVerified_ = forecastCapacityVerified_ && capacityVerified;
+    if (forecastAlgorithm_.isEmpty())
+        forecastAlgorithm_ = payload.value(QStringLiteral("selected_models")).toObject()
+                                 .value(QStringLiteral("energy_kwh")).toString();
+    if (forecastLoadBasis_.isEmpty())
+        forecastLoadBasis_ = payload.value(QStringLiteral("load_basis")).toString();
+    for (const auto& warning : payload.value(QStringLiteral("warnings")).toArray()) {
+        const QString text = warning.toString().trimmed();
+        if (!text.isEmpty() && !forecastWarnings_.contains(text)) forecastWarnings_.append(text);
+    }
     if (free1 <= 0 || peakBusy >= 0.9)
         risk = capacityVerified ? QStringLiteral("容量预警") : QStringLiteral("高负荷提示");
     else if (peakBusy >= 0.6)
@@ -459,6 +515,8 @@ void AdminAppController::finishForecasts()
     predictionLoading_ = false;
     predictionSource_ = forecastMode_ == QStringLiteral("historical_replay")
         ? QStringLiteral("历史回放模型") : QStringLiteral("模型服务");
+    predictionModelName_ = forecastModel_.isEmpty() ? QStringLiteral("未提供") : forecastModel_;
+    predictionMethod_ = predictionAlgorithmLabel(forecastAlgorithm_);
     predictionConfidence_ = forecastOkCount_ > 0 && forecastConfidence_ > 0.0
         ? QStringLiteral("%1").arg(qRound(forecastConfidence_))
         : QStringLiteral("—");
@@ -466,16 +524,32 @@ void AdminAppController::finishForecasts()
         predictionLoad1_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[0], 0, 'f', 1);
         predictionLoad6_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[1], 0, 'f', 1);
         predictionLoad24_ = QStringLiteral("%1 kWh").arg(forecastLoadSum_[2], 0, 'f', 1);
+        const int shown = pendingForecastRows_.size();
         const QString replayNote = forecastMode_ == QStringLiteral("historical_replay")
             ? QStringLiteral("；回放时点 %1").arg(forecastReplayAt_.isEmpty() ? QStringLiteral("未提供") : forecastReplayAt_)
             : QString();
         predictionStatus_ = forecastOkCount_ == pendingForecastRows_.size()
-            ? QStringLiteral("服务在线；已完成 %1 个站点的负荷预测%2").arg(forecastOkCount_).arg(replayNote)
+            ? QStringLiteral("服务在线；当前展示 %1/%2 个可预测站点%3")
+                  .arg(shown).arg(forecastStationCount_).arg(replayNote)
             : QStringLiteral("服务在线；%1/%2 个站点预测成功，其余站点请检查模型产物")
                   .arg(forecastOkCount_).arg(pendingForecastRows_.size());
+        predictionDataScope_ = QStringLiteral("%1%2 · 当前汇总 %3 个站点")
+            .arg(forecastShiftedData_ ? QStringLiteral("年份平移历史数据") : QStringLiteral("模型数据"),
+                 forecastDateRange_.isEmpty() ? QString() : QStringLiteral(" · %1").arg(forecastDateRange_))
+            .arg(shown);
+        QStringList caveats;
+        if (forecastShiftedData_) caveats << QStringLiteral("并非 2024/2025/2026 年实采数据");
+        if (forecastLoadBasis_ == QStringLiteral("uniform_session_energy_allocation"))
+            caveats << QStringLiteral("小时电量由会话电量按时长均匀分摊重建");
+        if (!forecastCapacityVerified_) caveats << QStringLiteral("站点容量尚未核验");
+        if (predictionConfidence_ == QStringLiteral("—")) caveats << QStringLiteral("未提供概率预测区间");
+        caveats.append(forecastWarnings_);
+        predictionCaveat_ = caveats.isEmpty() ? QStringLiteral("接口未返回额外限制说明") : caveats.join(QStringLiteral("；"));
     } else {
         predictionLoad1_ = predictionLoad6_ = predictionLoad24_ = QStringLiteral("—");
         predictionStatus_ = QStringLiteral("服务在线，但推理全部失败；请确认已运行 train.py 生成模型产物");
+        predictionDataScope_ = QStringLiteral("模型接口在线，但没有可展示的有效预测");
+        predictionCaveat_ = QStringLiteral("请检查模型产物和预测响应字段");
     }
     predictionUpdatedAt_ = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"));
     emit predictionChanged();
@@ -561,6 +635,10 @@ void AdminAppController::usePredictionDemo(const QString& reason)
     predictionLoading_ = false;
     predictions_.setRows(rows);
     predictionSource_ = QStringLiteral("历史数据估算");
+    predictionModelName_ = QStringLiteral("未连接 ML 服务");
+    predictionMethod_ = QStringLiteral("业务订单均值估算");
+    predictionDataScope_ = QStringLiteral("平台业务数据库 · %1 个站点 · 最近 24 小时订单").arg(rows.size());
+    predictionCaveat_ = QStringLiteral("这是服务离线时的只读估算，不是机器学习预测结果");
     predictionLoad1_ = QStringLiteral("%1 kWh").arg(sum1, 0, 'f', 1);
     predictionLoad6_ = QStringLiteral("%1 kWh").arg(sum6, 0, 'f', 1);
     predictionLoad24_ = QStringLiteral("%1 kWh").arg(sum24, 0, 'f', 1);

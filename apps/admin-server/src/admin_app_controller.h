@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QSet>
+#include <QStringList>
 #include <QTimer>
 #include <QHash>
 
@@ -42,6 +43,10 @@ class AdminAppController final : public QObject {
     Q_PROPERTY(QString predictionStatus READ predictionStatus NOTIFY predictionChanged)
     Q_PROPERTY(QString predictionUpdatedAt READ predictionUpdatedAt NOTIFY predictionChanged)
     Q_PROPERTY(bool predictionLoading READ predictionLoading NOTIFY predictionChanged)
+    Q_PROPERTY(QString predictionModelName READ predictionModelName NOTIFY predictionChanged)
+    Q_PROPERTY(QString predictionMethod READ predictionMethod NOTIFY predictionChanged)
+    Q_PROPERTY(QString predictionDataScope READ predictionDataScope NOTIFY predictionChanged)
+    Q_PROPERTY(QString predictionCaveat READ predictionCaveat NOTIFY predictionChanged)
     Q_PROPERTY(bool mustChangePassword READ mustChangePassword NOTIFY mustChangePasswordChanged)
     Q_PROPERTY(bool loadFailed READ loadFailed NOTIFY loadFailedChanged)
     // 真实预测聚合值(当前展示站点合计);不可用时为 "—"
@@ -81,6 +86,10 @@ public:
     QString predictionStatus() const { return predictionStatus_; }
     QString predictionUpdatedAt() const { return predictionUpdatedAt_; }
     bool predictionLoading() const { return predictionLoading_; }
+    QString predictionModelName() const { return predictionModelName_; }
+    QString predictionMethod() const { return predictionMethod_; }
+    QString predictionDataScope() const { return predictionDataScope_; }
+    QString predictionCaveat() const { return predictionCaveat_; }
     QString predictionLoad1() const { return predictionLoad1_; }
     QString predictionLoad6() const { return predictionLoad6_; }
     QString predictionLoad24() const { return predictionLoad24_; }
@@ -210,9 +219,15 @@ private:
     double forecastConfidence_ = 0.0;               // 由 quantiles 推出,如 90
     bool predictionLoading_ = false;
     int forecastRequestGeneration_ = 0;
-    QString forecastMode_, forecastReplayAt_;
+    int forecastStationCount_ = 0;
+    bool forecastCapacityVerified_ = true, forecastShiftedData_ = false;
+    QString forecastMode_, forecastReplayAt_, forecastDateRange_, forecastModel_, forecastAlgorithm_,
+            forecastLoadBasis_;
+    QStringList forecastWarnings_;
     QString predictionLoad1_ = QStringLiteral("—"), predictionLoad6_ = QStringLiteral("—"),
             predictionLoad24_ = QStringLiteral("—"), predictionConfidence_ = QStringLiteral("—");
+    QString predictionModelName_ = QStringLiteral("—"), predictionMethod_ = QStringLiteral("—"),
+            predictionDataScope_ = QStringLiteral("—"), predictionCaveat_ = QStringLiteral("—");
     bool mustChangePassword_ = false;
     bool loadFailed_ = false;
 };
